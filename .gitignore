@@ -1,0 +1,23 @@
+# Go
+*.exe
+*.test
+*.out
+/services/aggregator/aggregator
+/services/*/tmp/
+vendor/
+
+# Env
+.env
+.env.local
+
+# Node / frontend
+node_modules/
+frontend/dist/
+frontend/build/
+
+# OS / editor
+.DS_Store
+*.swp
+
+# Docker
+docker-compose.override.yml
