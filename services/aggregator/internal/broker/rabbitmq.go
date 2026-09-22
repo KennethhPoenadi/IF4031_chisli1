@@ -1,7 +1,13 @@
 package broker
 
 import (
+	"context"
+	"encoding/json"
+	"strings"
+
 	amqp "github.com/rabbitmq/amqp091-go"
+
+	"aggregator/internal/hazard"
 )
 
 func Connect(url, exchange, exchangeType string) (*amqp.Connection, *amqp.Channel, error) {
@@ -32,4 +38,26 @@ func Connect(url, exchange, exchangeType string) (*amqp.Connection, *amqp.Channe
 	}
 
 	return conn, ch, nil
+}
+
+func Publish(ch *amqp.Channel, exchange string, event hazard.Event) error {
+	body, err := json.Marshal(event)
+	if err != nil {
+		return err
+	}
+
+	routingKey := strings.ToLower("hazard." + string(event.HazardType) + "." + string(event.Severity)) // contohnya jadi hazard.seismic.awas kalo hazard typenya seismic dan severitynya awas
+
+	return ch.PublishWithContext(
+		context.Background(),
+		exchange,
+		routingKey,
+		false,
+		false,
+		amqp.Publishing{
+			ContentType:  "application/json",
+			DeliveryMode: amqp.Persistent,
+			Body:         body,
+		},
+	) // bwt ngirimnya aj
 }

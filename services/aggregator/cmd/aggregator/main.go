@@ -3,9 +3,11 @@ package main
 import (
 	"log"
 	"net/http"
+	"time"
 
 	"aggregator/internal/broker"
 	"aggregator/internal/config"
+	"aggregator/internal/hazard"
 	"aggregator/internal/store"
 
 	"github.com/joho/godotenv"
@@ -31,7 +33,29 @@ func main() {
 	defer rabbitCh.Close() // ini bwt nutup klo nnti koneksi mati
 	defer rabbitConn.Close() // ini bwt nutup klo nnti koneksi mati
 
-	//cek health 
+	dummyEvent := hazard.Event{
+		HazardID:    "test-hz-001",
+		Source:      hazard.SourceBMKG,
+		SourceRefID: "test-event-001",
+		HazardType:  hazard.TypeSeismic,
+		Severity:    hazard.SeverityWaspada,
+		AreaName:    "Sukabumi",
+		Latitude:    -7.02,
+		Longitude:   106.56,
+		OccurredAt:  time.Now(),
+		IngestedAt:  time.Now(),
+		Attributes: map[string]any{
+			"magnitude": 5.4,
+			"depth_km":  10.2,
+		},
+	}
+	if err := broker.Publish(rabbitCh, cfg.RabbitMQExchange, dummyEvent); err != nil {
+		log.Printf("failed to publish dummy event: %v", err)
+	} else {
+		log.Println("published dummy hazard event")
+	}
+
+	//cek health
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", healthHandler)
 
