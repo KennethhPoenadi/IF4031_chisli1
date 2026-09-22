@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 
@@ -15,7 +16,15 @@ func main() {
 	exchange := getEnv("RABBITMQ_EXCHANGE", "hazard_events")
 	bindingKey := getEnv("BINDING_KEY", "hazard.#")
 
-	conn, err := amqp.Dial(rabbitURL)
+	var conn *amqp.Connection
+	var err error
+	for attempt := 1; attempt <= 10; attempt++ {
+		conn, err = amqp.Dial(rabbitURL)
+		if err == nil {
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
 	if err != nil {
 		log.Fatalf("rabbitmq connect failed: %v", err)
 	}
@@ -39,13 +48,19 @@ func main() {
 		log.Fatalf("queue declare failed: %v", err)
 	}
 
-	err = ch.QueueBind(
-		queue.Name, // queue yang mau di bind
-		bindingKey, // pola routing key yang mau didengerin, "hazard.#" = semua
-		exchange, // exchange asalnya, hazard_events
-		false, // no wait biar bs kerja yg lain lg
-		nil, // optional argumen tambahan
-	) // ini yang nyambungin queue ke exchangenya aggregator
+	for attempt := 1; attempt <= 10; attempt++ {
+		err = ch.QueueBind(
+			queue.Name, // queue yang mau di bind
+			bindingKey, // pola routing key yang mau didengerin, "hazard.#" = semua
+			exchange, // exchange asalnya, hazard_events
+			false, // no wait biar bs kerja yg lain lg
+			nil, // optional argumen tambahan
+		) // ini yang nyambungin queue ke exchangenya aggregator
+		if err == nil {
+			break
+		}
+		time.Sleep(2 * time.Second) // exchange mungkin belum ke declare sama aggregator, jd retry
+	}
 	if err != nil {
 		log.Fatalf("queue bind failed: %v", err)
 	}

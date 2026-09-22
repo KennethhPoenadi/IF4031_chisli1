@@ -13,6 +13,41 @@ services:
       - "15672:15672"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  aggregator:
+    build: ./services/aggregator
+    ports:
+      - "8090:8090"
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DB_NAME: bnpb_canonical
+      MONGO_HAZARD_COLLECTION: hazard_events
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      RABBITMQ_EXCHANGE: hazard_events
+      RABBITMQ_EXCHANGE_TYPE: topic
+      AGGREGATOR_PORT: 8090
+    depends_on:
+      mongo:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+
+  dashboard-updater:
+    build: ./services/dashboard-updater
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      RABBITMQ_EXCHANGE: hazard_events
+      BINDING_KEY: hazard.#
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      aggregator:
+        condition: service_started
 
 volumes:
   mongo_data:

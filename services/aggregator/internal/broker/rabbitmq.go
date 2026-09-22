@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 
@@ -11,7 +12,16 @@ import (
 )
 
 func Connect(url, exchange, exchangeType string) (*amqp.Connection, *amqp.Channel, error) {
-	conn, err := amqp.Dial(url)
+	var conn *amqp.Connection
+	var err error
+
+	for attempt := 1; attempt <= 10; attempt++ {
+		conn, err = amqp.Dial(url)
+		if err == nil {
+			break
+		}
+		time.Sleep(2 * time.Second) // rabbitmq mungkin belum bener2 siap walau containernya udah healthy, jd retry
+	}
 	if err != nil {
 		return nil, nil, err
 	}
