@@ -25,6 +25,8 @@ func main() {
 	log.Println("connected to mongo")
 	defer mongoClient.Disconnect(nil) // ini bwt nutup klo nnti koneksi mati
 
+	hazardStore := store.NewHazardStore(mongoClient, cfg.MongoDBName, cfg.MongoHazardCollection)
+
 	rabbitConn, rabbitCh, err := broker.Connect(cfg.RabbitMQURL, cfg.RabbitMQExchange, cfg.RabbitMQExchangeType)
 	if err != nil {
 		log.Fatalf("rabbitmq connect failed: %v", err)
@@ -49,6 +51,12 @@ func main() {
 			"depth_km":  10.2,
 		},
 	}
+	if err := hazardStore.SaveHazardEvent(dummyEvent); err != nil {
+		log.Printf("failed to save dummy event: %v", err)
+	} else {
+		log.Println("saved dummy hazard event to mongo")
+	}
+
 	if err := broker.Publish(rabbitCh, cfg.RabbitMQExchange, dummyEvent); err != nil {
 		log.Printf("failed to publish dummy event: %v", err)
 	} else {

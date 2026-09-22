@@ -6,6 +6,8 @@ import (
 
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
+
+	"aggregator/internal/hazard"
 )
 
 func Connect(uri string) (*mongo.Client, error) {
@@ -24,4 +26,43 @@ func Connect(uri string) (*mongo.Client, error) {
 	}
 
 	return client, nil
+}
+
+type HazardStore struct {
+	collection *mongo.Collection
+}
+
+func NewHazardStore(client *mongo.Client, dbName, collectionName string) *HazardStore {
+	return &HazardStore{
+		collection: client.Database(dbName).Collection(collectionName),
+	}
+}
+
+func (s *HazardStore) SaveHazardEvent(event hazard.Event) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	filter := map[string]any{"hazard_id": event.HazardID}
+	opts := options.Replace().SetUpsert(true)
+	_, err := s.collection.ReplaceOne(ctx, filter, event, opts)
+	return err
+}
+
+func (s *HazardStore) GetHazardEvents(limit int64) ([]hazard.Event, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	opts := options.Find().SetSort(map[string]int{"ingested_at": -1}).SetLimit(limit)
+	cursor, err := s.collection.Find(ctx, map[string]any{}, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var events []hazard.Event
+	if err := cursor.All(ctx, &events); err != nil {
+		return nil, err
+	}
+
+	return events, nil
 }
