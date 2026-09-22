@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"aggregator/internal/api"
 	"aggregator/internal/broker"
 	"aggregator/internal/config"
 	"aggregator/internal/hazard"
@@ -63,9 +64,12 @@ func main() {
 		log.Println("published dummy hazard event")
 	}
 
+	handler := api.NewHandler(hazardStore)
+
 	//cek health
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", healthHandler)
+	mux.HandleFunc("/hazard-events", handler.GetHazardEvents)
 
 	log.Println("aggregator listening on :" + cfg.AggregatorPort)
 	if err := http.ListenAndServe(":"+cfg.AggregatorPort, mux); err != nil {
