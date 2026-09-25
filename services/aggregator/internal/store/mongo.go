@@ -48,12 +48,29 @@ func (s *HazardStore) SaveHazardEvent(event hazard.Event) error {
 	return err
 }
 
-func (s *HazardStore) GetHazardEvents(limit int64) ([]hazard.Event, error) {
+type Filter struct {
+	HazardType string
+	Severity   string
+	Since      *time.Time
+}
+
+func (s *HazardStore) GetHazardEvents(limit int64, filter Filter) ([]hazard.Event, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	query := map[string]any{}
+	if filter.HazardType != "" {
+		query["hazard_type"] = filter.HazardType
+	}
+	if filter.Severity != "" {
+		query["severity"] = filter.Severity
+	}
+	if filter.Since != nil {
+		query["occurred_at"] = map[string]any{"$gt": *filter.Since}
+	}
+
 	opts := options.Find().SetSort(map[string]int{"ingested_at": -1}).SetLimit(limit)
-	cursor, err := s.collection.Find(ctx, map[string]any{}, opts)
+	cursor, err := s.collection.Find(ctx, query, opts)
 	if err != nil {
 		return nil, err
 	}

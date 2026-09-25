@@ -78,7 +78,7 @@ services:
       auth-service:
         condition: service_healthy
       aggregator:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:$${CLIENT_API_PORT}/health >/dev/null || exit 1"]
       interval: 5s
@@ -100,7 +100,7 @@ services:
       rabbitmq:
         condition: service_healthy
       aggregator:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:$${NOTIFIER_HEALTH_PORT}/health >/dev/null || exit 1"]
       interval: 5s
@@ -140,11 +140,30 @@ services:
       RABBITMQ_EXCHANGE: hazard_events
       RABBITMQ_EXCHANGE_TYPE: topic
       AGGREGATOR_PORT: 8090
+      AGGREGATOR_API_KEY: ${AGGREGATOR_API_KEY:?AGGREGATOR_API_KEY must be set in .env}
+      BMKG_BASE_URL: http://bmkg-mock:${BMKG_PORT:-8081}
+      BMKG_API_KEY: ${BMKG_API_KEY:?BMKG_API_KEY must be set in .env}
+      PVMBG_BASE_URL: http://pvmbg-mock:${PVMBG_PORT:-8082}
+      PVMBG_TOKEN: ${PVMBG_TOKEN:?PVMBG_TOKEN must be set in .env}
+      AGGREGATOR_POLL_INTERVAL_SECONDS: ${AGGREGATOR_POLL_INTERVAL_SECONDS:-5}
+      AGGREGATOR_BMKG_TIMEOUT_MS: ${AGGREGATOR_BMKG_TIMEOUT_MS:-2000}
+      AGGREGATOR_PVMBG_TIMEOUT_MS: ${AGGREGATOR_PVMBG_TIMEOUT_MS:-4000}
+      AGGREGATOR_PVMBG_STALE_AFTER_SECONDS: ${AGGREGATOR_PVMBG_STALE_AFTER_SECONDS:-30}
     depends_on:
       mongo:
         condition: service_started
       rabbitmq:
         condition: service_healthy
+      bmkg-mock:
+        condition: service_healthy
+      pvmbg-mock:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8090/health >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+      start_period: 5s
 
   dashboard-updater:
     build: ./services/dashboard-updater
@@ -159,7 +178,7 @@ services:
       rabbitmq:
         condition: service_healthy
       aggregator:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:$${DASHBOARD_UPDATER_HEALTH_PORT}/health >/dev/null || exit 1"]
       interval: 5s

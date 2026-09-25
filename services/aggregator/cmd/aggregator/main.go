@@ -1,14 +1,22 @@
 package main
 
 import (
-	"log"
+	"context"
+	"errors"
+	"log/slog"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"aggregator/internal/api"
+	"aggregator/internal/bmkgclient"
 	"aggregator/internal/broker"
 	"aggregator/internal/config"
-	"aggregator/internal/hazard"
+	"aggregator/internal/httpx"
+	"aggregator/internal/poller"
+	"aggregator/internal/pvmbgclient"
 	"aggregator/internal/store"
 
 	"github.com/joho/godotenv"
@@ -17,66 +25,58 @@ import (
 func main() {
 	godotenv.Load(".env", "../../../.env")
 
+	log := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("service", "aggregator")
+
 	cfg := config.Load()
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	mongoClient, err := store.Connect(cfg.MongoURI)
 	if err != nil {
-		log.Fatalf("mongo connect failed: %v", err)
+		log.Error("mongo connect failed", "err", err)
+		os.Exit(1)
 	}
-	log.Println("connected to mongo")
+	log.Info("connected to mongo")
 	defer mongoClient.Disconnect(nil) // ini bwt nutup klo nnti koneksi mati
 
 	hazardStore := store.NewHazardStore(mongoClient, cfg.MongoDBName, cfg.MongoHazardCollection)
 
 	rabbitConn, rabbitCh, err := broker.Connect(cfg.RabbitMQURL, cfg.RabbitMQExchange, cfg.RabbitMQExchangeType)
 	if err != nil {
-		log.Fatalf("rabbitmq connect failed: %v", err)
+		log.Error("rabbitmq connect failed", "err", err)
+		os.Exit(1)
 	}
-	log.Println("connected to rabbitmq, exchange declared:", cfg.RabbitMQExchange)
-	defer rabbitCh.Close() // ini bwt nutup klo nnti koneksi mati
+	log.Info("connected to rabbitmq", "exchange", cfg.RabbitMQExchange)
+	defer rabbitCh.Close()   // ini bwt nutup klo nnti koneksi mati
 	defer rabbitConn.Close() // ini bwt nutup klo nnti koneksi mati
 
-	dummyEvent := hazard.Event{
-		HazardID:    "test-hz-001",
-		Source:      hazard.SourceBMKG,
-		SourceRefID: "test-event-001",
-		HazardType:  hazard.TypeSeismic,
-		Severity:    hazard.SeverityWaspada,
-		AreaName:    "Sukabumi",
-		Latitude:    -7.02,
-		Longitude:   106.56,
-		OccurredAt:  time.Now(),
-		IngestedAt:  time.Now(),
-		Attributes: map[string]any{
-			"magnitude": 5.4,
-			"depth_km":  10.2,
-		},
+	bmkg := bmkgclient.New(cfg.BMKGBaseURL, cfg.BMKGAPIKey, cfg.BMKGTimeout, log)
+	pvmbg := pvmbgclient.New(cfg.PVMBGBaseURL, cfg.PVMBGToken, cfg.PVMBGTimeout, log)
+	p := poller.New(bmkg, pvmbg, hazardStore, rabbitCh, cfg.RabbitMQExchange, cfg.PollInterval, log)
+	go p.Run(ctx)
+
+	handler := api.NewHandler(hazardStore, p)
+	routes := handler.Routes(cfg.AggregatorAPIKey, httpx.Observe(log))
+
+	srv := &http.Server{
+		Addr:              ":" + cfg.AggregatorPort,
+		Handler:           routes,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
-	if err := hazardStore.SaveHazardEvent(dummyEvent); err != nil {
-		log.Printf("failed to save dummy event: %v", err)
-	} else {
-		log.Println("saved dummy hazard event to mongo")
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shutdownCtx)
+	}()
+
+	log.Info("aggregator listening", "port", cfg.AggregatorPort)
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Error("server failed", "err", err)
+		os.Exit(1)
 	}
-
-	if err := broker.Publish(rabbitCh, cfg.RabbitMQExchange, dummyEvent); err != nil {
-		log.Printf("failed to publish dummy event: %v", err)
-	} else {
-		log.Println("published dummy hazard event")
-	}
-
-	handler := api.NewHandler(hazardStore)
-
-	//cek health
-	mux := http.NewServeMux()
-	mux.HandleFunc("/health", healthHandler)
-	mux.HandleFunc("/hazard-events", handler.GetHazardEvents)
-
-	log.Println("aggregator listening on :" + cfg.AggregatorPort)
-	if err := http.ListenAndServe(":"+cfg.AggregatorPort, mux); err != nil {
-		log.Fatal(err)
-	}
-}
-
-func healthHandler(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("ok"))
 }
