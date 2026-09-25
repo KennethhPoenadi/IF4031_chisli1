@@ -152,11 +152,20 @@ services:
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       RABBITMQ_EXCHANGE: hazard_events
       BINDING_KEY: hazard.#
+      DASHBOARD_UPDATER_QUEUE: ${DASHBOARD_UPDATER_QUEUE:-dashboard-updater-queue}
+      DASHBOARD_UPDATER_PREFETCH: ${DASHBOARD_UPDATER_PREFETCH:-10}
+      DASHBOARD_UPDATER_HEALTH_PORT: ${DASHBOARD_UPDATER_HEALTH_PORT:-8092}
     depends_on:
       rabbitmq:
         condition: service_healthy
       aggregator:
         condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:$${DASHBOARD_UPDATER_HEALTH_PORT}/health >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+      start_period: 5s
 
 volumes:
   mongo_data:
