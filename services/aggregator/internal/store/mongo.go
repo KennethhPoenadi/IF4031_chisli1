@@ -11,21 +11,25 @@ import (
 )
 
 func Connect(uri string) (*mongo.Client, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
 	client, err := mongo.Connect(options.Client().ApplyURI(uri))
 	if err != nil {
 		return nil, err
 	}
 
-	// pas mongo.connect, di driver v2 tu gk lgsg tes koneksi, jd ping buat beneran pastiin
-
-	if err := client.Ping(ctx, nil); err != nil {
-		return nil, err
+	// mongo.connect gk lgsg tes koneksi, jd ping buat beneran pastiin, retry
+	// karena container mongo bisa aja masih starting walau compose bilang healthy
+	var pingErr error
+	for attempt := 1; attempt <= 10; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		pingErr = client.Ping(ctx, nil)
+		cancel()
+		if pingErr == nil {
+			return client, nil
+		}
+		time.Sleep(2 * time.Second)
 	}
 
-	return client, nil
+	return nil, pingErr
 }
 
 type HazardStore struct {

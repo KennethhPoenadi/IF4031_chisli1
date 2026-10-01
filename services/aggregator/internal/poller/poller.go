@@ -19,38 +19,48 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+const (
+	SourceHealthy  = "HEALTHY"
+	SourceDegraded = "DEGRADED"
+)
+
 type PVMBGStatus struct {
-	Available  bool       `json:"available"`
-	StaleSince *time.Time `json:"stale_since,omitempty"`
+	SourceStatus  string     `json:"source_status"`
+	LastSuccessAt *time.Time `json:"last_success_at,omitempty"`
+	StaleSince    *time.Time `json:"stale_since,omitempty"`
+	Stale         bool       `json:"stale"`
 }
 
 type Poller struct {
-	bmkg     *bmkgclient.Client
-	pvmbg    *pvmbgclient.Client
-	store    *store.HazardStore
-	rabbitCh *amqp.Channel
-	exchange string
-	interval time.Duration
-	log      *slog.Logger
+	bmkg       *bmkgclient.Client
+	pvmbg      *pvmbgclient.Client
+	store      *store.HazardStore
+	rabbitCh   *amqp.Channel
+	exchange   string
+	interval   time.Duration
+	staleAfter time.Duration
+	log        *slog.Logger
 
 	bmkgSince  string
 	pvmbgSince string
 
-	statusMu         sync.RWMutex
-	pvmbgAvailable   bool
-	pvmbgLastSuccess time.Time
+	statusMu      sync.RWMutex
+	sourceStatus  string
+	lastSuccessAt time.Time
+	staleSince    time.Time
 }
 
-func New(bmkg *bmkgclient.Client, pvmbg *pvmbgclient.Client, hazardStore *store.HazardStore, rabbitCh *amqp.Channel, exchange string, interval time.Duration, log *slog.Logger) *Poller {
+func New(bmkg *bmkgclient.Client, pvmbg *pvmbgclient.Client, hazardStore *store.HazardStore, rabbitCh *amqp.Channel, exchange string, interval time.Duration, staleAfter time.Duration, log *slog.Logger) *Poller {
 	return &Poller{
-		bmkg:           bmkg,
-		pvmbg:          pvmbg,
-		store:          hazardStore,
-		rabbitCh:       rabbitCh,
-		exchange:       exchange,
-		interval:       interval,
-		log:            log,
-		pvmbgAvailable: true,
+		bmkg:         bmkg,
+		pvmbg:        pvmbg,
+		store:        hazardStore,
+		rabbitCh:     rabbitCh,
+		exchange:     exchange,
+		interval:     interval,
+		staleAfter:   staleAfter,
+		log:          log,
+		sourceStatus: SourceHealthy,
 	}
 }
 
@@ -58,43 +68,64 @@ func (p *Poller) PVMBGStatus() PVMBGStatus {
 	p.statusMu.RLock()
 	defer p.statusMu.RUnlock()
 
-	status := PVMBGStatus{Available: p.pvmbgAvailable}
-	if !p.pvmbgAvailable && !p.pvmbgLastSuccess.IsZero() {
-		since := p.pvmbgLastSuccess
-		status.StaleSince = &since
+	status := PVMBGStatus{SourceStatus: p.sourceStatus}
+	if !p.lastSuccessAt.IsZero() {
+		t := p.lastSuccessAt
+		status.LastSuccessAt = &t
+	}
+	if !p.staleSince.IsZero() {
+		t := p.staleSince
+		status.StaleSince = &t
+		status.Stale = time.Since(p.staleSince) >= p.staleAfter
 	}
 	return status
 }
 
 func (p *Poller) Run(ctx context.Context) {
+	var workers sync.WaitGroup
+	workers.Add(2)
+
+	go func() {
+		defer workers.Done()
+		p.runBMKGWorker(ctx)
+	}()
+
+	go func() {
+		defer workers.Done()
+		p.runPVMBGWorker(ctx)
+	}()
+
+	workers.Wait()
+}
+
+func (p *Poller) runBMKGWorker(ctx context.Context) {
 	ticker := time.NewTicker(p.interval)
 	defer ticker.Stop()
 
-	p.tick(ctx)
+	p.pollBMKG(ctx)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			p.tick(ctx)
+			p.pollBMKG(ctx)
 		}
 	}
 }
 
-func (p *Poller) tick(ctx context.Context) {
-	done := make(chan struct{}, 2)
+func (p *Poller) runPVMBGWorker(ctx context.Context) {
+	ticker := time.NewTicker(p.interval)
+	defer ticker.Stop()
 
-	go func() {
-		p.pollBMKG(ctx)
-		done <- struct{}{}
-	}()
-	go func() {
-		p.pollPVMBG(ctx)
-		done <- struct{}{}
-	}()
-
-	<-done
-	<-done
+	p.pollPVMBG(ctx)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			p.pollPVMBG(ctx)
+		}
+	}
 }
 
 func (p *Poller) pollBMKG(ctx context.Context) {
@@ -165,17 +196,18 @@ func (p *Poller) pollPVMBG(ctx context.Context) {
 func (p *Poller) markPVMBGAvailable() {
 	p.statusMu.Lock()
 	defer p.statusMu.Unlock()
-	p.pvmbgAvailable = true
-	p.pvmbgLastSuccess = time.Now().UTC()
+	p.sourceStatus = SourceHealthy
+	p.lastSuccessAt = time.Now().UTC()
+	p.staleSince = time.Time{}
 }
 
 func (p *Poller) markPVMBGUnavailable() {
 	p.statusMu.Lock()
 	defer p.statusMu.Unlock()
-	if p.pvmbgAvailable && p.pvmbgLastSuccess.IsZero() {
-		p.pvmbgLastSuccess = time.Now().UTC()
+	p.sourceStatus = SourceDegraded
+	if p.staleSince.IsZero() {
+		p.staleSince = time.Now().UTC()
 	}
-	p.pvmbgAvailable = false
 }
 
 func (p *Poller) persist(event hazard.Event, correlationID string) {
@@ -184,7 +216,7 @@ func (p *Poller) persist(event hazard.Event, correlationID string) {
 		return
 	}
 	if p.rabbitCh != nil {
-		if err := broker.Publish(p.rabbitCh, p.exchange, event); err != nil {
+		if err := broker.Publish(p.rabbitCh, p.exchange, event, correlationID); err != nil {
 			p.log.Error("failed to publish hazard event", "err", err, "hazard_id", event.HazardID, "correlation_id", correlationID)
 			return
 		}

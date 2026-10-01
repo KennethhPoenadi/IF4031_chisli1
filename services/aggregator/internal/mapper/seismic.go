@@ -18,14 +18,38 @@ var seismicKnownFields = map[string]bool{
 	"potential_tsunami": true,
 }
 
-func MapSeismicEvent(raw map[string]any, warning map[string]any) (hazard.Event, error) {
-	eventID, _ := raw["event_id"].(string)
-	regionName, _ := raw["region_name"].(string)
-	magnitude := toFloat(raw["magnitude"])
-	epicenterLat := toFloat(raw["epicenter_lat"])
-	epicenterLon := toFloat(raw["epicenter_lon"])
+var validThreatLevels = map[string]bool{"Waspada": true, "Siaga": true, "Awas": true}
 
-	occurredAt, err := parseTime(raw["occurred_at"])
+func MapSeismicEvent(raw map[string]any, warning map[string]any) (hazard.Event, error) {
+	eventID, err := requireString(raw, "event_id")
+	if err != nil {
+		return hazard.Event{}, err
+	}
+	regionName, err := requireString(raw, "region_name")
+	if err != nil {
+		return hazard.Event{}, err
+	}
+	magnitude, err := requireFloat(raw, "magnitude")
+	if err != nil {
+		return hazard.Event{}, err
+	}
+	depthKM, err := requireFloat(raw, "depth_km")
+	if err != nil {
+		return hazard.Event{}, err
+	}
+	epicenterLat, err := requireFloat(raw, "epicenter_lat")
+	if err != nil {
+		return hazard.Event{}, err
+	}
+	epicenterLon, err := requireFloat(raw, "epicenter_lon")
+	if err != nil {
+		return hazard.Event{}, err
+	}
+	potentialTsunami, err := requireBool(raw, "potential_tsunami")
+	if err != nil {
+		return hazard.Event{}, err
+	}
+	occurredAt, err := requireTime(raw, "occurred_at")
 	if err != nil {
 		return hazard.Event{}, fmt.Errorf("invalid occurred_at: %w", err)
 	}
@@ -37,12 +61,15 @@ func MapSeismicEvent(raw map[string]any, warning map[string]any) (hazard.Event, 
 		}
 	}
 	attributes["magnitude"] = magnitude
-	attributes["depth_km"] = toFloat(raw["depth_km"])
-	attributes["potential_tsunami"] = raw["potential_tsunami"]
+	attributes["depth_km"] = depthKM
+	attributes["potential_tsunami"] = potentialTsunami
 
 	severity := severityFromMagnitude(magnitude)
 	if warning != nil {
-		threatLevel, _ := warning["threat_level"].(string)
+		threatLevel, err := requireEnum(warning, "threat_level", validThreatLevels)
+		if err != nil {
+			return hazard.Event{}, fmt.Errorf("invalid tsunami warning: %w", err)
+		}
 		severity = severityFromThreatLevel(threatLevel)
 		for key, value := range warning {
 			attributes["tsunami_warning_"+key] = value

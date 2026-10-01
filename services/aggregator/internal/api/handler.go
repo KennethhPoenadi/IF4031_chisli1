@@ -71,8 +71,28 @@ func (h *Handler) GetHazardEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	response := struct {
+		Data []any `json:"data"`
+		Meta any   `json:"meta"`
+	}{
+		Data: toAnySlice(events),
+		Meta: map[string]any{
+			"sources": map[string]any{
+				"pvmbg": h.poller.PVMBGStatus(),
+			},
+		},
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(events)
+	json.NewEncoder(w).Encode(response)
+}
+
+func toAnySlice[T any](items []T) []any {
+	out := make([]any, len(items))
+	for i, item := range items {
+		out[i] = item
+	}
+	return out
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {

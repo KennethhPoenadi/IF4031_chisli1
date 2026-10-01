@@ -17,12 +17,30 @@ var volcanicKnownFields = map[string]bool{
 	"reported_at":         true,
 }
 
-func MapVolcanicReport(raw map[string]any) (hazard.Event, error) {
-	reportID, _ := raw["report_id"].(string)
-	volcanoID, _ := raw["volcano_id"].(string)
-	alertLevel, _ := raw["alert_level"].(string)
+var validAlertLevels = map[string]bool{"Normal": true, "Waspada": true, "Siaga": true, "Awas": true}
 
-	occurredAt, err := parseTime(raw["reported_at"])
+func MapVolcanicReport(raw map[string]any) (hazard.Event, error) {
+	reportID, err := requireString(raw, "report_id")
+	if err != nil {
+		return hazard.Event{}, err
+	}
+	volcanoID, err := requireString(raw, "volcano_id")
+	if err != nil {
+		return hazard.Event{}, err
+	}
+	alertLevel, err := requireEnum(raw, "alert_level", validAlertLevels)
+	if err != nil {
+		return hazard.Event{}, err
+	}
+	eruptionCount, err := requireInt(raw, "eruption_count_24h")
+	if err != nil {
+		return hazard.Event{}, err
+	}
+	ashColumnHeight, err := requireFloat(raw, "ash_column_height_m")
+	if err != nil {
+		return hazard.Event{}, err
+	}
+	occurredAt, err := requireTime(raw, "reported_at")
 	if err != nil {
 		return hazard.Event{}, fmt.Errorf("invalid reported_at: %w", err)
 	}
@@ -39,8 +57,8 @@ func MapVolcanicReport(raw map[string]any) (hazard.Event, error) {
 			attributes[key] = value
 		}
 	}
-	attributes["eruption_count_24h"] = raw["eruption_count_24h"]
-	attributes["ash_column_height_m"] = raw["ash_column_height_m"]
+	attributes["eruption_count_24h"] = eruptionCount
+	attributes["ash_column_height_m"] = ashColumnHeight
 
 	return hazard.Event{
 		HazardID:    "hz-" + reportID,

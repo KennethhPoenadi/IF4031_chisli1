@@ -114,6 +114,12 @@ services:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand('ping').ok"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+      start_period: 5s
 
   rabbitmq:
     image: rabbitmq:3-management
@@ -151,7 +157,7 @@ services:
       AGGREGATOR_PVMBG_STALE_AFTER_SECONDS: ${AGGREGATOR_PVMBG_STALE_AFTER_SECONDS:-30}
     depends_on:
       mongo:
-        condition: service_started
+        condition: service_healthy
       rabbitmq:
         condition: service_healthy
       bmkg-mock:

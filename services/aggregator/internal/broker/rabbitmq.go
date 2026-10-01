@@ -50,7 +50,7 @@ func Connect(url, exchange, exchangeType string) (*amqp.Connection, *amqp.Channe
 	return conn, ch, nil
 }
 
-func Publish(ch *amqp.Channel, exchange string, event hazard.Event) error {
+func Publish(ch *amqp.Channel, exchange string, event hazard.Event, correlationID string) error {
 	body, err := json.Marshal(event)
 	if err != nil {
 		return err
@@ -65,9 +65,10 @@ func Publish(ch *amqp.Channel, exchange string, event hazard.Event) error {
 		false,
 		false,
 		amqp.Publishing{
-			ContentType:  "application/json",
-			DeliveryMode: amqp.Persistent,
-			Body:         body,
+			ContentType:   "application/json",
+			DeliveryMode:  amqp.Persistent,
+			CorrelationId: correlationID,
+			Body:          body,
 		},
 	) // bwt ngirimnya aj
 }

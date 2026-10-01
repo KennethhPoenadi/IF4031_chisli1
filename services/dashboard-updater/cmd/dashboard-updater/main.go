@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"sync/atomic"
@@ -15,26 +15,28 @@ import (
 )
 
 func main() {
+	log := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("service", "dashboard-updater")
+
 	cfg := config.Load()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	var connected atomic.Bool
-	go health.Serve(ctx, cfg.HealthPort, &connected)
+	go health.Serve(ctx, cfg.HealthPort, &connected, log)
 
 	seen := consumer.NewSeenSet(10000)
 	for ctx.Err() == nil {
-		err := consumer.Run(ctx, cfg, seen, &connected)
+		err := consumer.Run(ctx, cfg, seen, &connected, log)
 		connected.Store(false)
 		if ctx.Err() != nil {
 			break
 		}
-		fmt.Println("consumer stopped, reconnecting:", err)
+		log.Warn("consumer stopped, reconnecting", "action", "reconnect", "err", err)
 		select {
 		case <-ctx.Done():
 		case <-time.After(3 * time.Second):
 		}
 	}
-	fmt.Println("dashboard-updater stopped")
+	log.Info("dashboard-updater stopped", "action", "stopped")
 }

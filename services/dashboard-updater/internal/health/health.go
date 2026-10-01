@@ -3,13 +3,13 @@ package health
 import (
 	"context"
 	"errors"
-	"fmt"
+	"log/slog"
 	"net/http"
 	"sync/atomic"
 	"time"
 )
 
-func Serve(ctx context.Context, port string, connected *atomic.Bool) {
+func Serve(ctx context.Context, port string, connected *atomic.Bool, log *slog.Logger) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -30,6 +30,6 @@ func Serve(ctx context.Context, port string, connected *atomic.Bool) {
 	}()
 
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		fmt.Println("health server failed:", err)
+		log.Error("health server failed", "action", "health_server_error", "err", err)
 	}
 }

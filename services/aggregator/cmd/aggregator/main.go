@@ -27,7 +27,11 @@ func main() {
 
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("service", "aggregator")
 
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		log.Error("invalid configuration", "err", err)
+		os.Exit(1)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -53,7 +57,7 @@ func main() {
 
 	bmkg := bmkgclient.New(cfg.BMKGBaseURL, cfg.BMKGAPIKey, cfg.BMKGTimeout, log)
 	pvmbg := pvmbgclient.New(cfg.PVMBGBaseURL, cfg.PVMBGToken, cfg.PVMBGTimeout, log)
-	p := poller.New(bmkg, pvmbg, hazardStore, rabbitCh, cfg.RabbitMQExchange, cfg.PollInterval, log)
+	p := poller.New(bmkg, pvmbg, hazardStore, rabbitCh, cfg.RabbitMQExchange, cfg.PollInterval, cfg.PVMBGStaleAfter, log)
 	go p.Run(ctx)
 
 	handler := api.NewHandler(hazardStore, p)
