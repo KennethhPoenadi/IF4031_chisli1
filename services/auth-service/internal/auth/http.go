@@ -8,18 +8,25 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
+)
+
+const (
+	maxFailedLogins   = 10
+	failedLoginWindow = time.Minute
 )
 
 type Handler struct {
 	svc         *Service
 	internalKey string
 	log         *slog.Logger
+	throttle    *loginThrottle
 }
 
 func NewHandler(svc *Service, internalKey string, log *slog.Logger) *Handler {
-	return &Handler{svc: svc, internalKey: internalKey, log: log}
+	return &Handler{svc: svc, internalKey: internalKey, log: log, throttle: newLoginThrottle(maxFailedLogins, failedLoginWindow)}
 }
 
 func (h *Handler) Routes() http.Handler {
@@ -49,7 +56,19 @@ func (h *Handler) token(w http.ResponseWriter, r *http.Request) {
 	grant := r.PostForm.Get("grant_type")
 	switch grant {
 	case "client_credentials":
+		peer := remoteHost(r)
+		if h.throttle.blocked(peer) {
+			h.log.Warn("login throttled", "peer", peer, "correlation_id", corrID(r))
+			w.Header().Set("Retry-After", "60")
+			writeError(w, http.StatusTooManyRequests, "too_many_attempts")
+			return
+		}
 		pair, err = h.svc.Login(r.PostForm.Get("client_id"), r.PostForm.Get("client_secret"))
+		if errors.Is(err, ErrInvalidClient) {
+			h.throttle.fail(peer)
+		} else if err == nil {
+			h.throttle.reset(peer)
+		}
 	case "refresh_token":
 		pair, err = h.svc.Refresh(r.PostForm.Get("refresh_token"))
 	default:
@@ -115,6 +134,14 @@ func (h *Handler) logging(next http.Handler) http.Handler {
 		h.log.Info("request", "method", r.Method, "path", r.URL.Path, "status", cw.status,
 			"duration_ms", time.Since(start).Milliseconds(), "correlation_id", id)
 	})
+}
+
+func remoteHost(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }
 
 func corrID(r *http.Request) string { return r.Header.Get("X-Correlation-ID") }

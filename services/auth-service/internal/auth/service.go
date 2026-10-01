@@ -18,7 +18,7 @@ import (
 var (
 	ErrInvalidClient = errors.New("invalid client credentials")
 	ErrInvalidGrant  = errors.New("invalid, expired or revoked refresh token")
-	ErrTokenReuse = errors.New("refresh token reuse detected, session revoked")
+	ErrTokenReuse    = errors.New("refresh token reuse detected, session revoked")
 )
 
 type Claims struct {
@@ -50,8 +50,8 @@ type clientRec struct {
 type session struct {
 	clientID string
 	scope    string
-	jti      string    // jti of the newest access token of this session
-	jtiExp   time.Time 
+	jti      string // jti of the newest access token of this session
+	jtiExp   time.Time
 	expires  time.Time // expiry of the newest refresh token
 	revoked  bool
 }
@@ -95,7 +95,7 @@ func (s *Service) PublicKey() ed25519.PublicKey {
 func (s *Service) Login(clientID, secret string) (TokenPair, error) {
 	rec, known := s.clients[clientID]
 	got := sha256.Sum256([]byte(secret))
-	want := rec.secretHash 
+	want := rec.secretHash
 	ok := subtle.ConstantTimeCompare(got[:], want[:]) == 1
 	if !known || !ok {
 		return TokenPair{}, ErrInvalidClient

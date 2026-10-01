@@ -3,7 +3,10 @@ package broker
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -11,64 +14,112 @@ import (
 	"aggregator/internal/hazard"
 )
 
-func Connect(url, exchange, exchangeType string) (*amqp.Connection, *amqp.Channel, error) {
-	var conn *amqp.Connection
+const publishTimeout = 5 * time.Second
+
+type Publisher struct {
+	url          string
+	exchange     string
+	exchangeType string
+
+	mu   sync.Mutex
+	conn *amqp.Connection
+	ch   *amqp.Channel
+}
+
+func NewPublisher(url, exchange, exchangeType string) (*Publisher, error) {
+	p := &Publisher{url: url, exchange: exchange, exchangeType: exchangeType}
+
 	var err error
-
 	for attempt := 1; attempt <= 10; attempt++ {
-		conn, err = amqp.Dial(url)
+		p.mu.Lock()
+		err = p.connectLocked()
+		p.mu.Unlock()
 		if err == nil {
-			break
+			return p, nil
 		}
-		time.Sleep(2 * time.Second) // rabbitmq mungkin belum bener2 siap walau containernya udah healthy, jd retry
+		time.Sleep(2 * time.Second)
 	}
-	if err != nil {
-		return nil, nil, err
-	}
+	return nil, err
+}
 
+func (p *Publisher) connectLocked() error {
+	conn, err := amqp.Dial(p.url)
+	if err != nil {
+		return err
+	}
 	ch, err := conn.Channel()
 	if err != nil {
 		conn.Close()
-		return nil, nil, err
+		return err
 	}
-
-	err = ch.ExchangeDeclare(
-		exchange, // ini nama
-		exchangeType, // tipenya apa? bisa topic, fanout, direct, default, dll gtt
-		true, // durable -> tetep ada kalo rabbitnye di restart
-		false, // auto delete kl ga ada yang cnnect
-		false, // boleh nunggu dipake publisher dr luar
-		false, // ga wait untuk nungu konfirmasi
-		nil, // optional argumen tambahan
-	)
-	if err != nil { // klo gagal ttp lgsg
-		ch.Close()
+	if err := ch.ExchangeDeclare(p.exchange, p.exchangeType, true, false, false, false, nil); err != nil {
 		conn.Close()
-		return nil, nil, err
+		return err
 	}
-
-	return conn, ch, nil
+	if err := ch.Confirm(false); err != nil {
+		conn.Close()
+		return err
+	}
+	p.conn, p.ch = conn, ch
+	return nil
 }
 
-func Publish(ch *amqp.Channel, exchange string, event hazard.Event, correlationID string) error {
+func (p *Publisher) closeLocked() {
+	if p.conn != nil {
+		_ = p.conn.Close()
+	}
+	p.conn, p.ch = nil, nil
+}
+
+func (p *Publisher) Connected() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.ch != nil && !p.ch.IsClosed()
+}
+
+func (p *Publisher) Close() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.closeLocked()
+}
+
+func (p *Publisher) Publish(ctx context.Context, event hazard.Event, correlationID string) error {
 	body, err := json.Marshal(event)
 	if err != nil {
 		return err
 	}
+	routingKey := strings.ToLower("hazard." + string(event.HazardType) + "." + string(event.Severity)) // contoh: hazard.seismic.awas
 
-	routingKey := strings.ToLower("hazard." + string(event.HazardType) + "." + string(event.Severity)) // contohnya jadi hazard.seismic.awas kalo hazard typenya seismic dan severitynya awas
+	p.mu.Lock()
+	defer p.mu.Unlock()
 
-	return ch.PublishWithContext(
-		context.Background(),
-		exchange,
-		routingKey,
-		false,
-		false,
-		amqp.Publishing{
-			ContentType:   "application/json",
-			DeliveryMode:  amqp.Persistent,
-			CorrelationId: correlationID,
-			Body:          body,
-		},
-	) // bwt ngirimnya aj
+	if p.ch == nil || p.ch.IsClosed() {
+		p.closeLocked()
+		if err := p.connectLocked(); err != nil {
+			return fmt.Errorf("rabbitmq reconnect: %w", err)
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, publishTimeout)
+	defer cancel()
+
+	confirmation, err := p.ch.PublishWithDeferredConfirmWithContext(ctx, p.exchange, routingKey, false, false, amqp.Publishing{
+		ContentType:   "application/json",
+		DeliveryMode:  amqp.Persistent,
+		CorrelationId: correlationID,
+		Body:          body,
+	})
+	if err != nil {
+		p.closeLocked()
+		return fmt.Errorf("rabbitmq publish: %w", err)
+	}
+	acked, err := confirmation.WaitContext(ctx)
+	if err != nil {
+		p.closeLocked()
+		return fmt.Errorf("rabbitmq confirm: %w", err)
+	}
+	if !acked {
+		return errors.New("rabbitmq nacked the message")
+	}
+	return nil
 }

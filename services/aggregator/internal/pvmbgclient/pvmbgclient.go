@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	neturl "net/url"
 	"time"
 )
 
@@ -32,7 +33,7 @@ func New(baseURL, token string, timeout time.Duration, log *slog.Logger) *Client
 func (c *Client) VolcanicReports(ctx context.Context, since string, correlationID string) ([]map[string]any, error) {
 	url := c.baseURL + "/volcanic-reports"
 	if since != "" {
-		url += "?since=" + since
+		url += "?since=" + neturl.QueryEscape(since)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)

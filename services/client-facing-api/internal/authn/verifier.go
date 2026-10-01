@@ -57,7 +57,7 @@ func (v *Verifier) Verify(raw string) (*Claims, error) {
 	claims := &Claims{}
 	_, err := jwt.ParseWithClaims(raw, claims,
 		func(t *jwt.Token) (any, error) { return v.pub, nil },
-		jwt.WithValidMethods([]string{"EdDSA"}), 
+		jwt.WithValidMethods([]string{"EdDSA"}),
 		jwt.WithIssuer(v.issuer),
 		jwt.WithExpirationRequired(),
 	)

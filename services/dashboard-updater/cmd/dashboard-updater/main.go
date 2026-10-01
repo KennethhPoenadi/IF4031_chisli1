@@ -23,11 +23,12 @@ func main() {
 	defer stop()
 
 	var connected atomic.Bool
-	go health.Serve(ctx, cfg.HealthPort, &connected, log)
+	state := consumer.NewState()
+	go health.Serve(ctx, cfg.HealthPort, &connected, state, log)
 
 	seen := consumer.NewSeenSet(10000)
 	for ctx.Err() == nil {
-		err := consumer.Run(ctx, cfg, seen, &connected, log)
+		err := consumer.Run(ctx, cfg, seen, state, &connected, log)
 		connected.Store(false)
 		if ctx.Err() != nil {
 			break

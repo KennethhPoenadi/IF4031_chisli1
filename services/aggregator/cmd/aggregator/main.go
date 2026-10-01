@@ -42,25 +42,28 @@ func main() {
 		os.Exit(1)
 	}
 	log.Info("connected to mongo")
-	defer mongoClient.Disconnect(nil) // ini bwt nutup klo nnti koneksi mati
+	defer mongoClient.Disconnect(context.Background()) // ini bwt nutup klo nnti koneksi mati
 
-	hazardStore := store.NewHazardStore(mongoClient, cfg.MongoDBName, cfg.MongoHazardCollection)
+	hazardStore, err := store.NewHazardStore(mongoClient, cfg.MongoDBName, cfg.MongoHazardCollection)
+	if err != nil {
+		log.Error("mongo index setup failed", "err", err)
+		os.Exit(1)
+	}
 
-	rabbitConn, rabbitCh, err := broker.Connect(cfg.RabbitMQURL, cfg.RabbitMQExchange, cfg.RabbitMQExchangeType)
+	publisher, err := broker.NewPublisher(cfg.RabbitMQURL, cfg.RabbitMQExchange, cfg.RabbitMQExchangeType)
 	if err != nil {
 		log.Error("rabbitmq connect failed", "err", err)
 		os.Exit(1)
 	}
 	log.Info("connected to rabbitmq", "exchange", cfg.RabbitMQExchange)
-	defer rabbitCh.Close()   // ini bwt nutup klo nnti koneksi mati
-	defer rabbitConn.Close() // ini bwt nutup klo nnti koneksi mati
+	defer publisher.Close()
 
 	bmkg := bmkgclient.New(cfg.BMKGBaseURL, cfg.BMKGAPIKey, cfg.BMKGTimeout, log)
 	pvmbg := pvmbgclient.New(cfg.PVMBGBaseURL, cfg.PVMBGToken, cfg.PVMBGTimeout, log)
-	p := poller.New(bmkg, pvmbg, hazardStore, rabbitCh, cfg.RabbitMQExchange, cfg.PollInterval, cfg.PVMBGStaleAfter, log)
+	p := poller.New(bmkg, pvmbg, hazardStore, publisher, cfg.PollInterval, cfg.PVMBGStaleAfter, log)
 	go p.Run(ctx)
 
-	handler := api.NewHandler(hazardStore, p)
+	handler := api.NewHandler(hazardStore, p, publisher)
 	routes := handler.Routes(cfg.AggregatorAPIKey, httpx.Observe(log))
 
 	srv := &http.Server{

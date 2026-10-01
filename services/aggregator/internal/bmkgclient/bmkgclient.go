@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	neturl "net/url"
 	"time"
 )
 
@@ -41,7 +42,7 @@ func (c *Client) TsunamiWarnings(ctx context.Context, since string, correlationI
 func (c *Client) get(ctx context.Context, path, since, correlationID string, out any) error {
 	url := c.baseURL + path
 	if since != "" {
-		url += "?since=" + since
+		url += "?since=" + neturl.QueryEscape(since)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)

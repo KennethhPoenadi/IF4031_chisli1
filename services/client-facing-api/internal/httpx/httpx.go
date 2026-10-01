@@ -17,8 +17,8 @@ const (
 	keyInfo
 )
 
-type Info struct { 
-	Client string 
+type Info struct {
+	Client string
 }
 
 func CorrelationID(ctx context.Context) string {

@@ -3,6 +3,7 @@ package httpx
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"log/slog"
@@ -62,7 +63,7 @@ func RequireInternalKey(expected string) func(http.Handler) http.Handler {
 				WriteError(w, http.StatusUnauthorized, "missing X-Internal-Key")
 				return
 			}
-			if provided != expected {
+			if subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) != 1 {
 				WriteError(w, http.StatusForbidden, "invalid internal credential")
 				return
 			}

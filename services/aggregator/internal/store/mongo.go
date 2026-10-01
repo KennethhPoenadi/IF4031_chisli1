@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
@@ -36,10 +37,31 @@ type HazardStore struct {
 	collection *mongo.Collection
 }
 
-func NewHazardStore(client *mongo.Client, dbName, collectionName string) *HazardStore {
-	return &HazardStore{
+func NewHazardStore(client *mongo.Client, dbName, collectionName string) (*HazardStore, error) {
+	s := &HazardStore{
 		collection: client.Database(dbName).Collection(collectionName),
 	}
+	if err := s.ensureIndexes(); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+func (s *HazardStore) ensureIndexes() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err := s.collection.Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{Keys: bson.D{{Key: "hazard_id", Value: 1}}, Options: options.Index().SetUnique(true)},
+		{Keys: bson.D{{Key: "ingested_at", Value: -1}}},
+		{Keys: bson.D{{Key: "hazard_type", Value: 1}, {Key: "ingested_at", Value: -1}}},
+		{Keys: bson.D{{Key: "severity", Value: 1}, {Key: "ingested_at", Value: -1}}},
+	})
+	return err
+}
+
+func (s *HazardStore) Ping(ctx context.Context) error {
+	return s.collection.Database().Client().Ping(ctx, nil)
 }
 
 func (s *HazardStore) SaveHazardEvent(event hazard.Event) error {

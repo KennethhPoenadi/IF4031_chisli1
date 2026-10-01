@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -16,13 +17,20 @@ var (
 	validSeverities  = map[string]bool{"NORMAL": true, "WASPADA": true, "SIAGA": true, "AWAS": true}
 )
 
+const maxLimit = 500
+
+type BrokerStatus interface {
+	Connected() bool
+}
+
 type Handler struct {
 	hazardStore *store.HazardStore
 	poller      *poller.Poller
+	broker      BrokerStatus
 }
 
-func NewHandler(hazardStore *store.HazardStore, p *poller.Poller) *Handler {
-	return &Handler{hazardStore: hazardStore, poller: p}
+func NewHandler(hazardStore *store.HazardStore, p *poller.Poller, b BrokerStatus) *Handler {
+	return &Handler{hazardStore: hazardStore, poller: p, broker: b}
 }
 
 func (h *Handler) GetPVMBGStatus(w http.ResponseWriter, r *http.Request) {
@@ -37,7 +45,7 @@ func (h *Handler) GetHazardEvents(w http.ResponseWriter, r *http.Request) {
 	if limitParam := q.Get("limit"); limitParam != "" {
 		parsed, err := strconv.ParseInt(limitParam, 10, 64)
 		if err == nil && parsed > 0 {
-			limit = parsed
+			limit = min(parsed, maxLimit)
 		}
 	}
 
@@ -95,13 +103,35 @@ func toAnySlice[T any](items []T) []any {
 	return out
 }
 
-func healthHandler(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("ok"))
+// health gagal (503) hanya kalau Canonical Store tidak terjangkau.
+// broker yg putus dialporin tp ga buat aggregator dianggep mati, pembacaan data
+// tetep bisa dilayanin dan publish akan reconnect sendiri.
+func (h *Handler) health(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+
+	mongoOK := h.hazardStore.Ping(ctx) == nil
+	brokerOK := h.broker.Connected()
+
+	status, code := "ok", http.StatusOK
+	switch {
+	case !mongoOK:
+		status, code = "unavailable", http.StatusServiceUnavailable
+	case !brokerOK:
+		status = "degraded"
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(map[string]any{
+		"status":   status,
+		"mongo":    mongoOK,
+		"rabbitmq": brokerOK,
+	})
 }
 
 func (h *Handler) Routes(internalKey string, observe func(http.Handler) http.Handler) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", healthHandler)
+	mux.HandleFunc("GET /health", h.health)
 	mux.Handle("GET /hazard-events", httpx.RequireInternalKey(internalKey)(http.HandlerFunc(h.GetHazardEvents)))
 	mux.Handle("GET /pvmbg-status", httpx.RequireInternalKey(internalKey)(http.HandlerFunc(h.GetPVMBGStatus)))
 	return observe(mux)

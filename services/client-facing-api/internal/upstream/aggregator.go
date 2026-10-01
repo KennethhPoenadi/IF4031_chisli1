@@ -33,8 +33,8 @@ type Result struct {
 	Meta   json.RawMessage
 }
 
-type StatusError struct { 
-	Status int 
+type StatusError struct {
+	Status int
 }
 
 func (e *StatusError) Error() string {

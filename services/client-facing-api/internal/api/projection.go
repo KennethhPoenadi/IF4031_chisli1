@@ -20,8 +20,8 @@ func contains(list []string, s string) bool {
 	return false
 }
 
-type forbiddenError struct { 
-	fields []string 
+type forbiddenError struct {
+	fields []string
 }
 
 func (e *forbiddenError) Error() string {
@@ -29,7 +29,7 @@ func (e *forbiddenError) Error() string {
 }
 
 type unknownError struct {
-	 fields []string
+	fields []string
 }
 
 func (e *unknownError) Error() string {

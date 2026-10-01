@@ -39,7 +39,7 @@ func Load() (Config, error) {
 		AggregatorTimeout: time.Duration(getInt("CLIENT_API_AGGREGATOR_TIMEOUT_MS", 1500)) * time.Millisecond,
 		AuthURL:           getEnv("AUTH_SERVICE_URL", "http://auth-service:8091"),
 		AuthInternalKey:   authKey,
-		RevocationPoll:    time.Duration(getInt("CLIENT_API_REVOCATION_POLL_MS", 1000)) * time.Millisecond,
+		RevocationPoll:    time.Duration(getInt("CLIENT_API_REVOCATION_POLL_MS", 250)) * time.Millisecond,
 		MaxInflight:       getInt("CLIENT_API_MAX_INFLIGHT", 200),
 	}
 	if pk := os.Getenv("AUTH_PUBLIC_KEY"); pk != "" {

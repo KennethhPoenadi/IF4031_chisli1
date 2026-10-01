@@ -114,6 +114,6 @@ func (h *Handler) Routes(v *authn.Verifier, limit func(http.Handler) http.Handle
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
-	mux.Handle("GET /hazard-events", limit(v.Require(scopeSummary)(http.HandlerFunc(h.GetHazardEvents))))
+	mux.Handle("GET /hazard-events", v.Require(scopeSummary)(limit(http.HandlerFunc(h.GetHazardEvents))))
 	return observe(mux)
 }

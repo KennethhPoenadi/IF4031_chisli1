@@ -2,14 +2,17 @@ package health
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
 	"sync/atomic"
 	"time"
+
+	"dashboard-updater/internal/consumer"
 )
 
-func Serve(ctx context.Context, port string, connected *atomic.Bool, log *slog.Logger) {
+func Serve(ctx context.Context, port string, connected *atomic.Bool, state *consumer.State, log *slog.Logger) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -19,6 +22,11 @@ func Serve(ctx context.Context, port string, connected *atomic.Bool, log *slog.L
 			return
 		}
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	})
+
+	mux.HandleFunc("GET /state", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(state.Snapshot(20))
 	})
 
 	srv := &http.Server{Addr: ":" + port, Handler: mux, ReadHeaderTimeout: 5 * time.Second}

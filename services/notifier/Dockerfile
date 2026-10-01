@@ -1,4 +1,4 @@
-FROM golang:1.22 AS builder
+FROM golang:1.26 AS builder
 
 WORKDIR /app
 
@@ -10,8 +10,12 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o notifier ./cmd/notifier
 
 FROM alpine:3.20
 
+RUN addgroup -S app && adduser -S -G app app
+
 WORKDIR /app
 
 COPY --from=builder /app/notifier .
+
+USER app
 
 CMD ["./notifier"]

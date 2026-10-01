@@ -65,7 +65,7 @@ services:
     build: ./services/client-facing-api
     environment:
       CLIENT_API_PORT: ${CLIENT_API_PORT:-8080}
-      AGGREGATOR_URL: http://aggregator:8090
+      AGGREGATOR_URL: http://aggregator:${AGGREGATOR_PORT:-8090}
       AGGREGATOR_API_KEY: ${AGGREGATOR_API_KEY:?AGGREGATOR_API_KEY must be set in .env}
       AUTH_SERVICE_URL: http://auth-service:${AUTH_PORT:-8091}
       AUTH_INTERNAL_KEY: ${AUTH_INTERNAL_KEY:?AUTH_INTERNAL_KEY must be set in .env}
@@ -89,7 +89,7 @@ services:
   notifier:
     build: ./services/notifier
     environment:
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER must be set in .env}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set in .env}@rabbitmq:5672/
       RABBITMQ_EXCHANGE: hazard_events
       NOTIFIER_QUEUE: ${NOTIFIER_QUEUE:-notifier-queue}
       NOTIFIER_BINDING_KEYS: ${NOTIFIER_BINDING_KEYS:-hazard.#}
@@ -108,10 +108,15 @@ services:
       retries: 5
       start_period: 5s
 
+  # Canonical Store: tanpa port ke host dan hanya ada di store-net (internal),
+  # jadi hanya aggregator yang bisa menjangkaunya.
   mongo:
     image: mongo:7
-    ports:
-      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:?MONGO_ROOT_USERNAME must be set in .env}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?MONGO_ROOT_PASSWORD must be set in .env}
+    networks:
+      - store-net
     volumes:
       - mongo_data:/data/db
     healthcheck:
@@ -123,9 +128,12 @@ services:
 
   rabbitmq:
     image: rabbitmq:3-management
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?RABBITMQ_USER must be set in .env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set in .env}
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
@@ -136,16 +144,19 @@ services:
 
   aggregator:
     build: ./services/aggregator
+    networks:
+      - default
+      - store-net
     ports:
-      - "8090:8090"
+      - "127.0.0.1:${AGGREGATOR_PORT:-8090}:${AGGREGATOR_PORT:-8090}"
     environment:
-      MONGO_URI: mongodb://mongo:27017
+      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME:?MONGO_ROOT_USERNAME must be set in .env}:${MONGO_ROOT_PASSWORD:?MONGO_ROOT_PASSWORD must be set in .env}@mongo:27017/?authSource=admin
       MONGO_DB_NAME: bnpb_canonical
       MONGO_HAZARD_COLLECTION: hazard_events
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER must be set in .env}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set in .env}@rabbitmq:5672/
       RABBITMQ_EXCHANGE: hazard_events
       RABBITMQ_EXCHANGE_TYPE: topic
-      AGGREGATOR_PORT: 8090
+      AGGREGATOR_PORT: ${AGGREGATOR_PORT:-8090}
       AGGREGATOR_API_KEY: ${AGGREGATOR_API_KEY:?AGGREGATOR_API_KEY must be set in .env}
       BMKG_BASE_URL: http://bmkg-mock:${BMKG_PORT:-8081}
       BMKG_API_KEY: ${BMKG_API_KEY:?BMKG_API_KEY must be set in .env}
@@ -165,7 +176,7 @@ services:
       pvmbg-mock:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8090/health >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:$${AGGREGATOR_PORT}/health >/dev/null || exit 1"]
       interval: 5s
       timeout: 2s
       retries: 5
@@ -174,7 +185,7 @@ services:
   dashboard-updater:
     build: ./services/dashboard-updater
     environment:
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER must be set in .env}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set in .env}@rabbitmq:5672/
       RABBITMQ_EXCHANGE: hazard_events
       BINDING_KEY: hazard.#
       DASHBOARD_UPDATER_QUEUE: ${DASHBOARD_UPDATER_QUEUE:-dashboard-updater-queue}
@@ -191,6 +202,10 @@ services:
       timeout: 2s
       retries: 5
       start_period: 5s
+
+networks:
+  store-net:
+    internal: true
 
 volumes:
   mongo_data:

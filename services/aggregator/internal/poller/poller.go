@@ -10,14 +10,17 @@ import (
 	"time"
 
 	"aggregator/internal/bmkgclient"
-	"aggregator/internal/broker"
 	"aggregator/internal/hazard"
 	"aggregator/internal/mapper"
 	"aggregator/internal/pvmbgclient"
 	"aggregator/internal/store"
-
-	amqp "github.com/rabbitmq/amqp091-go"
 )
+
+type Publisher interface {
+	Publish(ctx context.Context, event hazard.Event, correlationID string) error
+}
+
+const cursorFormat = time.RFC3339Nano
 
 const (
 	SourceHealthy  = "HEALTHY"
@@ -35,8 +38,7 @@ type Poller struct {
 	bmkg       *bmkgclient.Client
 	pvmbg      *pvmbgclient.Client
 	store      *store.HazardStore
-	rabbitCh   *amqp.Channel
-	exchange   string
+	publisher  Publisher
 	interval   time.Duration
 	staleAfter time.Duration
 	log        *slog.Logger
@@ -50,13 +52,12 @@ type Poller struct {
 	staleSince    time.Time
 }
 
-func New(bmkg *bmkgclient.Client, pvmbg *pvmbgclient.Client, hazardStore *store.HazardStore, rabbitCh *amqp.Channel, exchange string, interval time.Duration, staleAfter time.Duration, log *slog.Logger) *Poller {
+func New(bmkg *bmkgclient.Client, pvmbg *pvmbgclient.Client, hazardStore *store.HazardStore, publisher Publisher, interval time.Duration, staleAfter time.Duration, log *slog.Logger) *Poller {
 	return &Poller{
 		bmkg:         bmkg,
 		pvmbg:        pvmbg,
 		store:        hazardStore,
-		rabbitCh:     rabbitCh,
-		exchange:     exchange,
+		publisher:    publisher,
 		interval:     interval,
 		staleAfter:   staleAfter,
 		log:          log,
@@ -130,7 +131,7 @@ func (p *Poller) runPVMBGWorker(ctx context.Context) {
 
 func (p *Poller) pollBMKG(ctx context.Context) {
 	correlationID := newCorrelationID()
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := time.Now().UTC().Format(cursorFormat)
 
 	events, err := p.bmkg.SeismicEvents(ctx, p.bmkgSince, correlationID)
 	if err != nil {
@@ -140,8 +141,8 @@ func (p *Poller) pollBMKG(ctx context.Context) {
 
 	warnings, err := p.bmkg.TsunamiWarnings(ctx, p.bmkgSince, correlationID)
 	if err != nil {
-		p.log.Warn("bmkg tsunami warnings poll failed", "err", err, "correlation_id", correlationID)
-		warnings = nil
+		p.log.Warn("bmkg tsunami warnings poll failed, cycle skipped to avoid wrong severity", "err", err, "correlation_id", correlationID)
+		return
 	}
 
 	warningByEventID := map[string]map[string]any{}
@@ -152,6 +153,34 @@ func (p *Poller) pollBMKG(ctx context.Context) {
 		}
 	}
 
+	inBatch := make(map[string]bool, len(events))
+	for _, raw := range events {
+		id, _ := raw["event_id"].(string)
+		inBatch[id] = true
+	}
+	var orphan bool
+	for relatedID := range warningByEventID {
+		if !inBatch[relatedID] {
+			orphan = true
+			break
+		}
+	}
+	if orphan {
+		all, err := p.bmkg.SeismicEvents(ctx, "", correlationID)
+		if err != nil {
+			p.log.Warn("bmkg refetch for late tsunami warning failed", "err", err, "correlation_id", correlationID)
+			return
+		}
+		for _, raw := range all {
+			id, _ := raw["event_id"].(string)
+			if _, hasWarning := warningByEventID[id]; hasWarning && !inBatch[id] {
+				events = append(events, raw)
+				inBatch[id] = true
+			}
+		}
+	}
+
+	failed := false
 	for _, raw := range events {
 		eventID, _ := raw["event_id"].(string)
 		event, err := mapper.MapSeismicEvent(raw, warningByEventID[eventID])
@@ -159,15 +188,21 @@ func (p *Poller) pollBMKG(ctx context.Context) {
 			p.log.Error("failed to map seismic event", "err", err, "correlation_id", correlationID)
 			continue
 		}
-		p.persist(event, correlationID)
+		if err := p.persist(ctx, event, correlationID); err != nil {
+			failed = true
+			break
+		}
 	}
 
+	if failed {
+		return
+	}
 	p.bmkgSince = now
 }
 
 func (p *Poller) pollPVMBG(ctx context.Context) {
 	correlationID := newCorrelationID()
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := time.Now().UTC().Format(cursorFormat)
 
 	reports, err := p.pvmbg.VolcanicReports(ctx, p.pvmbgSince, correlationID)
 	if err != nil {
@@ -181,13 +216,20 @@ func (p *Poller) pollPVMBG(ctx context.Context) {
 	}
 	p.markPVMBGAvailable()
 
+	failed := false
 	for _, raw := range reports {
 		event, err := mapper.MapVolcanicReport(raw)
 		if err != nil {
 			p.log.Error("failed to map volcanic report", "err", err, "correlation_id", correlationID)
 			continue
 		}
-		p.persist(event, correlationID)
+		if err := p.persist(ctx, event, correlationID); err != nil {
+			failed = true
+			break
+		}
+	}
+	if failed {
+		return
 	}
 
 	p.pvmbgSince = now
@@ -210,18 +252,19 @@ func (p *Poller) markPVMBGUnavailable() {
 	}
 }
 
-func (p *Poller) persist(event hazard.Event, correlationID string) {
+func (p *Poller) persist(ctx context.Context, event hazard.Event, correlationID string) error {
 	if err := p.store.SaveHazardEvent(event); err != nil {
 		p.log.Error("failed to save hazard event", "err", err, "hazard_id", event.HazardID, "correlation_id", correlationID)
-		return
+		return err
 	}
-	if p.rabbitCh != nil {
-		if err := broker.Publish(p.rabbitCh, p.exchange, event, correlationID); err != nil {
+	if p.publisher != nil {
+		if err := p.publisher.Publish(ctx, event, correlationID); err != nil {
 			p.log.Error("failed to publish hazard event", "err", err, "hazard_id", event.HazardID, "correlation_id", correlationID)
-			return
+			return err
 		}
 	}
 	p.log.Info("hazard event ingested", "hazard_id", event.HazardID, "hazard_type", event.HazardType, "severity", event.Severity, "correlation_id", correlationID)
+	return nil
 }
 
 func newCorrelationID() string {

@@ -15,7 +15,7 @@ import (
 	"dashboard-updater/internal/hazard"
 )
 
-func Run(ctx context.Context, cfg config.Config, seen *SeenSet, connected *atomic.Bool, log *slog.Logger) error {
+func Run(ctx context.Context, cfg config.Config, seen *SeenSet, state *State, connected *atomic.Bool, log *slog.Logger) error {
 	conn, err := amqp.Dial(cfg.RabbitURL)
 	if err != nil {
 		return fmt.Errorf("dial: %w", err)
@@ -57,12 +57,12 @@ func Run(ctx context.Context, cfg config.Config, seen *SeenSet, connected *atomi
 			if !ok {
 				return errors.New("delivery channel closed")
 			}
-			handle(seen, msg, log)
+			handle(seen, state, msg, log)
 		}
 	}
 }
 
-func handle(seen *SeenSet, msg amqp.Delivery, log *slog.Logger) {
+func handle(seen *SeenSet, state *State, msg amqp.Delivery, log *slog.Logger) {
 	var event hazard.Event
 	if err := json.Unmarshal(msg.Body, &event); err != nil {
 		log.Warn("dropping unparsable message", "action", "drop", "err", err, "routing_key", msg.RoutingKey, "correlation_id", msg.CorrelationId)
@@ -81,6 +81,7 @@ func handle(seen *SeenSet, msg amqp.Delivery, log *slog.Logger) {
 		"hazard_id", event.HazardID, "hazard_type", event.HazardType, "severity", event.Severity,
 		"routing_key", msg.RoutingKey, "redelivered", msg.Redelivered, "correlation_id", msg.CorrelationId)
 
+	state.Apply(event)
 	seen.Add(key)
 	_ = msg.Ack(false)
 }

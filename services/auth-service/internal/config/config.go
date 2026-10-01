@@ -12,7 +12,7 @@ import (
 type Client struct {
 	ID     string
 	Secret string
-	Scope  string // space separated, e.g. "read:summary read:raw"
+	Scope  string
 }
 
 type Config struct {
@@ -21,7 +21,7 @@ type Config struct {
 	SigningKey  ed25519.PrivateKey
 	AccessTTL   time.Duration
 	RefreshTTL  time.Duration
-	InternalKey string 
+	InternalKey string
 	Clients     []Client
 }
 

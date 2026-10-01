@@ -10,8 +10,12 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o dashboard-updater ./cmd/dashboard-updat
 
 FROM alpine:3.20
 
+RUN addgroup -S app && adduser -S -G app app
+
 WORKDIR /app
 
 COPY --from=builder /app/dashboard-updater .
+
+USER app
 
 CMD ["./dashboard-updater"]
