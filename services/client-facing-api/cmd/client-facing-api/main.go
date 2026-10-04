@@ -40,7 +40,7 @@ func main() {
 	verifier := authn.NewVerifier(pub, cfg.Issuer)
 	go verifier.SyncRevocations(ctx, cfg.AuthURL, cfg.AuthInternalKey, cfg.RevocationPoll, log)
 
-	agg := upstream.New(cfg.AggregatorURL, cfg.AggregatorKey, cfg.AggregatorTimeout, log)
+	agg := upstream.New(cfg.AggregatorURL, cfg.AggregatorKey, cfg.AggregatorTimeout, cfg.MaxInflight, log)
 	handler := api.NewHandler(agg).Routes(verifier, httpx.Limit(cfg.MaxInflight), httpx.Observe(log))
 
 	srv := &http.Server{

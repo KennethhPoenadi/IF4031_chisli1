@@ -19,12 +19,23 @@ type Client struct {
 	log  *slog.Logger
 }
 
-func New(base, key string, timeout time.Duration, log *slog.Logger) *Client {
+// new creates an Aggregator client whose connection pool matches the API request limit, reusing these connections avoids opening a new TCP connection for every request
+func New(base, key string, timeout time.Duration, maxConnections int, log *slog.Logger) *Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.MaxIdleConns = maxConnections
+	transport.MaxIdleConnsPerHost = maxConnections
+	transport.MaxConnsPerHost = maxConnections
+	transport.IdleConnTimeout = 90 * time.Second
+	transport.ResponseHeaderTimeout = timeout
+
 	return &Client{
 		base: base,
 		key:  key,
 		log:  log,
-		http: &http.Client{Timeout: timeout},
+		http: &http.Client{
+			Transport: transport,
+			Timeout:   timeout,
+		},
 	}
 }
 
