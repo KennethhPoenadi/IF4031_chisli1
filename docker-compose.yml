@@ -108,8 +108,6 @@ services:
       retries: 5
       start_period: 5s
 
-  # Canonical Store: tanpa port ke host dan hanya ada di store-net (internal),
-  # jadi hanya aggregator yang bisa menjangkaunya.
   mongo:
     image: mongo:7
     environment:
@@ -121,8 +119,8 @@ services:
       - mongo_data:/data/db
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand('ping').ok"]
-      interval: 5s
-      timeout: 2s
+      interval: 10s
+      timeout: 10s
       retries: 10
       start_period: 5s
 
