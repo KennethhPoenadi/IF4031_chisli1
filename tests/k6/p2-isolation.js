@@ -17,8 +17,6 @@ if (!Number.isInteger(minimumSeismicUpdates) || minimumSeismicUpdates < 1) {
 const seismicUpdates = new Counter('seismic_updates');
 const seismicMonitorSuccess = new Rate('seismic_monitor_success');
 
-// k6 gives each VU its own JavaScript runtime. This variable is safe because
-// the freshness scenario deliberately uses exactly one VU.
 let previousSeismicID;
 
 export const options = {
@@ -48,11 +46,9 @@ export const options = {
     seismic_monitor_success: ['rate>0.99'],
     seismic_updates: [`count>=${minimumSeismicUpdates}`],
   },
+  summaryTrendStats: ['avg', 'med', 'p(90)', 'p(95)', 'p(99)', 'max'],
 };
 
-// setup captures a baseline before load starts. The first stored event is not
-// counted as an update, so a passing counter proves that new seismic data was
-// ingested while the slow PVMBG scenario was active.
 export function setup() {
   const response = getAPI(freshnessPath, { traffic: 'freshness-setup' });
   if (response.status !== 200) {
@@ -63,23 +59,20 @@ export function setup() {
   if (!initialID) {
     fail('initial seismic response did not contain data[0].hazard_id');
   }
+  console.log(JSON.stringify({ event: 'seismic_baseline', hazard_id: initialID, observed_at: new Date().toISOString() }));
   return { initialSeismicID: initialID };
 }
 
-// seismicTraffic measures whether BMKG-backed requests stay fast and available.
 export function seismicTraffic() {
   const response = getAPI(seismicPath, { traffic: 'seismic' });
   check(response, { 'seismic request succeeds': (r) => r.status === 200 }, { traffic: 'seismic' });
 }
 
-// volcanicTraffic creates slow PVMBG-backed traffic at the same time.
 export function volcanicTraffic() {
   const response = getAPI(volcanicPath, { traffic: 'volcanic' });
   check(response, { 'volcanic request is controlled': (r) => [200, 429, 503].includes(r.status) }, { traffic: 'volcanic' });
 }
 
-// monitorSeismicFreshness proves that BMKG ingestion continues while PVMBG is
-// slow. A fast HTTP 200 serving only old MongoDB data is not enough to pass.
 export function monitorSeismicFreshness(setupData) {
   if (previousSeismicID === undefined) {
     previousSeismicID = setupData.initialSeismicID;
@@ -96,6 +89,12 @@ export function monitorSeismicFreshness(setupData) {
 
   if (successful && currentID !== previousSeismicID) {
     seismicUpdates.add(1);
+    console.log(JSON.stringify({
+      event: 'seismic_update',
+      previous_hazard_id: previousSeismicID,
+      hazard_id: currentID,
+      observed_at: new Date().toISOString(),
+    }));
     previousSeismicID = currentID;
   }
 
