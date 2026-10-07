@@ -20,7 +20,6 @@ export const options = {
   summaryTrendStats: ['avg', 'med', 'p(90)', 'p(95)', 'p(99)', 'max'],
 };
 
-// Each iteration alternates between seismic and volcanic traffic under sustained load.
 export default function () {
   const path = (__ITER + __VU) % 2 === 0 ? seismicPath : volcanicPath;
   const response = getAPI(path, { traffic: path === seismicPath ? 'seismic' : 'volcanic' });

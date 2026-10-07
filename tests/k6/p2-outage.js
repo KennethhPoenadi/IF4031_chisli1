@@ -15,7 +15,6 @@ export const options = {
   },
 };
 
-// setOutage switches the PVMBG mock outage mode on or off.
 function setOutage(enabled) {
   return http.post(
     `${pvmbgBaseURL}/admin/outage`,
@@ -31,7 +30,6 @@ function setOutage(enabled) {
   );
 }
 
-// setup enables the outage once before virtual users start.
 export function setup() {
   if (!pvmbgToken) {
     fail('PVMBG_TOKEN must be provided');
@@ -41,12 +39,9 @@ export function setup() {
     fail(`could not enable PVMBG outage: ${response.status} ${response.body}`);
   }
 
-  // The Aggregator observes source failures on its polling interval. Wait for
-  // that state change so measured checks represent steady-state outage behavior.
   sleep(propagationWaitSeconds);
 }
 
-// The main test checks that seismic stays available and volcanic failure is explicit.
 export default function () {
   const seismic = getAPI(seismicPath, { traffic: 'seismic' });
   check(seismic, { 'seismic remains available': (r) => r.status === 200 }, { traffic: 'seismic' });
@@ -62,7 +57,6 @@ export default function () {
   }, { traffic: 'volcanic' });
 }
 
-// teardown restores PVMBG after the test, even when a check fails.
 export function teardown() {
   const response = setOutage(false);
   if (response.status !== 200) {
