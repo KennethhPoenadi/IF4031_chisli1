@@ -121,8 +121,8 @@ services:
       - mongo_data:/data/db
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand('ping').ok"]
-      interval: 5s
-      timeout: 2s
+      interval: 10s
+      timeout: 10s
       retries: 10
       start_period: 5s
 
