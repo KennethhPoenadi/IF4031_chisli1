@@ -17,7 +17,11 @@ import (
 func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("service", "dashboard-updater")
 
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		log.Error("invalid configuration", "err", err)
+		os.Exit(1)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

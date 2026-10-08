@@ -50,6 +50,11 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("PVMBG_TOKEN is required")
 	}
 
+	rabbitMQURL := getEnv("RABBITMQ_URL", "")
+	if rabbitMQURL == "" {
+		return Config{}, fmt.Errorf("RABBITMQ_URL is required")
+	}
+
 	pollInterval, err := getEnvSeconds("AGGREGATOR_POLL_INTERVAL_SECONDS", 5)
 	if err != nil {
 		return Config{}, err
@@ -74,7 +79,7 @@ func Load() (Config, error) {
 		MongoURI:              getEnv("MONGO_URI", "mongodb://localhost:27017"),
 		MongoDBName:           getEnv("MONGO_DB_NAME", "bnpb_canonical"),
 		MongoHazardCollection: getEnv("MONGO_HAZARD_COLLECTION", "hazard_events"),
-		RabbitMQURL:           getEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
+		RabbitMQURL:           rabbitMQURL,
 		RabbitMQExchange:      getEnv("RABBITMQ_EXCHANGE", "hazard_events"),
 		RabbitMQExchangeType:  getEnv("RABBITMQ_EXCHANGE_TYPE", "topic"),
 		AggregatorPort:        strconv.Itoa(port),
