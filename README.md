@@ -189,3 +189,13 @@ do
   (cd $s && go test ./...)
 done
 ```
+
+## Kontribusi anggota
+
+| NIM | Nama | Kontribusi |
+|---|---|---|
+| 13523008 | Varel Tiara | Mock BMKG dan PVMBG, load testing dengan k6, Problem 4 (service terpisah dalam container, MongoDB sebagai Canonical Store, Docker Compose), daftar teknologi, penyatuan laporan |
+| 13523029 | Bryan Ho | Problem 3 (auth-service, scope client, refresh token, penegakan hak akses di client-facing-api), pendahuluan, asumsi, petunjuk menjalankan, penulisan laporan |
+| 13523040 | Kenneth Poenadi | Problem 1, 2, dan 5 (aggregator, polling, pemetaan, degradasi saat sumber mati, RabbitMQ dan consumer), arsitektur sistem, penulisan laporan |
+
+Seluruh anggota ikut berkontribusi pada perancangan, implementasi, dan penulisan laporan.
