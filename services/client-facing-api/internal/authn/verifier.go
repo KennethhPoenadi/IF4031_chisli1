@@ -144,6 +144,9 @@ func fetchRevocations(ctx context.Context, c *http.Client, authURL, key string) 
 	return body.Revoked, nil
 }
 
+// publicKeyRetryDelay is the pause between attempts to fetch the auth-service public key at startup.
+var publicKeyRetryDelay = 2 * time.Second
+
 func FetchPublicKey(ctx context.Context, authURL string, attempts int, log *slog.Logger) (ed25519.PublicKey, error) {
 	client := &http.Client{Timeout: 3 * time.Second}
 	var lastErr error
@@ -157,7 +160,7 @@ func FetchPublicKey(ctx context.Context, authURL string, attempts int, log *slog
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-time.After(2 * time.Second):
+		case <-time.After(publicKeyRetryDelay):
 		}
 	}
 	return nil, lastErr

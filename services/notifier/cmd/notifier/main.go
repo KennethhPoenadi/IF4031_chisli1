@@ -32,13 +32,17 @@ type config struct {
 	healthPort   string
 }
 
-func loadConfig() config {
+func loadConfig() (config, error) {
+	rabbitURL := getEnv("RABBITMQ_URL", "")
+	if rabbitURL == "" {
+		return config{}, errors.New("RABBITMQ_URL is required")
+	}
 	keys := strings.Split(getEnv("NOTIFIER_BINDING_KEYS", "hazard.#"), ",")
 	for i := range keys {
 		keys[i] = strings.TrimSpace(keys[i])
 	}
 	return config{
-		rabbitURL:    getEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
+		rabbitURL:    rabbitURL,
 		exchange:     getEnv("RABBITMQ_EXCHANGE", "hazard_events"),
 		queue:        getEnv("NOTIFIER_QUEUE", "notifier-queue"),
 		bindingKeys:  keys,
@@ -46,12 +50,16 @@ func loadConfig() config {
 		processDelay: time.Duration(getInt("NOTIFIER_PROCESS_DELAY_MS", 0)) * time.Millisecond,
 		prefetch:     getInt("NOTIFIER_PREFETCH", 10),
 		healthPort:   getEnv("NOTIFIER_HEALTH_PORT", "8093"),
-	}
+	}, nil
 }
 
 func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("service", "notifier")
-	cfg := loadConfig()
+	cfg, err := loadConfig()
+	if err != nil {
+		log.Error("invalid configuration", "err", err)
+		os.Exit(1)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
