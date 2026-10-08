@@ -1,0 +1,111 @@
+package store
+
+import (
+	"context"
+	"time"
+
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
+
+	"aggregator/internal/hazard"
+)
+
+func Connect(uri string) (*mongo.Client, error) {
+	client, err := mongo.Connect(options.Client().ApplyURI(uri))
+	if err != nil {
+		return nil, err
+	}
+
+	// mongo.connect gk lgsg tes koneksi, jd ping buat beneran pastiin, retry
+	// karena container mongo bisa aja masih starting walau compose bilang healthy
+	var pingErr error
+	for attempt := 1; attempt <= 10; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		pingErr = client.Ping(ctx, nil)
+		cancel()
+		if pingErr == nil {
+			return client, nil
+		}
+		time.Sleep(2 * time.Second)
+	}
+
+	return nil, pingErr
+}
+
+type HazardStore struct {
+	collection *mongo.Collection
+}
+
+func NewHazardStore(client *mongo.Client, dbName, collectionName string) (*HazardStore, error) {
+	s := &HazardStore{
+		collection: client.Database(dbName).Collection(collectionName),
+	}
+	if err := s.ensureIndexes(); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+func (s *HazardStore) ensureIndexes() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err := s.collection.Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{Keys: bson.D{{Key: "hazard_id", Value: 1}}, Options: options.Index().SetUnique(true)},
+		{Keys: bson.D{{Key: "ingested_at", Value: -1}}},
+		{Keys: bson.D{{Key: "hazard_type", Value: 1}, {Key: "ingested_at", Value: -1}}},
+		{Keys: bson.D{{Key: "severity", Value: 1}, {Key: "ingested_at", Value: -1}}},
+	})
+	return err
+}
+
+func (s *HazardStore) Ping(ctx context.Context) error {
+	return s.collection.Database().Client().Ping(ctx, nil)
+}
+
+func (s *HazardStore) SaveHazardEvent(event hazard.Event) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	filter := map[string]any{"hazard_id": event.HazardID}
+	opts := options.Replace().SetUpsert(true)
+	_, err := s.collection.ReplaceOne(ctx, filter, event, opts)
+	return err
+}
+
+type Filter struct {
+	HazardType string
+	Severity   string
+	Since      *time.Time
+}
+
+func (s *HazardStore) GetHazardEvents(limit int64, filter Filter) ([]hazard.Event, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	query := map[string]any{}
+	if filter.HazardType != "" {
+		query["hazard_type"] = filter.HazardType
+	}
+	if filter.Severity != "" {
+		query["severity"] = filter.Severity
+	}
+	if filter.Since != nil {
+		query["occurred_at"] = map[string]any{"$gt": *filter.Since}
+	}
+
+	opts := options.Find().SetSort(map[string]int{"ingested_at": -1}).SetLimit(limit)
+	cursor, err := s.collection.Find(ctx, query, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var events []hazard.Event
+	if err := cursor.All(ctx, &events); err != nil {
+		return nil, err
+	}
+
+	return events, nil
+}

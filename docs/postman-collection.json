@@ -1,0 +1,296 @@
+{
+  "info": {
+    "name": "IF4031 M1 - BNPB Gateway",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "bmkg_url", "value": "http://localhost:8081" },
+    { "key": "pvmbg_url", "value": "http://localhost:8082" },
+    { "key": "aggregator_url", "value": "http://localhost:8090" },
+    { "key": "auth_url", "value": "http://localhost:8091" },
+    { "key": "client_api_url", "value": "http://localhost:8080" },
+    { "key": "bmkg_api_key", "value": "bmkg-demo-key" },
+    { "key": "pvmbg_token", "value": "pvmbg-demo-token" },
+    { "key": "aggregator_api_key", "value": "aggregator-internal-demo-key" },
+    { "key": "media_client_id", "value": "media-demo" },
+    { "key": "media_client_secret", "value": "media-demo-secret" },
+    { "key": "field_client_id", "value": "field-demo" },
+    { "key": "field_client_secret", "value": "field-demo-secret" },
+    { "key": "ops_client_id", "value": "ops-demo" },
+    { "key": "ops_client_secret", "value": "ops-demo-secret" },
+    { "key": "media_access_token", "value": "" },
+    { "key": "field_access_token", "value": "" },
+    { "key": "field_refresh_token", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "BMKG",
+      "item": [
+        { "name": "Health", "request": { "method": "GET", "url": "{{bmkg_url}}/health" } },
+        {
+          "name": "Seismic Events",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-BMKG-Key", "value": "{{bmkg_api_key}}" }],
+            "url": "{{bmkg_url}}/seismic-events"
+          }
+        },
+        {
+          "name": "Tsunami Warnings",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-BMKG-Key", "value": "{{bmkg_api_key}}" }],
+            "url": "{{bmkg_url}}/tsunami-warnings"
+          }
+        },
+        {
+          "name": "[P3] Seismic Events with PVMBG token (expect 401/403)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-BMKG-Key", "value": "{{pvmbg_token}}" }],
+            "url": "{{bmkg_url}}/seismic-events"
+          }
+        },
+        {
+          "name": "Seismic Events without key (expect 401)",
+          "request": { "method": "GET", "url": "{{bmkg_url}}/seismic-events" }
+        }
+      ]
+    },
+    {
+      "name": "PVMBG",
+      "item": [
+        { "name": "Health", "request": { "method": "GET", "url": "{{pvmbg_url}}/health" } },
+        {
+          "name": "Volcanic Reports",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{pvmbg_token}}" }],
+            "url": "{{pvmbg_url}}/volcanic-reports"
+          }
+        },
+        {
+          "name": "[P3] Volcanic Reports with BMKG key (expect 401/403)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{bmkg_api_key}}" }],
+            "url": "{{pvmbg_url}}/volcanic-reports"
+          }
+        },
+        {
+          "name": "[P1] Toggle Schema Version ON (confidence_level muncul)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{pvmbg_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\"enabled\": true}" },
+            "url": "{{pvmbg_url}}/admin/schema-version"
+          }
+        },
+        {
+          "name": "[P1] Toggle Schema Version OFF",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{pvmbg_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\"enabled\": false}" },
+            "url": "{{pvmbg_url}}/admin/schema-version"
+          }
+        },
+        {
+          "name": "[P2] Toggle Outage ON",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{pvmbg_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\"enabled\": true}" },
+            "url": "{{pvmbg_url}}/admin/outage"
+          }
+        },
+        {
+          "name": "[P2] Toggle Outage OFF",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{pvmbg_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\"enabled\": false}" },
+            "url": "{{pvmbg_url}}/admin/outage"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Aggregator",
+      "item": [
+        { "name": "Health", "request": { "method": "GET", "url": "{{aggregator_url}}/health" } },
+        {
+          "name": "Hazard Events (no key, expect 401)",
+          "request": { "method": "GET", "url": "{{aggregator_url}}/hazard-events" }
+        },
+        {
+          "name": "Hazard Events (with key)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Internal-Key", "value": "{{aggregator_api_key}}" }],
+            "url": "{{aggregator_url}}/hazard-events?limit=20"
+          }
+        },
+        {
+          "name": "Hazard Events filter severity=AWAS",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Internal-Key", "value": "{{aggregator_api_key}}" }],
+            "url": "{{aggregator_url}}/hazard-events?severity=AWAS&limit=10"
+          }
+        },
+        {
+          "name": "Hazard Events filter hazard_type=VOLCANIC",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Internal-Key", "value": "{{aggregator_api_key}}" }],
+            "url": "{{aggregator_url}}/hazard-events?hazard_type=VOLCANIC&limit=10"
+          }
+        },
+        {
+          "name": "[P2] PVMBG Status (available/stale_since)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Internal-Key", "value": "{{aggregator_api_key}}" }],
+            "url": "{{aggregator_url}}/pvmbg-status"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth Service",
+      "item": [
+        { "name": "Health", "request": { "method": "GET", "url": "{{auth_url}}/health" } },
+        { "name": "Public Key", "request": { "method": "GET", "url": "{{auth_url}}/public-key" } },
+        {
+          "name": "[P3] Login as Media",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('media_access_token', body.access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/x-www-form-urlencoded" }],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "grant_type", "value": "client_credentials" },
+                { "key": "client_id", "value": "{{media_client_id}}" },
+                { "key": "client_secret", "value": "{{media_client_secret}}" }
+              ]
+            },
+            "url": "{{auth_url}}/token"
+          }
+        },
+        {
+          "name": "[P3] Login as Tim Lapangan (Field)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('field_access_token', body.access_token);",
+                  "pm.collectionVariables.set('field_refresh_token', body.refresh_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/x-www-form-urlencoded" }],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "grant_type", "value": "client_credentials" },
+                { "key": "client_id", "value": "{{field_client_id}}" },
+                { "key": "client_secret", "value": "{{field_client_secret}}" }
+              ]
+            },
+            "url": "{{auth_url}}/token"
+          }
+        },
+        {
+          "name": "[P3] Refresh Tim Lapangan token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('field_access_token', body.access_token);",
+                  "pm.collectionVariables.set('field_refresh_token', body.refresh_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/x-www-form-urlencoded" }],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "grant_type", "value": "refresh_token" },
+                { "key": "refresh_token", "value": "{{field_refresh_token}}" }
+              ]
+            },
+            "url": "{{auth_url}}/token"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Client-Facing API",
+      "item": [
+        { "name": "Health", "request": { "method": "GET", "url": "{{client_api_url}}/health" } },
+        {
+          "name": "[P3] Media reads summary fields (should succeed)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{media_access_token}}" }],
+            "url": "{{client_api_url}}/hazard-events?limit=10"
+          }
+        },
+        {
+          "name": "[P3] Media requests raw field 'latitude' (expect 403)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{media_access_token}}" }],
+            "url": "{{client_api_url}}/hazard-events?fields=hazard_id,severity,latitude"
+          }
+        },
+        {
+          "name": "[P3] Tim Lapangan reads raw fields (should succeed)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{field_access_token}}" }],
+            "url": "{{client_api_url}}/hazard-events?fields=hazard_id,severity,latitude,longitude,attributes"
+          }
+        },
+        {
+          "name": "No token (expect 401)",
+          "request": { "method": "GET", "url": "{{client_api_url}}/hazard-events" }
+        }
+      ]
+    }
+  ]
+}

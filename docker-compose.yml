@@ -1,18 +1,209 @@
 services:
+  bmkg-mock:
+    build:
+      context: ./services/bmkg-mock
+    environment:
+      BMKG_PORT: ${BMKG_PORT:-8081}
+      BMKG_API_KEY: ${BMKG_API_KEY:?BMKG_API_KEY must be set in .env}
+      BMKG_DELAY_MS: ${BMKG_DELAY_MS:-100}
+      BMKG_SEED_COUNT: ${BMKG_SEED_COUNT:-20}
+      BMKG_GENERATION_INTERVAL_SECONDS: ${BMKG_GENERATION_INTERVAL_SECONDS:-10}
+      BMKG_RANDOM_SEED: ${BMKG_RANDOM_SEED:-4031}
+    ports:
+      - "${BMKG_PORT:-8081}:${BMKG_PORT:-8081}"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:$${BMKG_PORT}/health >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+      start_period: 5s
+
+  pvmbg-mock:
+    build:
+      context: ./services/pvmbg-mock
+    environment:
+      PVMBG_PORT: ${PVMBG_PORT:-8082}
+      PVMBG_TOKEN: ${PVMBG_TOKEN:?PVMBG_TOKEN must be set in .env}
+      PVMBG_DELAY_MIN_MS: ${PVMBG_DELAY_MIN_MS:-500}
+      PVMBG_DELAY_MAX_MS: ${PVMBG_DELAY_MAX_MS:-3000}
+      PVMBG_SEED_COUNT: ${PVMBG_SEED_COUNT:-20}
+      PVMBG_GENERATION_INTERVAL_SECONDS: ${PVMBG_GENERATION_INTERVAL_SECONDS:-10}
+      PVMBG_RANDOM_SEED: ${PVMBG_RANDOM_SEED:-4031}
+    ports:
+      - "${PVMBG_PORT:-8082}:${PVMBG_PORT:-8082}"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:$${PVMBG_PORT}/health >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+      start_period: 5s
+
+  auth-service:
+    build: ./services/auth-service
+    environment:
+      AUTH_PORT: ${AUTH_PORT:-8091}
+      AUTH_SIGNING_SEED: ${AUTH_SIGNING_SEED:?AUTH_SIGNING_SEED must be set in .env}
+      AUTH_INTERNAL_KEY: ${AUTH_INTERNAL_KEY:?AUTH_INTERNAL_KEY must be set in .env}
+      AUTH_ACCESS_TTL_SECONDS: ${AUTH_ACCESS_TTL_SECONDS:-60}
+      AUTH_REFRESH_TTL_SECONDS: ${AUTH_REFRESH_TTL_SECONDS:-600}
+      AUTH_CLIENT_MEDIA_ID: ${AUTH_CLIENT_MEDIA_ID:?must be set in .env}
+      AUTH_CLIENT_MEDIA_SECRET: ${AUTH_CLIENT_MEDIA_SECRET:?must be set in .env}
+      AUTH_CLIENT_FIELD_ID: ${AUTH_CLIENT_FIELD_ID:?must be set in .env}
+      AUTH_CLIENT_FIELD_SECRET: ${AUTH_CLIENT_FIELD_SECRET:?must be set in .env}
+      AUTH_CLIENT_OPS_ID: ${AUTH_CLIENT_OPS_ID:?must be set in .env}
+      AUTH_CLIENT_OPS_SECRET: ${AUTH_CLIENT_OPS_SECRET:?must be set in .env}
+    ports:
+      - "${AUTH_PORT:-8091}:${AUTH_PORT:-8091}"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:$${AUTH_PORT}/health >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+      start_period: 5s
+
+  client-facing-api:
+    build: ./services/client-facing-api
+    environment:
+      CLIENT_API_PORT: ${CLIENT_API_PORT:-8080}
+      AGGREGATOR_URL: http://aggregator:${AGGREGATOR_PORT:-8090}
+      AGGREGATOR_API_KEY: ${AGGREGATOR_API_KEY:?AGGREGATOR_API_KEY must be set in .env}
+      AUTH_SERVICE_URL: http://auth-service:${AUTH_PORT:-8091}
+      AUTH_INTERNAL_KEY: ${AUTH_INTERNAL_KEY:?AUTH_INTERNAL_KEY must be set in .env}
+      CLIENT_API_AGGREGATOR_TIMEOUT_MS: ${CLIENT_API_AGGREGATOR_TIMEOUT_MS:-1500}
+      CLIENT_API_MAX_INFLIGHT: ${CLIENT_API_MAX_INFLIGHT:-200}
+      CLIENT_API_REVOCATION_POLL_MS: ${CLIENT_API_REVOCATION_POLL_MS:-1000}
+    ports:
+      - "${CLIENT_API_PORT:-8080}:${CLIENT_API_PORT:-8080}"
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      aggregator:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:$${CLIENT_API_PORT}/health >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+      start_period: 5s
+
+  notifier:
+    build: ./services/notifier
+    environment:
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER must be set in .env}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set in .env}@rabbitmq:5672/
+      RABBITMQ_EXCHANGE: hazard_events
+      NOTIFIER_QUEUE: ${NOTIFIER_QUEUE:-notifier-queue}
+      NOTIFIER_BINDING_KEYS: ${NOTIFIER_BINDING_KEYS:-hazard.#}
+      NOTIFIER_MIN_SEVERITY: ${NOTIFIER_MIN_SEVERITY:-WASPADA}
+      NOTIFIER_PROCESS_DELAY_MS: ${NOTIFIER_PROCESS_DELAY_MS:-0}
+      NOTIFIER_HEALTH_PORT: ${NOTIFIER_HEALTH_PORT:-8093}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      aggregator:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:$${NOTIFIER_HEALTH_PORT}/health >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+      start_period: 5s
+
   mongo:
     image: mongo:7
-    ports:
-      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:?MONGO_ROOT_USERNAME must be set in .env}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?MONGO_ROOT_PASSWORD must be set in .env}
+    networks:
+      - store-net
     volumes:
       - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand('ping').ok"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 5s
 
   rabbitmq:
     image: rabbitmq:3-management
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?RABBITMQ_USER must be set in .env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set in .env}
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  aggregator:
+    build: ./services/aggregator
+    networks:
+      - default
+      - store-net
+    ports:
+      - "127.0.0.1:${AGGREGATOR_PORT:-8090}:${AGGREGATOR_PORT:-8090}"
+    environment:
+      MONGO_URI: mongodb://${MONGO_ROOT_USERNAME:?MONGO_ROOT_USERNAME must be set in .env}:${MONGO_ROOT_PASSWORD:?MONGO_ROOT_PASSWORD must be set in .env}@mongo:27017/?authSource=admin
+      MONGO_DB_NAME: bnpb_canonical
+      MONGO_HAZARD_COLLECTION: hazard_events
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER must be set in .env}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set in .env}@rabbitmq:5672/
+      RABBITMQ_EXCHANGE: hazard_events
+      RABBITMQ_EXCHANGE_TYPE: topic
+      AGGREGATOR_PORT: ${AGGREGATOR_PORT:-8090}
+      AGGREGATOR_API_KEY: ${AGGREGATOR_API_KEY:?AGGREGATOR_API_KEY must be set in .env}
+      BMKG_BASE_URL: http://bmkg-mock:${BMKG_PORT:-8081}
+      BMKG_API_KEY: ${BMKG_API_KEY:?BMKG_API_KEY must be set in .env}
+      PVMBG_BASE_URL: http://pvmbg-mock:${PVMBG_PORT:-8082}
+      PVMBG_TOKEN: ${PVMBG_TOKEN:?PVMBG_TOKEN must be set in .env}
+      AGGREGATOR_POLL_INTERVAL_SECONDS: ${AGGREGATOR_POLL_INTERVAL_SECONDS:-5}
+      AGGREGATOR_BMKG_TIMEOUT_MS: ${AGGREGATOR_BMKG_TIMEOUT_MS:-2000}
+      AGGREGATOR_PVMBG_TIMEOUT_MS: ${AGGREGATOR_PVMBG_TIMEOUT_MS:-4000}
+      AGGREGATOR_PVMBG_STALE_AFTER_SECONDS: ${AGGREGATOR_PVMBG_STALE_AFTER_SECONDS:-30}
+    depends_on:
+      mongo:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      bmkg-mock:
+        condition: service_healthy
+      pvmbg-mock:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:$${AGGREGATOR_PORT}/health >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+      start_period: 5s
+
+  dashboard-updater:
+    build: ./services/dashboard-updater
+    environment:
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER must be set in .env}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set in .env}@rabbitmq:5672/
+      RABBITMQ_EXCHANGE: hazard_events
+      BINDING_KEY: hazard.#
+      DASHBOARD_UPDATER_QUEUE: ${DASHBOARD_UPDATER_QUEUE:-dashboard-updater-queue}
+      DASHBOARD_UPDATER_PREFETCH: ${DASHBOARD_UPDATER_PREFETCH:-10}
+      DASHBOARD_UPDATER_HEALTH_PORT: ${DASHBOARD_UPDATER_HEALTH_PORT:-8092}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      aggregator:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:$${DASHBOARD_UPDATER_HEALTH_PORT}/health >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+      start_period: 5s
+
+networks:
+  store-net:
+    internal: true
 
 volumes:
   mongo_data:
