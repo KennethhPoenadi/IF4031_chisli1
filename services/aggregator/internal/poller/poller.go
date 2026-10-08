@@ -9,15 +9,26 @@ import (
 	"sync"
 	"time"
 
-	"aggregator/internal/bmkgclient"
 	"aggregator/internal/hazard"
 	"aggregator/internal/mapper"
 	"aggregator/internal/pvmbgclient"
-	"aggregator/internal/store"
 )
 
 type Publisher interface {
 	Publish(ctx context.Context, event hazard.Event, correlationID string) error
+}
+
+type SeismicSource interface {
+	SeismicEvents(ctx context.Context, since string, correlationID string) ([]map[string]any, error)
+	TsunamiWarnings(ctx context.Context, since string, correlationID string) ([]map[string]any, error)
+}
+
+type VolcanicSource interface {
+	VolcanicReports(ctx context.Context, since string, correlationID string) ([]map[string]any, error)
+}
+
+type EventStore interface {
+	SaveHazardEvent(event hazard.Event) error
 }
 
 const cursorFormat = time.RFC3339Nano
@@ -35,9 +46,9 @@ type PVMBGStatus struct {
 }
 
 type Poller struct {
-	bmkg       *bmkgclient.Client
-	pvmbg      *pvmbgclient.Client
-	store      *store.HazardStore
+	bmkg       SeismicSource
+	pvmbg      VolcanicSource
+	store      EventStore
 	publisher  Publisher
 	interval   time.Duration
 	staleAfter time.Duration
@@ -52,7 +63,7 @@ type Poller struct {
 	staleSince    time.Time
 }
 
-func New(bmkg *bmkgclient.Client, pvmbg *pvmbgclient.Client, hazardStore *store.HazardStore, publisher Publisher, interval time.Duration, staleAfter time.Duration, log *slog.Logger) *Poller {
+func New(bmkg SeismicSource, pvmbg VolcanicSource, hazardStore EventStore, publisher Publisher, interval time.Duration, staleAfter time.Duration, log *slog.Logger) *Poller {
 	return &Poller{
 		bmkg:         bmkg,
 		pvmbg:        pvmbg,

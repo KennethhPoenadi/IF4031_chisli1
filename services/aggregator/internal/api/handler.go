@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"aggregator/internal/hazard"
 	"aggregator/internal/httpx"
 	"aggregator/internal/poller"
 	"aggregator/internal/store"
@@ -23,13 +24,22 @@ type BrokerStatus interface {
 	Connected() bool
 }
 
+type EventReader interface {
+	GetHazardEvents(limit int64, filter store.Filter) ([]hazard.Event, error)
+	Ping(ctx context.Context) error
+}
+
+type SourceStatus interface {
+	PVMBGStatus() poller.PVMBGStatus
+}
+
 type Handler struct {
-	hazardStore *store.HazardStore
-	poller      *poller.Poller
+	hazardStore EventReader
+	poller      SourceStatus
 	broker      BrokerStatus
 }
 
-func NewHandler(hazardStore *store.HazardStore, p *poller.Poller, b BrokerStatus) *Handler {
+func NewHandler(hazardStore EventReader, p SourceStatus, b BrokerStatus) *Handler {
 	return &Handler{hazardStore: hazardStore, poller: p, broker: b}
 }
 
