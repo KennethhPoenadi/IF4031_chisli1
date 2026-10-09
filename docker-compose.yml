@@ -139,7 +139,9 @@ services:
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      # dijalankan sebagai user rabbitmq: bila probe root berjalan sebelum server membuat .erlang.cookie,
+      # cookie dibuat milik root dan RabbitMQ gagal start (eacces) pada volume baru
+      test: ["CMD", "gosu", "rabbitmq", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 5s
       timeout: 5s
       retries: 10
