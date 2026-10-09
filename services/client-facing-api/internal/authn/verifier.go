@@ -90,7 +90,7 @@ func (v *Verifier) SyncRevocations(ctx context.Context, authURL, internalKey str
 			return
 		case <-t.C:
 		}
-		list, err := fetchRevocations(ctx, client, authURL, internalKey)
+		list, err := fetchRevocations(ctx, client, authURL, internalKey, log)
 		if err != nil {
 			if !failing {
 				log.Warn("revocation sync failing, keeping last known list", "err", err)
@@ -121,17 +121,22 @@ type revocation struct {
 	Exp int64  `json:"exp"`
 }
 
-func fetchRevocations(ctx context.Context, c *http.Client, authURL, key string) ([]revocation, error) {
+func fetchRevocations(ctx context.Context, c *http.Client, authURL, key string, log *slog.Logger) ([]revocation, error) {
+	correlationID := httpx.NewCorrelationID()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, authURL+"/revocations", nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("X-Internal-Key", key)
+	req.Header.Set("X-Correlation-ID", correlationID)
+	start := time.Now()
 	resp, err := c.Do(req)
 	if err != nil {
+		logAuthCall(log, "get_revocations", correlationID, start, 0, err)
 		return nil, err
 	}
 	defer resp.Body.Close()
+	logAuthCall(log, "get_revocations", correlationID, start, resp.StatusCode, nil)
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("auth-service returned %d", resp.StatusCode)
 	}
@@ -151,7 +156,7 @@ func FetchPublicKey(ctx context.Context, authURL string, attempts int, log *slog
 	client := &http.Client{Timeout: 3 * time.Second}
 	var lastErr error
 	for i := 1; i <= attempts; i++ {
-		key, err := fetchOnce(ctx, client, authURL)
+		key, err := fetchOnce(ctx, client, authURL, log)
 		if err == nil {
 			return key, nil
 		}
@@ -166,16 +171,21 @@ func FetchPublicKey(ctx context.Context, authURL string, attempts int, log *slog
 	return nil, lastErr
 }
 
-func fetchOnce(ctx context.Context, c *http.Client, authURL string) (ed25519.PublicKey, error) {
+func fetchOnce(ctx context.Context, c *http.Client, authURL string, log *slog.Logger) (ed25519.PublicKey, error) {
+	correlationID := httpx.NewCorrelationID()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, authURL+"/public-key", nil)
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Set("X-Correlation-ID", correlationID)
+	start := time.Now()
 	resp, err := c.Do(req)
 	if err != nil {
+		logAuthCall(log, "get_public_key", correlationID, start, 0, err)
 		return nil, err
 	}
 	defer resp.Body.Close()
+	logAuthCall(log, "get_public_key", correlationID, start, resp.StatusCode, nil)
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("auth-service returned %d", resp.StatusCode)
 	}
@@ -191,6 +201,16 @@ func fetchOnce(ctx context.Context, c *http.Client, authURL string) (ed25519.Pub
 		return nil, errors.New("auth-service returned an unusable public key")
 	}
 	return ed25519.PublicKey(raw), nil
+}
+
+// logAuthCall records the latency of one outgoing call to the auth-service.
+func logAuthCall(log *slog.Logger, operation, correlationID string, start time.Time, status int, err error) {
+	attrs := []any{"target", "auth-service", "operation", operation, "duration_ms", time.Since(start).Milliseconds(), "correlation_id", correlationID}
+	if err != nil {
+		log.Warn("auth-service call failed", append(attrs, "success", false, "err", err)...)
+		return
+	}
+	log.Info("auth-service call", append(attrs, "status", status, "success", status == http.StatusOK)...)
 }
 
 func (v *Verifier) Require(scope string) func(http.Handler) http.Handler {

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -44,7 +45,11 @@ type fakeBroker struct{ connected bool }
 func (f fakeBroker) Connected() bool { return f.connected }
 
 func newHandler(reader *fakeReader, status poller.PVMBGStatus, brokerUp bool) *Handler {
-	return NewHandler(reader, fakeStatus{status: status}, fakeBroker{connected: brokerUp})
+	return newHandlerWithLog(reader, status, brokerUp, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+}
+
+func newHandlerWithLog(reader *fakeReader, status poller.PVMBGStatus, brokerUp bool, log *slog.Logger) *Handler {
+	return NewHandler(reader, fakeStatus{status: status}, fakeBroker{connected: brokerUp}, log)
 }
 
 func get(h http.HandlerFunc, target string) *httptest.ResponseRecorder {
@@ -248,4 +253,81 @@ func TestRoutesProtectDataEndpointsButNotHealth(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMongoCallsAreLoggedWithLatencyAndCorrelationID(t *testing.T) {
+	var buf bytes.Buffer
+	log := slog.New(slog.NewJSONHandler(&buf, nil))
+	reader := &fakeReader{}
+	h := newHandlerWithLog(reader, poller.PVMBGStatus{}, true, log)
+	routes := h.Routes("internal-key-for-test", httpx.Observe(log))
+
+	send := func(path string, withKey bool) {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Header.Set("X-Correlation-ID", "trace-77")
+		if withKey {
+			req.Header.Set("X-Internal-Key", "internal-key-for-test")
+		}
+		routes.ServeHTTP(httptest.NewRecorder(), req)
+	}
+	send("/hazard-events", true)
+	send("/health", false)
+
+	calls := map[string]map[string]any{}
+	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+		var rec map[string]any
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			t.Fatalf("log line is not JSON: %q", line)
+		}
+		if rec["msg"] == "mongodb call" {
+			calls[rec["operation"].(string)] = rec
+		}
+	}
+	for _, operation := range []string{"find_hazard_events", "ping"} {
+		rec, ok := calls[operation]
+		if !ok {
+			t.Fatalf("no latency log for %s, got %v", operation, calls)
+		}
+		if d, ok := rec["duration_ms"].(float64); !ok || d < 0 {
+			t.Fatalf("%s: duration_ms missing or invalid: %v", operation, rec["duration_ms"])
+		}
+		if rec["target"] != "mongodb" || rec["success"] != true || rec["correlation_id"] != "trace-77" {
+			t.Fatalf("%s: unexpected record %v", operation, rec)
+		}
+	}
+}
+
+func TestFailedMongoCallsAreLoggedAsUnsuccessful(t *testing.T) {
+	var buf bytes.Buffer
+	log := slog.New(slog.NewJSONHandler(&buf, nil))
+	reader := &fakeReader{err: errors.New("mongo down"), pingErr: errors.New("mongo down")}
+	h := newHandlerWithLog(reader, poller.PVMBGStatus{}, true, log)
+
+	get(h.GetHazardEvents, "/hazard-events")
+	get(h.health, "/health")
+
+	failures := 0
+	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+		var rec map[string]any
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			t.Fatalf("log line is not JSON: %q", line)
+		}
+		if rec["msg"] == "mongodb call failed" {
+			failures++
+			if rec["success"] != false || rec["level"] != "WARN" || rec["err"] == nil || rec["duration_ms"] == nil {
+				t.Fatalf("unexpected failure record: %v", rec)
+			}
+		}
+	}
+	if failures != 2 {
+		t.Fatalf("expected a failure log for both the query and the ping, got %d", failures)
+	}
+}
+
+func TestNewHandlerFallsBackToTheDefaultLogger(t *testing.T) {
+	h := NewHandler(&fakeReader{}, fakeStatus{}, fakeBroker{connected: true}, nil)
+	if h.log == nil {
+		t.Fatal("a nil logger must be replaced so the handler never panics while logging")
+	}
+	get(h.GetHazardEvents, "/hazard-events")
 }

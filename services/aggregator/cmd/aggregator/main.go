@@ -36,12 +36,15 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	mongoStart := time.Now()
 	mongoClient, err := store.Connect(cfg.MongoURI)
 	if err != nil {
-		log.Error("mongo connect failed", "err", err)
+		log.Error("mongo connect failed", "err", err, "target", "mongodb", "operation", "connect",
+			"duration_ms", time.Since(mongoStart).Milliseconds(), "success", false)
 		os.Exit(1)
 	}
-	log.Info("connected to mongo")
+	log.Info("connected to mongo", "target", "mongodb", "operation", "connect",
+		"duration_ms", time.Since(mongoStart).Milliseconds(), "success", true)
 	defer mongoClient.Disconnect(context.Background()) // ini bwt nutup klo nnti koneksi mati
 
 	hazardStore, err := store.NewHazardStore(mongoClient, cfg.MongoDBName, cfg.MongoHazardCollection)
@@ -50,12 +53,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	rabbitStart := time.Now()
 	publisher, err := broker.NewPublisher(cfg.RabbitMQURL, cfg.RabbitMQExchange, cfg.RabbitMQExchangeType)
 	if err != nil {
-		log.Error("rabbitmq connect failed", "err", err)
+		log.Error("rabbitmq connect failed", "err", err, "target", "rabbitmq", "operation", "connect",
+			"duration_ms", time.Since(rabbitStart).Milliseconds(), "success", false)
 		os.Exit(1)
 	}
-	log.Info("connected to rabbitmq", "exchange", cfg.RabbitMQExchange)
+	log.Info("connected to rabbitmq", "exchange", cfg.RabbitMQExchange, "target", "rabbitmq", "operation", "connect",
+		"duration_ms", time.Since(rabbitStart).Milliseconds(), "success", true)
 	defer publisher.Close()
 
 	bmkg := bmkgclient.New(cfg.BMKGBaseURL, cfg.BMKGAPIKey, cfg.BMKGTimeout, log)
@@ -63,7 +69,7 @@ func main() {
 	p := poller.New(bmkg, pvmbg, hazardStore, publisher, cfg.PollInterval, cfg.PVMBGStaleAfter, log)
 	go p.Run(ctx)
 
-	handler := api.NewHandler(hazardStore, p, publisher)
+	handler := api.NewHandler(hazardStore, p, publisher, log)
 	routes := handler.Routes(cfg.AggregatorAPIKey, httpx.Observe(log))
 
 	srv := &http.Server{

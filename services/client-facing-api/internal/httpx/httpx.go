@@ -96,6 +96,9 @@ func WriteError(w http.ResponseWriter, status int, code, message string) {
 	WriteJSON(w, status, map[string]string{"error": code, "message": message})
 }
 
+// NewCorrelationID creates an ID for calls that are not part of a client request, such as background syncs.
+func NewCorrelationID() string { return newID() }
+
 func newID() string {
 	b := make([]byte, 8)
 	_, _ = rand.Read(b)

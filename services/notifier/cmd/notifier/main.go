@@ -84,10 +84,15 @@ func main() {
 }
 
 func run(ctx context.Context, cfg config, seen *seenSet, connected *atomic.Bool, log *slog.Logger) error {
+	dialStart := time.Now()
 	conn, err := amqp.Dial(cfg.rabbitURL)
 	if err != nil {
+		log.Warn("rabbitmq call failed", "target", "rabbitmq", "operation", "connect",
+			"duration_ms", time.Since(dialStart).Milliseconds(), "success", false, "err", err)
 		return fmt.Errorf("dial: %w", err)
 	}
+	log.Info("rabbitmq call", "target", "rabbitmq", "operation", "connect",
+		"duration_ms", time.Since(dialStart).Milliseconds(), "success", true)
 	defer conn.Close()
 
 	ch, err := conn.Channel()

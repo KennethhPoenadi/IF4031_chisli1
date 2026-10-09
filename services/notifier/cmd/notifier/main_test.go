@@ -303,12 +303,20 @@ func TestServeHealthLogsWhenThePortIsTaken(t *testing.T) {
 
 func TestRunReportsAnUnreachableBroker(t *testing.T) {
 	var connected atomic.Bool
-	log, _ := newLogger()
+	log, logs := newLogger()
 
 	err := run(context.Background(), config{rabbitURL: "amqp://nobody:nopass@127.0.0.1:1/"}, newSeenSet(1), &connected, log)
 
 	if err == nil || !strings.Contains(err.Error(), "dial") {
 		t.Fatalf("error = %v, want a dial error so main can retry", err)
+	}
+	for _, want := range []string{`"msg":"rabbitmq call failed"`, `"target":"rabbitmq"`, `"operation":"connect"`, `"success":false`, `"duration_ms"`} {
+		if !strings.Contains(logs.String(), want) {
+			t.Fatalf("the failed connection must be logged with its latency, log lacks %s: %s", want, logs.String())
+		}
+	}
+	if strings.Contains(logs.String(), "nopass") {
+		t.Fatal("the broker password must never be logged")
 	}
 	if connected.Load() {
 		t.Fatal("the consumer must not report itself connected")

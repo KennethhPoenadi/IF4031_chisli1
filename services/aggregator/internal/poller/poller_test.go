@@ -1,12 +1,15 @@
 package poller
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -615,4 +618,98 @@ func TestNewCorrelationIDIsRandomHex(t *testing.T) {
 		}
 		seen[id] = true
 	}
+}
+
+// ---- latensi panggilan keluar ----
+
+func parseLogs(t *testing.T, buf *bytes.Buffer) []map[string]any {
+	t.Helper()
+	var out []map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+		if line == "" {
+			continue
+		}
+		var rec map[string]any
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			t.Fatalf("log line is not JSON: %q", line)
+		}
+		out = append(out, rec)
+	}
+	return out
+}
+
+func findLog(records []map[string]any, msg, operation string) map[string]any {
+	for _, rec := range records {
+		if rec["msg"] == msg && rec["operation"] == operation {
+			return rec
+		}
+	}
+	return nil
+}
+
+func rigWithLogs() (*rig, *bytes.Buffer) {
+	r := newRig()
+	var buf bytes.Buffer
+	r.poller = New(r.bmkg, r.pvmbg, r.store, r.pub, time.Second, time.Second, slog.New(slog.NewJSONHandler(&buf, nil)))
+	return r, &buf
+}
+
+func TestMongoAndRabbitMQCallsAreLoggedWithLatencyAndCorrelationID(t *testing.T) {
+	r, buf := rigWithLogs()
+	r.bmkg.events = staticEvents(seismicRaw("eq-1", 5.5))
+
+	r.poller.pollBMKG(context.Background())
+
+	records := parseLogs(t, buf)
+	for msg, operation := range map[string]string{"mongodb call": "save_hazard_event", "rabbitmq call": "publish"} {
+		rec := findLog(records, msg, operation)
+		if rec == nil {
+			t.Fatalf("no %q log for %s in %v", msg, operation, records)
+		}
+		if d, ok := rec["duration_ms"].(float64); !ok || d < 0 {
+			t.Fatalf("%s: duration_ms missing or invalid: %v", operation, rec["duration_ms"])
+		}
+		if rec["success"] != true || rec["hazard_id"] != "hz-eq-1" || rec["correlation_id"] != r.bmkg.eventCorrID[0] {
+			t.Fatalf("%s: unexpected record %v", operation, rec)
+		}
+		if rec["target"] != strings.Fields(msg)[0] {
+			t.Fatalf("%s: target = %v", operation, rec["target"])
+		}
+	}
+}
+
+func TestFailedMongoAndRabbitMQCallsAreLoggedAsUnsuccessful(t *testing.T) {
+	t.Run("mongo fails, so nothing is published", func(t *testing.T) {
+		r, buf := rigWithLogs()
+		r.bmkg.events = staticEvents(seismicRaw("eq-1", 5.5))
+		r.store.err = func(hazard.Event) error { return errors.New("mongo down") }
+
+		r.poller.pollBMKG(context.Background())
+
+		records := parseLogs(t, buf)
+		rec := findLog(records, "mongodb call failed", "save_hazard_event")
+		if rec == nil || rec["success"] != false || rec["level"] != "WARN" || rec["err"] == nil || rec["duration_ms"] == nil {
+			t.Fatalf("unexpected failure log: %v", rec)
+		}
+		if findLog(records, "rabbitmq call", "publish") != nil || findLog(records, "rabbitmq call failed", "publish") != nil {
+			t.Fatal("no publish may be attempted, so none may be logged, after the save failed")
+		}
+	})
+
+	t.Run("broker fails after a successful save", func(t *testing.T) {
+		r, buf := rigWithLogs()
+		r.bmkg.events = staticEvents(seismicRaw("eq-1", 5.5))
+		r.pub.err = errors.New("broker down")
+
+		r.poller.pollBMKG(context.Background())
+
+		records := parseLogs(t, buf)
+		if rec := findLog(records, "mongodb call", "save_hazard_event"); rec == nil || rec["success"] != true {
+			t.Fatalf("the save must be logged as successful: %v", rec)
+		}
+		rec := findLog(records, "rabbitmq call failed", "publish")
+		if rec == nil || rec["success"] != false || rec["err"] == nil || rec["duration_ms"] == nil || rec["correlation_id"] == "" {
+			t.Fatalf("unexpected failure log: %v", rec)
+		}
+	})
 }

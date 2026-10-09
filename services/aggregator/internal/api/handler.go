@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -37,10 +38,25 @@ type Handler struct {
 	hazardStore EventReader
 	poller      SourceStatus
 	broker      BrokerStatus
+	log         *slog.Logger
 }
 
-func NewHandler(hazardStore EventReader, p SourceStatus, b BrokerStatus) *Handler {
-	return &Handler{hazardStore: hazardStore, poller: p, broker: b}
+func NewHandler(hazardStore EventReader, p SourceStatus, b BrokerStatus, log *slog.Logger) *Handler {
+	if log == nil {
+		log = slog.Default()
+	}
+	return &Handler{hazardStore: hazardStore, poller: p, broker: b, log: log}
+}
+
+// logMongoCall records the latency of one outgoing call to the Canonical Store.
+func (h *Handler) logMongoCall(r *http.Request, operation string, start time.Time, err error) {
+	attrs := []any{"target", "mongodb", "operation", operation, "duration_ms", time.Since(start).Milliseconds(),
+		"success", err == nil, "correlation_id", httpx.CorrelationID(r.Context())}
+	if err != nil {
+		h.log.Warn("mongodb call failed", append(attrs, "err", err)...)
+		return
+	}
+	h.log.Info("mongodb call", attrs...)
 }
 
 func (h *Handler) GetPVMBGStatus(w http.ResponseWriter, r *http.Request) {
@@ -83,7 +99,9 @@ func (h *Handler) GetHazardEvents(w http.ResponseWriter, r *http.Request) {
 		filter.Since = &parsed
 	}
 
+	queryStart := time.Now()
 	events, err := h.hazardStore.GetHazardEvents(limit, filter)
+	h.logMongoCall(r, "find_hazard_events", queryStart, err)
 	if err != nil {
 		http.Error(w, "failed to fetch hazard events", http.StatusInternalServerError)
 		return
@@ -120,7 +138,10 @@ func (h *Handler) health(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
 
-	mongoOK := h.hazardStore.Ping(ctx) == nil
+	pingStart := time.Now()
+	pingErr := h.hazardStore.Ping(ctx)
+	h.logMongoCall(r, "ping", pingStart, pingErr)
+	mongoOK := pingErr == nil
 	brokerOK := h.broker.Connected()
 
 	status, code := "ok", http.StatusOK

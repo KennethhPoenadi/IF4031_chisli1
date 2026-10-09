@@ -116,3 +116,17 @@ func TestValidID(t *testing.T) {
 		}
 	}
 }
+
+func TestNewCorrelationIDIsUniqueAndAccepted(t *testing.T) {
+	seen := map[string]bool{}
+	for i := 0; i < 50; i++ {
+		id := NewCorrelationID()
+		if !validID(id) || len(id) != 16 {
+			t.Fatalf("generated id %q must be valid and 16 characters", id)
+		}
+		if seen[id] {
+			t.Fatalf("duplicate id %q", id)
+		}
+		seen[id] = true
+	}
+}

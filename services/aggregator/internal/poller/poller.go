@@ -264,18 +264,35 @@ func (p *Poller) markPVMBGUnavailable() {
 }
 
 func (p *Poller) persist(ctx context.Context, event hazard.Event, correlationID string) error {
-	if err := p.store.SaveHazardEvent(event); err != nil {
-		p.log.Error("failed to save hazard event", "err", err, "hazard_id", event.HazardID, "correlation_id", correlationID)
-		return err
+	saveStart := time.Now()
+	saveErr := p.store.SaveHazardEvent(event)
+	p.logCall("mongodb", "save_hazard_event", saveStart, saveErr, correlationID, event.HazardID)
+	if saveErr != nil {
+		p.log.Error("failed to save hazard event", "err", saveErr, "hazard_id", event.HazardID, "correlation_id", correlationID)
+		return saveErr
 	}
 	if p.publisher != nil {
-		if err := p.publisher.Publish(ctx, event, correlationID); err != nil {
-			p.log.Error("failed to publish hazard event", "err", err, "hazard_id", event.HazardID, "correlation_id", correlationID)
-			return err
+		publishStart := time.Now()
+		publishErr := p.publisher.Publish(ctx, event, correlationID)
+		p.logCall("rabbitmq", "publish", publishStart, publishErr, correlationID, event.HazardID)
+		if publishErr != nil {
+			p.log.Error("failed to publish hazard event", "err", publishErr, "hazard_id", event.HazardID, "correlation_id", correlationID)
+			return publishErr
 		}
 	}
 	p.log.Info("hazard event ingested", "hazard_id", event.HazardID, "hazard_type", event.HazardType, "severity", event.Severity, "correlation_id", correlationID)
 	return nil
+}
+
+// logCall records the latency of one outgoing call to a datastore or the broker.
+func (p *Poller) logCall(target, operation string, start time.Time, err error, correlationID, hazardID string) {
+	attrs := []any{"target", target, "operation", operation, "duration_ms", time.Since(start).Milliseconds(),
+		"success", err == nil, "hazard_id", hazardID, "correlation_id", correlationID}
+	if err != nil {
+		p.log.Warn(target+" call failed", append(attrs, "err", err)...)
+		return
+	}
+	p.log.Info(target+" call", attrs...)
 }
 
 func newCorrelationID() string {

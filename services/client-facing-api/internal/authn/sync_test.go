@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -43,6 +44,8 @@ func (v *Verifier) isRevoked(jti string) bool {
 	_, ok := v.revoked[jti]
 	return ok
 }
+
+func discardLogger() *slog.Logger { return slog.New(slog.NewJSONHandler(io.Discard, nil)) }
 
 func eventually(t *testing.T, what string, cond func() bool) {
 	t.Helper()
@@ -142,7 +145,7 @@ func TestFetchOnceRejectsUnusableKeyResponses(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			if _, err := fetchOnce(context.Background(), srv.Client(), srv.URL); err == nil {
+			if _, err := fetchOnce(context.Background(), srv.Client(), srv.URL, discardLogger()); err == nil {
 				t.Fatal("expected an error")
 			}
 		})
@@ -152,10 +155,10 @@ func TestFetchOnceRejectsUnusableKeyResponses(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 		target := srv.URL
 		srv.Close()
-		if _, err := fetchOnce(context.Background(), http.DefaultClient, target); err == nil {
+		if _, err := fetchOnce(context.Background(), http.DefaultClient, target, discardLogger()); err == nil {
 			t.Fatal("expected a connection error")
 		}
-		if _, err := fetchOnce(context.Background(), http.DefaultClient, "http://exa mple.com"); err == nil {
+		if _, err := fetchOnce(context.Background(), http.DefaultClient, "http://exa mple.com", discardLogger()); err == nil {
 			t.Fatal("expected a request construction error")
 		}
 	})
@@ -167,7 +170,7 @@ func TestFetchRevocationsSendsTheInternalKeyAndHandlesFailures(t *testing.T) {
 		gotKey = r.Header.Get("X-Internal-Key")
 		w.Write([]byte(`{"revoked":[{"jti":"a","exp":123}]}`))
 	}))
-	list, err := fetchRevocations(context.Background(), srv.Client(), srv.URL, testInternalKey)
+	list, err := fetchRevocations(context.Background(), srv.Client(), srv.URL, testInternalKey, discardLogger())
 	srv.Close()
 	if err != nil || len(list) != 1 || list[0].JTI != "a" || list[0].Exp != 123 || gotKey != testInternalKey {
 		t.Fatalf("list=%v err=%v key=%q", list, err, gotKey)
@@ -180,13 +183,13 @@ func TestFetchRevocationsSendsTheInternalKeyAndHandlesFailures(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			srv := httptest.NewServer(handler)
 			defer srv.Close()
-			if _, err := fetchRevocations(context.Background(), srv.Client(), srv.URL, testInternalKey); err == nil {
+			if _, err := fetchRevocations(context.Background(), srv.Client(), srv.URL, testInternalKey, discardLogger()); err == nil {
 				t.Fatal("expected an error")
 			}
 		})
 	}
 
-	if _, err := fetchRevocations(context.Background(), http.DefaultClient, "http://exa mple.com", testInternalKey); err == nil {
+	if _, err := fetchRevocations(context.Background(), http.DefaultClient, "http://exa mple.com", testInternalKey, discardLogger()); err == nil {
 		t.Fatal("expected a request construction error")
 	}
 }
