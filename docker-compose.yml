@@ -74,6 +74,7 @@ services:
       CLIENT_API_AGGREGATOR_TIMEOUT_MS: ${CLIENT_API_AGGREGATOR_TIMEOUT_MS:-1500}
       CLIENT_API_MAX_INFLIGHT: ${CLIENT_API_MAX_INFLIGHT:-200}
       CLIENT_API_REVOCATION_POLL_MS: ${CLIENT_API_REVOCATION_POLL_MS:-1000}
+      AUTH_PUBLIC_KEY: ${AUTH_PUBLIC_KEY:-}
     ports:
       - "${CLIENT_API_PORT:-8080}:${CLIENT_API_PORT:-8080}"
     depends_on:
@@ -92,9 +93,10 @@ services:
     build: ./services/notifier
     environment:
       RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER must be set in .env}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set in .env}@rabbitmq:5672/
-      RABBITMQ_EXCHANGE: hazard_events
+      RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-hazard_events}
       NOTIFIER_QUEUE: ${NOTIFIER_QUEUE:-notifier-queue}
       NOTIFIER_BINDING_KEYS: ${NOTIFIER_BINDING_KEYS:-hazard.#}
+      NOTIFIER_PREFETCH: ${NOTIFIER_PREFETCH:-10}
       NOTIFIER_MIN_SEVERITY: ${NOTIFIER_MIN_SEVERITY:-WASPADA}
       NOTIFIER_PROCESS_DELAY_MS: ${NOTIFIER_PROCESS_DELAY_MS:-0}
       NOTIFIER_HEALTH_PORT: ${NOTIFIER_HEALTH_PORT:-8093}
@@ -151,11 +153,11 @@ services:
       - "127.0.0.1:${AGGREGATOR_PORT:-8090}:${AGGREGATOR_PORT:-8090}"
     environment:
       MONGO_URI: mongodb://${MONGO_ROOT_USERNAME:?MONGO_ROOT_USERNAME must be set in .env}:${MONGO_ROOT_PASSWORD:?MONGO_ROOT_PASSWORD must be set in .env}@mongo:27017/?authSource=admin
-      MONGO_DB_NAME: bnpb_canonical
-      MONGO_HAZARD_COLLECTION: hazard_events
+      MONGO_DB_NAME: ${MONGO_DB_NAME:-bnpb_canonical}
+      MONGO_HAZARD_COLLECTION: ${MONGO_HAZARD_COLLECTION:-hazard_events}
       RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER must be set in .env}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set in .env}@rabbitmq:5672/
-      RABBITMQ_EXCHANGE: hazard_events
-      RABBITMQ_EXCHANGE_TYPE: topic
+      RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-hazard_events}
+      RABBITMQ_EXCHANGE_TYPE: ${RABBITMQ_EXCHANGE_TYPE:-topic}
       AGGREGATOR_PORT: ${AGGREGATOR_PORT:-8090}
       AGGREGATOR_API_KEY: ${AGGREGATOR_API_KEY:?AGGREGATOR_API_KEY must be set in .env}
       BMKG_BASE_URL: http://bmkg-mock:${BMKG_PORT:-8081}
@@ -186,8 +188,8 @@ services:
     build: ./services/dashboard-updater
     environment:
       RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER must be set in .env}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set in .env}@rabbitmq:5672/
-      RABBITMQ_EXCHANGE: hazard_events
-      BINDING_KEY: hazard.#
+      RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-hazard_events}
+      BINDING_KEY: ${BINDING_KEY:-hazard.#}
       DASHBOARD_UPDATER_QUEUE: ${DASHBOARD_UPDATER_QUEUE:-dashboard-updater-queue}
       DASHBOARD_UPDATER_PREFETCH: ${DASHBOARD_UPDATER_PREFETCH:-10}
       DASHBOARD_UPDATER_HEALTH_PORT: ${DASHBOARD_UPDATER_HEALTH_PORT:-8092}

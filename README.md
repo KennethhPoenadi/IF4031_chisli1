@@ -43,22 +43,60 @@ Tambahkan `-v` untuk ikut menghapus data Mongo dan RabbitMQ.
 
 ## Konfigurasi
 
-Daftar lengkap ada di `.env.example`. Yang paling sering diubah:
+Semua konfigurasi dibaca dari environment variable. Salin `.env.example` jadi `.env` (tidak ikut ter-commit), lalu ubah nilainya. "Wajib" berarti service menolak start kalau kosong. Nilai kredensial di `.env.example` hanya contoh untuk demo.
 
 | Variabel | Default | Fungsi |
 |---|---|---|
-| `AGGREGATOR_POLL_INTERVAL_SECONDS` | 5 | interval polling ke BMKG dan PVMBG |
-| `AGGREGATOR_BMKG_TIMEOUT_MS`, `AGGREGATOR_PVMBG_TIMEOUT_MS` | 2000, 4000 | timeout per sumber |
-| `AGGREGATOR_PVMBG_STALE_AFTER_SECONDS` | 30 | batas data vulkanik ditandai stale |
+| `BMKG_PORT` | 8081 | port bmkg-mock |
+| `BMKG_API_KEY` | wajib | kunci header `X-BMKG-Key` |
 | `BMKG_DELAY_MS` | 100 | delay tetap BMKG, boleh 50 sampai 150 |
-| `PVMBG_DELAY_MIN_MS`, `PVMBG_DELAY_MAX_MS` | 500, 3000 | rentang delay acak PVMBG |
-| `BMKG_GENERATION_INTERVAL_SECONDS`, `PVMBG_GENERATION_INTERVAL_SECONDS` | 10 | jarak kemunculan data baru di mock |
-| `AUTH_ACCESS_TTL_SECONDS`, `AUTH_REFRESH_TTL_SECONDS` | 60, 600 | umur token |
-| `CLIENT_API_MAX_INFLIGHT` | 200 | batas request bersamaan, selebihnya dijawab 429 |
+| `BMKG_SEED_COUNT` | 20 | jumlah data awal, minimal 20 |
+| `BMKG_GENERATION_INTERVAL_SECONDS` | 10 | jarak kemunculan event baru |
+| `BMKG_RANDOM_SEED` | 4031 | seed acak, data bisa diulang |
+| `PVMBG_PORT` | 8082 | port pvmbg-mock |
+| `PVMBG_TOKEN` | wajib | token Bearer PVMBG |
+| `PVMBG_DELAY_MIN_MS`, `PVMBG_DELAY_MAX_MS` | 500, 3000 | rentang delay acak, 500 ≤ min ≤ max ≤ 3000 |
+| `PVMBG_SEED_COUNT` | 20 | jumlah data awal, minimal 20 |
+| `PVMBG_GENERATION_INTERVAL_SECONDS` | 10 | jarak kemunculan laporan baru |
+| `PVMBG_RANDOM_SEED` | 4031 | seed acak |
+| `AUTH_PORT` | 8091 | port auth-service |
+| `AUTH_SIGNING_SEED` | wajib | seed kunci penandatangan token, base64 dari 32 byte |
+| `AUTH_INTERNAL_KEY` | wajib | kunci `/revocations`, dipakai auth-service dan client-facing-api |
+| `AUTH_ACCESS_TTL_SECONDS` | 60 | umur access token |
+| `AUTH_REFRESH_TTL_SECONDS` | 600 | umur refresh token |
+| `AUTH_TOKEN_ISSUER` | bnpb-auth | nilai klaim `iss` token |
+| `AUTH_CLIENT_MEDIA_ID`, `AUTH_CLIENT_MEDIA_SECRET` | wajib | identitas client Media |
+| `AUTH_CLIENT_FIELD_ID`, `AUTH_CLIENT_FIELD_SECRET` | wajib | identitas client Tim Lapangan |
+| `AUTH_CLIENT_OPS_ID`, `AUTH_CLIENT_OPS_SECRET` | wajib | identitas client Internal Ops |
+| `CLIENT_API_PORT` | 8080 | port client-facing-api |
+| `AGGREGATOR_API_KEY` | wajib | kunci `X-Internal-Key` ke aggregator |
+| `CLIENT_API_AGGREGATOR_TIMEOUT_MS` | 1500 | timeout panggilan ke aggregator |
+| `CLIENT_API_MAX_INFLIGHT` | 200 | batas request bersamaan, selebihnya 429 |
 | `CLIENT_API_REVOCATION_POLL_MS` | 250 | jeda sinkron daftar token yang dicabut |
-| `NOTIFIER_MIN_SEVERITY`, `NOTIFIER_BINDING_KEYS` | WASPADA, `hazard.#` | batas alert dan filter routing key |
-
-Kredensial demo di `.env.example` dipakai pada contoh di bawah. Service menolak start kalau secret wajib kosong.
+| `AUTH_PUBLIC_KEY` | kosong | opsional, menyematkan kunci publik agar tidak memanggil `/public-key` |
+| `AGGREGATOR_PORT` | 8090 | port aggregator |
+| `AGGREGATOR_POLL_INTERVAL_SECONDS` | 5 | interval polling ke BMKG dan PVMBG |
+| `AGGREGATOR_BMKG_TIMEOUT_MS` | 2000 | timeout ke BMKG |
+| `AGGREGATOR_PVMBG_TIMEOUT_MS` | 4000 | timeout ke PVMBG |
+| `AGGREGATOR_PVMBG_STALE_AFTER_SECONDS` | 30 | batas data vulkanik ditandai stale |
+| `MONGO_ROOT_USERNAME`, `MONGO_ROOT_PASSWORD` | wajib | kredensial MongoDB |
+| `MONGO_DB_NAME` | bnpb_canonical | nama database |
+| `MONGO_HAZARD_COLLECTION` | hazard_events | nama koleksi |
+| `RABBITMQ_USER`, `RABBITMQ_PASSWORD` | wajib | kredensial RabbitMQ |
+| `RABBITMQ_EXCHANGE` | hazard_events | nama exchange, sama untuk semua service |
+| `RABBITMQ_EXCHANGE_TYPE` | topic | tipe exchange |
+| `RABBITMQ_URL` | dirakit compose | string koneksi AMQP, hanya perlu diisi bila service dijalankan di luar Docker |
+| `NOTIFIER_QUEUE` | notifier-queue | nama queue notifier |
+| `NOTIFIER_BINDING_KEYS` | hazard.# | routing key yang diikat notifier, dipisah koma |
+| `NOTIFIER_MIN_SEVERITY` | WASPADA | batas severity untuk alert |
+| `NOTIFIER_PROCESS_DELAY_MS` | 0 | simulasi consumer lambat |
+| `NOTIFIER_PREFETCH` | 10 | pesan belum di-ack yang boleh dipegang notifier |
+| `NOTIFIER_HEALTH_PORT` | 8093 | port health notifier |
+| `DASHBOARD_UPDATER_QUEUE` | dashboard-updater-queue | nama queue dashboard-updater |
+| `DASHBOARD_UPDATER_PREFETCH` | 10 | pesan belum di-ack yang boleh dipegang dashboard-updater |
+| `DASHBOARD_UPDATER_HEALTH_PORT` | 8092 | port health dan `/state` dashboard-updater |
+| `BINDING_KEY` | hazard.# | routing key yang diikat dashboard-updater |
+| `BMKG_BASE_URL`, `PVMBG_BASE_URL`, `MONGO_URI`, `AGGREGATOR_URL`, `AUTH_SERVICE_URL` | dirakit compose | alamat antar service, hanya perlu diisi bila service dijalankan di luar Docker |
 
 ## Skenario
 
