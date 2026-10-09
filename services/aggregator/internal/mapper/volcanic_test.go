@@ -152,15 +152,11 @@ func TestMapVolcanicReportKnownAndUnknownVolcano(t *testing.T) {
 	}
 }
 
-func TestMapVolcanicReportFractionalEruptionCountCurrentBehavior(t *testing.T) {
+func TestMapVolcanicReportRejectsFractionalEruptionCount(t *testing.T) {
 	raw := validVolcanicReport()
 	raw["eruption_count_24h"] = 3.7
 
-	event, err := MapVolcanicReport(raw)
-	if err != nil {
-		t.Fatalf("MapVolcanicReport() error = %v", err)
-	}
-	if got := event.Attributes["eruption_count_24h"]; got != 3 {
-		t.Fatalf("fractional eruption_count_24h mapped to %#v, want truncation to int(3)", got)
+	if _, err := MapVolcanicReport(raw); err == nil || !strings.Contains(err.Error(), "eruption_count_24h") {
+		t.Fatalf("MapVolcanicReport() error = %v, want rejection naming eruption_count_24h", err)
 	}
 }

@@ -2,6 +2,8 @@ package mapper
 
 import (
 	"fmt"
+	"math"
+	"strconv"
 	"time"
 )
 
@@ -39,6 +41,14 @@ func requireInt(raw map[string]any, key string) (int, error) {
 	}
 	switch n := v.(type) {
 	case float64:
+		if math.IsNaN(n) || math.IsInf(n, 0) || math.Trunc(n) != n {
+			return 0, fmt.Errorf("field %q must be an integer, got %v", key, n)
+		}
+
+		intLimit := float64(uint64(1) << (strconv.IntSize - 1))
+		if n < -intLimit || n >= intLimit {
+			return 0, fmt.Errorf("field %q must fit in an int, got %v", key, n)
+		}
 		return int(n), nil
 	case int:
 		return n, nil

@@ -1,6 +1,8 @@
 package mapper
 
 import (
+	"math"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -22,6 +24,23 @@ func TestRequireHelpersAcceptAndRejectTypes(t *testing.T) {
 			if err != nil || got != 3 {
 				t.Fatalf("requireInt(%v) = %v, %v", v, got, err)
 			}
+		}
+	})
+	t.Run("int rejects non-integral and unsafe float64 values", func(t *testing.T) {
+		intLimit := float64(uint64(1) << (strconv.IntSize - 1))
+		for name, v := range map[string]float64{
+			"fraction":          3.7,
+			"NaN":               math.NaN(),
+			"positive infinity": math.Inf(1),
+			"negative infinity": math.Inf(-1),
+			"positive overflow": intLimit,
+			"negative overflow": -intLimit - intLimit,
+		} {
+			t.Run(name, func(t *testing.T) {
+				if got, err := requireInt(map[string]any{"k": v}, "k"); err == nil {
+					t.Fatalf("requireInt(%v) = %v, want an error", v, got)
+				}
+			})
 		}
 	})
 	t.Run("bool", func(t *testing.T) {
