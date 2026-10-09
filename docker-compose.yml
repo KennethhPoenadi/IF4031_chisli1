@@ -141,7 +141,10 @@ services:
     healthcheck:
       # dijalankan sebagai user rabbitmq: bila probe root berjalan sebelum server membuat .erlang.cookie,
       # cookie dibuat milik root dan RabbitMQ gagal start (eacces) pada volume baru
-      test: ["CMD", "gosu", "rabbitmq", "rabbitmq-diagnostics", "-q", "ping"]
+      # check_port_connectivity memastikan port AMQP benar-benar menerima koneksi, tidak hanya node Erlang yang hidup
+      # (ping lebih awal sukses sehingga aggregator bisa start sebelum broker siap dan keluar karena connection refused)
+      test: ["CMD", "gosu", "rabbitmq", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      start_period: 10s
       interval: 5s
       timeout: 5s
       retries: 10
