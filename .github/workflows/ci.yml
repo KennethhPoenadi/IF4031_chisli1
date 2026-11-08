@@ -1,0 +1,304 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "services/**"
+      - ".golangci.yml"
+      - ".github/workflows/ci.yml"
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # Only supersede stale PR runs; never cancel an in-flight build/deploy on main.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  GO_IMAGE: golang:1.26.10
+  GOFLAGS: -mod=readonly
+  # Registry namespace of the app images. Must equal APP_IMAGE_NAME in the infra repo.
+  IMAGE_NAME: ${{ vars.APP_IMAGE_NAME || github.event.repository.name }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container: golangci/golangci-lint:v2.15.0
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - aggregator
+          - auth-service
+          - bmkg-mock
+          - client-facing-api
+          - dashboard-updater
+          - notifier
+          - pvmbg-mock
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          key: go-mod-${{ matrix.service }}-${{ hashFiles(format('services/{0}/go.mod', matrix.service), format('services/{0}/go.sum', matrix.service)) }}
+          restore-keys: go-mod-${{ matrix.service }}-
+          path: |
+            /go/pkg/mod
+            /root/.cache/golangci-lint
+      - name: go vet
+        working-directory: services/${{ matrix.service }}
+        run: go vet ./...
+      - name: golangci-lint
+        working-directory: services/${{ matrix.service }}
+        run: golangci-lint run --timeout 5m ./...
+
+  unit-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container: golang:1.26.10
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - aggregator
+          - auth-service
+          - bmkg-mock
+          - client-facing-api
+          - dashboard-updater
+          - notifier
+          - pvmbg-mock
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          key: go-mod-${{ matrix.service }}-${{ hashFiles(format('services/{0}/go.mod', matrix.service), format('services/{0}/go.sum', matrix.service)) }}
+          restore-keys: go-mod-${{ matrix.service }}-
+          path: /go/pkg/mod
+      - name: go test
+        working-directory: services/${{ matrix.service }}
+        run: |
+          go test -race -covermode=atomic -coverprofile=coverage.out ./...
+          total="$(go tool cover -func=coverage.out | tail -n 1)"
+          echo "$total"
+          echo "**${{ matrix.service }}** — $total" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-${{ matrix.service }}
+          path: services/${{ matrix.service }}/coverage.out
+          retention-days: 7
+          if-no-files-found: ignore
+
+  sast-diff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container: semgrep/semgrep:1.182.1
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      SEMGREP_SEND_METRICS: "off"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Semgrep (only findings introduced by this change)
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          # The image sets this and then expects the code at /src; Actions mounts it at $GITHUB_WORKSPACE.
+          unset SEMGREP_IN_DOCKER
+          BASE=""
+          if [ -n "$PR_BASE_SHA" ]; then
+            BASE="$PR_BASE_SHA"
+          elif [ -n "$PUSH_BEFORE_SHA" ] && [ "$PUSH_BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
+            BASE="$PUSH_BEFORE_SHA"
+          fi
+          if [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            echo "Scanning only findings introduced since $BASE"
+            semgrep scan --config p/golang --config p/secrets --metrics=off --error \
+              --baseline-commit "$BASE" --sarif --output semgrep.sarif
+          else
+            echo "No base commit available, scanning the whole repo"
+            semgrep scan --config p/golang --config p/secrets --metrics=off --error \
+              --sarif --output semgrep.sarif
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: semgrep-sarif
+          path: semgrep.sarif
+          retention-days: 7
+          if-no-files-found: ignore
+      # Shows findings in the Security tab. Needs a public repo or GitHub Advanced Security, so it never fails the job.
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always() && hashFiles('semgrep.sarif') != ''
+        continue-on-error: true
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+  dependency-scanning:
+    needs: [lint, unit-test, sast-diff]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container: golang:1.26.10
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - aggregator
+          - auth-service
+          - bmkg-mock
+          - client-facing-api
+          - dashboard-updater
+          - notifier
+          - pvmbg-mock
+    env:
+      GOVULNCHECK_VERSION: v1.1.4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          key: go-mod-${{ matrix.service }}-${{ hashFiles(format('services/{0}/go.mod', matrix.service), format('services/{0}/go.sum', matrix.service)) }}
+          restore-keys: go-mod-${{ matrix.service }}-
+          path: /go/pkg/mod
+      - run: go install golang.org/x/vuln/cmd/govulncheck@$GOVULNCHECK_VERSION
+      - name: govulncheck
+        working-directory: services/${{ matrix.service }}
+        run: $GOPATH/bin/govulncheck ./...
+
+  build:
+    # Images are only published from main; PRs stop after lint, test, SAST and dependency scanning.
+    if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    needs: [lint, unit-test, sast-diff]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container: golang:1.26.10
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - aggregator
+          - auth-service
+          - bmkg-mock
+          - client-facing-api
+          - dashboard-updater
+          - notifier
+          - pvmbg-mock
+    env:
+      KO_VERSION: v0.17.1
+      KO_BASE_IMAGE: gcr.io/distroless/static-debian12:nonroot
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          key: go-mod-${{ matrix.service }}-${{ hashFiles(format('services/{0}/go.mod', matrix.service), format('services/{0}/go.sum', matrix.service)) }}
+          restore-keys: go-mod-${{ matrix.service }}-
+          path: /go/pkg/mod
+      - name: Build and push (amd64 + arm64)
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: |
+          # ko cross-compiles with the Go toolchain (no Docker daemon, no emulation), so one job
+          # publishes a multi-arch (amd64 + arm64) index. Kaniko cannot do this: --custom-platform
+          # applies to every stage, which forces the Go build itself to run under QEMU.
+          : "${DOCKERHUB_USERNAME:?secret DOCKERHUB_USERNAME belum diisi}"
+          : "${DOCKERHUB_TOKEN:?secret DOCKERHUB_TOKEN belum diisi}"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          go install github.com/google/ko@$KO_VERSION
+          echo "$DOCKERHUB_TOKEN" | $GOPATH/bin/ko login index.docker.io -u "$DOCKERHUB_USERNAME" --password-stdin
+          cd "services/$SERVICE"
+          PKG=./cmd/$SERVICE; [ -d "$PKG" ] || PKG=./cmd/server
+          SHORT_SHA="${GITHUB_SHA::8}"
+          TAGS="$SERVICE-$SHORT_SHA,$SERVICE-latest"
+          IMAGE="$DOCKERHUB_USERNAME/$IMAGE_NAME"
+          export KO_DOCKER_REPO="docker.io/$(printf '%s' "$IMAGE" | tr '[:upper:]' '[:lower:]')"
+          export KO_DEFAULTBASEIMAGE="$KO_BASE_IMAGE"
+          $GOPATH/bin/ko build "$PKG" \
+            --bare \
+            --platform=linux/amd64,linux/arm64 \
+            --sbom=none \
+            --tags "$TAGS" \
+            --image-label org.opencontainers.image.revision="$GITHUB_SHA" \
+            --image-label org.opencontainers.image.source="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+
+  trivy:
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - aggregator
+          - auth-service
+          - bmkg-mock
+          - client-facing-api
+          - dashboard-updater
+          - notifier
+          - pvmbg-mock
+    env:
+      TRIVY_IMAGE: aquasec/trivy:0.76.1
+      TRIVY_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      TRIVY_PASSWORD: ${{ secrets.DOCKERHUB_TOKEN }}
+      TRIVY_NO_PROGRESS: "true"
+    steps:
+      - uses: actions/cache@v4
+        with:
+          key: trivy-db-${{ github.run_id }}
+          restore-keys: trivy-db-
+          path: ~/.cache/trivy
+      - name: Scan image
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: |
+          IMAGE="$(printf '%s' "$TRIVY_USERNAME/$IMAGE_NAME" | tr '[:upper:]' '[:lower:]'):$SERVICE-${GITHUB_SHA::8}"
+          mkdir -p "$HOME/.cache/trivy" reports
+          trivy() {
+            docker run --rm -e TRIVY_USERNAME -e TRIVY_PASSWORD -e TRIVY_NO_PROGRESS \
+              -v "$HOME/.cache/trivy:/root/.cache/trivy" -v "$PWD/reports:/reports" \
+              "$TRIVY_IMAGE" "$@"
+          }
+          # The report is produced first so it is uploaded even when the gate below fails.
+          trivy image --format sarif -o "/reports/trivy-$SERVICE.sarif" "$IMAGE"
+          trivy image --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed "$IMAGE"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trivy-${{ matrix.service }}
+          path: reports/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # Hands the new image tag to the infra repo; its release workflow commits it to git and Argo CD syncs it.
+  deploy-dev:
+    needs: [build, dependency-scanning, trivy]
+    if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch release to infra repo
+        env:
+          GH_TOKEN: ${{ secrets.INFRA_DISPATCH_TOKEN }}
+          INFRA_REPOSITORY: ${{ vars.INFRA_REPOSITORY }}
+        run: |
+          : "${GH_TOKEN:?secret INFRA_DISPATCH_TOKEN belum diisi}"
+          : "${INFRA_REPOSITORY:?variable INFRA_REPOSITORY belum diisi (format owner/repo)}"
+          gh api --method POST "repos/$INFRA_REPOSITORY/dispatches" \
+            -f event_type=deploy-dev \
+            -f "client_payload[image_tag]=${GITHUB_SHA::8}" \
+            -f "client_payload[source_repository]=$GITHUB_REPOSITORY" \
+            -f "client_payload[source_sha]=$GITHUB_SHA"
+          echo "Release dev dikirim ke $INFRA_REPOSITORY dengan tag ${GITHUB_SHA::8}" >> "$GITHUB_STEP_SUMMARY"

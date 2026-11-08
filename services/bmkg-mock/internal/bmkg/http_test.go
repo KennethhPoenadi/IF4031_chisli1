@@ -128,14 +128,18 @@ func TestSinceFiltersAndIsValidated(t *testing.T) {
 
 	rec := h.do(http.MethodGet, "/seismic-events?since="+tenth.Format(time.RFC3339Nano), key)
 	var events []SeismicEvent
-	json.Unmarshal(rec.Body.Bytes(), &events)
+	if err := json.Unmarshal(rec.Body.Bytes(), &events); err != nil {
+		t.Fatalf("decode events: %v", err)
+	}
 	if rec.Code != http.StatusOK || len(events) != 10 {
 		t.Fatalf("since filter: %d events=%d", rec.Code, len(events))
 	}
 
 	rec = h.do(http.MethodGet, "/tsunami-warnings?since=2000-01-01T00:00:00Z", key)
 	var warnings []TsunamiWarning
-	json.Unmarshal(rec.Body.Bytes(), &warnings)
+	if err := json.Unmarshal(rec.Body.Bytes(), &warnings); err != nil {
+		t.Fatalf("decode warnings: %v", err)
+	}
 	if len(warnings) != 5 {
 		t.Fatalf("warnings = %d", len(warnings))
 	}

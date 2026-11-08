@@ -51,7 +51,9 @@ func main() {
 		IdleTimeout:       60 * time.Second,
 	}
 
+	shutdownDone := make(chan struct{})
 	go func() {
+		defer close(shutdownDone)
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -63,4 +65,6 @@ func main() {
 		log.Error("server failed", "err", err)
 		os.Exit(1)
 	}
+	// ListenAndServe returns as soon as Shutdown is called; wait for in-flight requests to drain.
+	<-shutdownDone
 }

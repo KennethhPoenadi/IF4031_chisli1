@@ -1,0 +1,9 @@
+version: "2"
+
+linters:
+  exclusions:
+    presets:
+      - std-error-handling   
+    rules:
+      - linters: [errcheck]
+        text: "Error return value of .*(Write|Encode|godotenv\\.Load|Disconnect).* is not checked"
