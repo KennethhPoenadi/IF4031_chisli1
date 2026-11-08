@@ -20,7 +20,7 @@ permissions:
 env:
   GO_IMAGE: golang:1.26.10
   GOFLAGS: -mod=readonly
-  # Registry namespace of the app images. Must equal APP_IMAGE_NAME in the infra repo.
+  # Image name under ghcr.io/<owner>/. Must equal APP_IMAGE_NAME in the infra repo.
   IMAGE_NAME: ${{ vars.APP_IMAGE_NAME || github.event.repository.name }}
 
 defaults:
@@ -184,6 +184,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     container: golang:1.26.10
+    # packages: write is what lets the built-in GITHUB_TOKEN push to ghcr.io; no PAT is needed.
+    permissions:
+      contents: read
+      packages: write
     strategy:
       fail-fast: false
       matrix:
@@ -198,8 +202,8 @@ jobs:
     env:
       KO_VERSION: v0.17.1
       KO_BASE_IMAGE: gcr.io/distroless/static-debian12:nonroot
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      REGISTRY_USER: ${{ github.actor }}
+      REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/cache@v4
@@ -214,17 +218,15 @@ jobs:
           # ko cross-compiles with the Go toolchain (no Docker daemon, no emulation), so one job
           # publishes a multi-arch (amd64 + arm64) index. Kaniko cannot do this: --custom-platform
           # applies to every stage, which forces the Go build itself to run under QEMU.
-          : "${DOCKERHUB_USERNAME:?secret DOCKERHUB_USERNAME belum diisi}"
-          : "${DOCKERHUB_TOKEN:?secret DOCKERHUB_TOKEN belum diisi}"
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           go install github.com/google/ko@$KO_VERSION
-          echo "$DOCKERHUB_TOKEN" | $GOPATH/bin/ko login index.docker.io -u "$DOCKERHUB_USERNAME" --password-stdin
+          echo "$REGISTRY_TOKEN" | $GOPATH/bin/ko login ghcr.io -u "$REGISTRY_USER" --password-stdin
           cd "services/$SERVICE"
           PKG=./cmd/$SERVICE; [ -d "$PKG" ] || PKG=./cmd/server
           SHORT_SHA="${GITHUB_SHA::8}"
           TAGS="$SERVICE-$SHORT_SHA,$SERVICE-latest"
-          IMAGE="$DOCKERHUB_USERNAME/$IMAGE_NAME"
-          export KO_DOCKER_REPO="docker.io/$(printf '%s' "$IMAGE" | tr '[:upper:]' '[:lower:]')"
+          # GHCR requires lowercase repository names.
+          export KO_DOCKER_REPO="ghcr.io/$(printf '%s' "$GITHUB_REPOSITORY_OWNER/$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')"
           export KO_DEFAULTBASEIMAGE="$KO_BASE_IMAGE"
           $GOPATH/bin/ko build "$PKG" \
             --bare \
@@ -238,6 +240,9 @@ jobs:
     needs: [build]
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
     strategy:
       fail-fast: false
       matrix:
@@ -251,8 +256,8 @@ jobs:
           - pvmbg-mock
     env:
       TRIVY_IMAGE: aquasec/trivy:0.76.1
-      TRIVY_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      TRIVY_PASSWORD: ${{ secrets.DOCKERHUB_TOKEN }}
+      TRIVY_USERNAME: ${{ github.actor }}
+      TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
       TRIVY_NO_PROGRESS: "true"
     steps:
       - uses: actions/cache@v4
@@ -264,7 +269,7 @@ jobs:
         env:
           SERVICE: ${{ matrix.service }}
         run: |
-          IMAGE="$(printf '%s' "$TRIVY_USERNAME/$IMAGE_NAME" | tr '[:upper:]' '[:lower:]'):$SERVICE-${GITHUB_SHA::8}"
+          IMAGE="ghcr.io/$(printf '%s' "$GITHUB_REPOSITORY_OWNER/$IMAGE_NAME" | tr '[:upper:]' '[:lower:]'):$SERVICE-${GITHUB_SHA::8}"
           mkdir -p "$HOME/.cache/trivy" reports
           trivy() {
             docker run --rm -e TRIVY_USERNAME -e TRIVY_PASSWORD -e TRIVY_NO_PROGRESS \
