@@ -8,14 +8,14 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o dashboard-updater ./cmd/dashboard-updater
 
-FROM alpine:3.20
+FROM alpine:3.22
 
-RUN addgroup -S app && adduser -S -G app app
+RUN addgroup -S -g 65532 app && adduser -S -u 65532 -G app app
 
 WORKDIR /app
 
 COPY --from=builder /app/dashboard-updater .
 
-USER app
+USER 65532:65532
 
 CMD ["./dashboard-updater"]

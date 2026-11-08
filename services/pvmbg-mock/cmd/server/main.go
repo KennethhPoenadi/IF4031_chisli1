@@ -36,7 +36,9 @@ func main() {
 		MaxHeaderBytes:    1 << 20,
 	}
 
+	shutdownDone := make(chan struct{})
 	go func() {
+		defer close(shutdownDone)
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -48,4 +50,6 @@ func main() {
 		logger.Error("server stopped unexpectedly", "error", err)
 		os.Exit(1)
 	}
+	// ListenAndServe returns as soon as Shutdown is called; wait for in-flight requests to drain.
+	<-shutdownDone
 }

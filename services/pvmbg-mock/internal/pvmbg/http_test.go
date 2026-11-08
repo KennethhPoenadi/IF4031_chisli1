@@ -127,7 +127,9 @@ func TestSinceFiltersAndIsValidated(t *testing.T) {
 
 	rec := h.do(http.MethodGet, "/volcanic-reports?since="+tenth.Format(time.RFC3339Nano), "", bearer())
 	var reports []map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &reports)
+	if err := json.Unmarshal(rec.Body.Bytes(), &reports); err != nil {
+		t.Fatalf("decode reports: %v", err)
+	}
 	if rec.Code != http.StatusOK || len(reports) != 10 {
 		t.Fatalf("since filter: %d reports=%d", rec.Code, len(reports))
 	}
