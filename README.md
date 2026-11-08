@@ -236,13 +236,14 @@ done
 
 ## Build dan deployment
 
-Setiap push ke `main` menjalankan workflow GitHub Actions `.github/workflows/ci.yml` (pull request menjalankan lint, unit test, SAST, dan dependency scanning saja): lint (`go vet`, golangci-lint), unit test dengan `-race` dan coverage, SAST (Semgrep), build image multi-arch (amd64 dan arm64) dengan `ko`, `govulncheck`, scan image dengan Trivy, lalu memicu workflow rilis di repositori `infra` lewat `repository_dispatch`. Image didorong ke Docker Hub dengan dua tag per service: `<service>-<sha8>` dan `<service>-latest`. Deployment ke Kubernetes dikelola dari repositori `infra`. Penjelasannya ada di repositori `docs`.
+Setiap push ke `main` menjalankan workflow GitHub Actions `.github/workflows/ci.yml` (pull request menjalankan lint, unit test, SAST, dan dependency scanning saja): lint (`go vet`, golangci-lint), unit test dengan `-race` dan coverage, SAST (Semgrep), build image multi-arch (amd64 dan arm64) dengan `ko`, `govulncheck`, scan image dengan Trivy, lalu memicu workflow rilis di repositori `infra` lewat `repository_dispatch`. Image didorong ke GitHub Container Registry (`ghcr.io/<owner>/<nama-image>`) dengan dua tag per service: `<service>-<sha8>` dan `<service>-latest`. Deployment ke Kubernetes dikelola dari repositori `infra`. Penjelasannya ada di repositori `docs`.
 
 Konfigurasi di Settings → Secrets and variables → Actions:
 
 | Nama | Jenis | Fungsi |
 | --- | --- | --- |
-| `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` | Secret | Push image ke Docker Hub dan scan Trivy |
 | `INFRA_DISPATCH_TOKEN` | Secret | Fine-grained PAT dengan izin Contents (read/write) pada repositori `infra`, untuk memicu rilis dev |
 | `INFRA_REPOSITORY` | Variable | Repositori infra dalam format `owner/repo` |
-| `APP_IMAGE_NAME` | Variable | Nama repositori image di Docker Hub. Opsional, default-nya nama repositori ini. Harus sama dengan `APP_IMAGE_NAME` di repositori `infra` |
+| `APP_IMAGE_NAME` | Variable | Nama image di `ghcr.io/<owner>/`. Opsional, default-nya nama repositori ini. Harus sama dengan `APP_IMAGE_NAME` di repositori `infra` |
+
+Push dan scan image memakai `GITHUB_TOKEN` bawaan (izin `packages: write` hanya di job build, `packages: read` di job Trivy), jadi tidak ada kredensial registry yang perlu disimpan. Setelah build pertama, package muncul di tab Packages. Biarkan private dan beri akses baca ke cluster lewat token terpisah (lihat README `infra`).
