@@ -12,6 +12,7 @@ import (
 
 	"auth-service/internal/auth"
 	"auth-service/internal/config"
+	"telemetry"
 )
 
 func main() {
@@ -29,6 +30,18 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Telemetry gagal dimulai tidak boleh mematikan layanan: lanjut tanpa instrumentasi dan catat peringatan.
+	tel, err := telemetry.Init(ctx, "auth-service", log)
+	if err != nil {
+		log.Warn("telemetry disabled", "err", err)
+	} else {
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = tel.Shutdown(shutdownCtx)
+		}()
+	}
+
 	go func() {
 		t := time.NewTicker(30 * time.Second)
 		defer t.Stop()
@@ -42,9 +55,13 @@ func main() {
 		}
 	}()
 
+	routes := handler.Routes()
+	if tel != nil {
+		routes = tel.Middleware(routes)
+	}
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           handler.Routes(),
+		Handler:           routes,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,
