@@ -3,6 +3,7 @@ package httpx
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
@@ -55,6 +56,13 @@ func Observe(log *slog.Logger) func(http.Handler) http.Handler {
 	}
 }
 
+// TokenEqual membandingkan dua kredensial dalam waktu konstan. Keduanya di-hash dulu agar panjang token tidak
+// bocor lewat waktu respons (subtle.ConstantTimeCompare langsung berhenti bila panjangnya berbeda).
+func TokenEqual(a, b string) bool {
+	ha, hb := sha256.Sum256([]byte(a)), sha256.Sum256([]byte(b))
+	return subtle.ConstantTimeCompare(ha[:], hb[:]) == 1
+}
+
 func RequireInternalKey(expected string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -63,7 +71,7 @@ func RequireInternalKey(expected string) func(http.Handler) http.Handler {
 				WriteError(w, http.StatusUnauthorized, "missing X-Internal-Key")
 				return
 			}
-			if subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) != 1 {
+			if !TokenEqual(provided, expected) {
 				WriteError(w, http.StatusForbidden, "invalid internal credential")
 				return
 			}
