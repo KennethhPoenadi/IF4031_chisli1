@@ -16,22 +16,26 @@ import (
 	"aggregator/internal/hazard"
 	"aggregator/internal/httpx"
 	"aggregator/internal/poller"
-	"aggregator/internal/store"
+	"aggregator/internal/shardstore"
 )
 
 type fakeReader struct {
 	events    []hazard.Event
 	err       error
 	pingErr   error
+	page      shardstore.Page // metadata halaman (partial, cursor) yang dikembalikan bersama events
 	gotLimit  int64
-	gotFilter store.Filter
+	gotFilter shardstore.Filter
+	gotCursor string
 	calls     int
 }
 
-func (f *fakeReader) GetHazardEvents(limit int64, filter store.Filter) ([]hazard.Event, error) {
+func (f *fakeReader) ListEvents(_ context.Context, q shardstore.ListQuery) (shardstore.Page, error) {
 	f.calls++
-	f.gotLimit, f.gotFilter = limit, filter
-	return f.events, f.err
+	f.gotLimit, f.gotFilter, f.gotCursor = int64(q.Limit), q.Filter, q.Cursor
+	page := f.page
+	page.Events = f.events
+	return page, f.err
 }
 
 func (f *fakeReader) Ping(context.Context) error { return f.pingErr }
@@ -68,12 +72,12 @@ func TestGetHazardEventsDefaultsAndFilters(t *testing.T) {
 	}
 	wantSince, _ := time.Parse(time.RFC3339, "2026-10-08T01:02:03Z")
 	if reader.gotLimit != 20 || reader.gotFilter.HazardType != "VOLCANIC" || reader.gotFilter.Severity != "AWAS" ||
-		reader.gotFilter.Since == nil || !reader.gotFilter.Since.Equal(wantSince) {
+		reader.gotFilter.OccurredAfter == nil || !reader.gotFilter.OccurredAfter.Equal(wantSince) {
 		t.Fatalf("limit=%d filter=%#v", reader.gotLimit, reader.gotFilter)
 	}
 
 	get(h.GetHazardEvents, "/hazard-events")
-	if reader.gotLimit != 50 || reader.gotFilter != (store.Filter{}) {
+	if reader.gotLimit != 50 || reader.gotFilter != (shardstore.Filter{}) {
 		t.Fatalf("defaults: limit=%d filter=%#v, want limit 50 and no filter", reader.gotLimit, reader.gotFilter)
 	}
 }
@@ -330,4 +334,53 @@ func TestNewHandlerFallsBackToTheDefaultLogger(t *testing.T) {
 		t.Fatal("a nil logger must be replaced so the handler never panics while logging")
 	}
 	get(h.GetHazardEvents, "/hazard-events")
+}
+
+func TestGetHazardEventsReportsPartialResultsAndUnavailableUnits(t *testing.T) {
+	reader := &fakeReader{page: shardstore.Page{Partial: true, Unavailable: []string{"store-1"}, NextCursor: "next-1"}}
+	h := newHandler(reader, poller.PVMBGStatus{}, true)
+
+	rec := get(h.GetHazardEvents, "/hazard-events?cursor=abc")
+	var body struct {
+		Meta struct {
+			Partial     bool     `json:"partial"`
+			Unavailable []string `json:"unavailable_units"`
+			NextCursor  string   `json:"next_cursor"`
+		} `json:"meta"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || rec.Code != http.StatusOK {
+		t.Fatalf("status=%d err=%v body=%s", rec.Code, err, rec.Body.String())
+	}
+	if !body.Meta.Partial || len(body.Meta.Unavailable) != 1 || body.Meta.NextCursor != "next-1" {
+		t.Fatalf("meta = %+v, harus menandai jawaban sebagian dan meneruskan cursor", body.Meta)
+	}
+	if reader.gotCursor != "abc" {
+		t.Fatalf("cursor diteruskan = %q, want abc", reader.gotCursor)
+	}
+}
+
+func TestGetHazardEventsCompleteResultIsNotPartial(t *testing.T) {
+	h := newHandler(&fakeReader{}, poller.PVMBGStatus{}, true)
+	rec := get(h.GetHazardEvents, "/hazard-events")
+	if !strings.Contains(rec.Body.String(), `"partial":false`) || !strings.Contains(rec.Body.String(), `"unavailable_units":[]`) {
+		t.Fatalf("meta lengkap harus menyatakan partial=false: %s", rec.Body.String())
+	}
+}
+
+func TestGetHazardEventsAnswersQuicklyWith503WhenNoStorageUnitIsReachable(t *testing.T) {
+	h := newHandler(&fakeReader{err: shardstore.ErrUnavailable}, poller.PVMBGStatus{}, true)
+	rec := get(h.GetHazardEvents, "/hazard-events")
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503 (bukan 500)", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"code":"store_unavailable"`) {
+		t.Fatalf("body = %s", rec.Body.String())
+	}
+}
+
+func TestGetHazardEventsRejectsAnInvalidCursor(t *testing.T) {
+	h := newHandler(&fakeReader{err: shardstore.ErrBadCursor}, poller.PVMBGStatus{}, true)
+	if rec := get(h.GetHazardEvents, "/hazard-events?cursor=zzz"); rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
 }

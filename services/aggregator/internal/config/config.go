@@ -3,7 +3,9 @@ package config
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -16,6 +18,21 @@ type Config struct {
 	RabbitMQExchangeType  string
 	AggregatorPort        string
 	AggregatorAPIKey      string
+
+	// Audit API (Lampiran A). Kosong berarti endpoint audit menolak semua permintaan.
+	AuditToken string
+	// DashboardToken melindungi dashboard analitik. Sengaja terpisah dari AuditToken (least privilege).
+	DashboardToken string
+
+	// Penyimpanan tersebar (Problem 1). StoreUnitNames kosong berarti satu unit dari MongoURI.
+	StoreUnitNames         []string
+	StoreURITemplate       string
+	StoreReplicationFactor int
+	StoreVNodes            int
+	StoreUnitTimeout       time.Duration
+	StorePingInterval      time.Duration
+	StoreRepairInterval    time.Duration
+	StoreNodeMap           string
 
 	BMKGBaseURL string
 	BMKGAPIKey  string
@@ -75,15 +92,52 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
+	storeRF, err := getEnvInt("STORE_REPLICATION_FACTOR", 2)
+	if err != nil {
+		return Config{}, err
+	}
+	storeVNodes, err := getEnvInt("STORE_VNODES", 128)
+	if err != nil {
+		return Config{}, err
+	}
+	storeTimeout, err := getEnvMS("STORE_UNIT_TIMEOUT_MS", 2000)
+	if err != nil {
+		return Config{}, err
+	}
+	storePing, err := getEnvSeconds("STORE_PING_INTERVAL_SECONDS", 2)
+	if err != nil {
+		return Config{}, err
+	}
+	storeRepair, err := getEnvSeconds("STORE_REPAIR_INTERVAL_SECONDS", 30)
+	if err != nil {
+		return Config{}, err
+	}
+
+	storeNames := splitList(getEnv("STORE_UNIT_NAMES", ""))
+	storeTemplate := getEnv("STORE_URI_TEMPLATE", "")
+	if len(storeNames) > 0 && !strings.Contains(storeTemplate, "%s") {
+		return Config{}, fmt.Errorf("STORE_URI_TEMPLATE wajib memuat %%s (nama unit) bila STORE_UNIT_NAMES diisi")
+	}
+
 	return Config{
-		MongoURI:              getEnv("MONGO_URI", "mongodb://localhost:27017"),
-		MongoDBName:           getEnv("MONGO_DB_NAME", "bnpb_canonical"),
-		MongoHazardCollection: getEnv("MONGO_HAZARD_COLLECTION", "hazard_events"),
-		RabbitMQURL:           rabbitMQURL,
-		RabbitMQExchange:      getEnv("RABBITMQ_EXCHANGE", "hazard_events"),
-		RabbitMQExchangeType:  getEnv("RABBITMQ_EXCHANGE_TYPE", "topic"),
-		AggregatorPort:        strconv.Itoa(port),
-		AggregatorAPIKey:      aggregatorAPIKey,
+		AuditToken:             getEnv("AUDIT_TOKEN", ""),
+		DashboardToken:         getEnv("DASHBOARD_TOKEN", ""),
+		StoreUnitNames:         storeNames,
+		StoreURITemplate:       storeTemplate,
+		StoreReplicationFactor: storeRF,
+		StoreVNodes:            storeVNodes,
+		StoreUnitTimeout:       storeTimeout,
+		StorePingInterval:      storePing,
+		StoreRepairInterval:    storeRepair,
+		StoreNodeMap:           getEnv("STORE_NODE_MAP", ""),
+		MongoURI:               getEnv("MONGO_URI", "mongodb://localhost:27017"),
+		MongoDBName:            getEnv("MONGO_DB_NAME", "bnpb_canonical"),
+		MongoHazardCollection:  getEnv("MONGO_HAZARD_COLLECTION", "hazard_events"),
+		RabbitMQURL:            rabbitMQURL,
+		RabbitMQExchange:       getEnv("RABBITMQ_EXCHANGE", "hazard_events"),
+		RabbitMQExchangeType:   getEnv("RABBITMQ_EXCHANGE_TYPE", "topic"),
+		AggregatorPort:         strconv.Itoa(port),
+		AggregatorAPIKey:       aggregatorAPIKey,
 
 		BMKGBaseURL: getEnv("BMKG_BASE_URL", "http://localhost:8081"),
 		BMKGAPIKey:  bmkgAPIKey,
@@ -127,4 +181,46 @@ func getEnvSeconds(key string, fallbackSeconds int) (time.Duration, error) {
 		return 0, fmt.Errorf("%s must be a positive integer", key)
 	}
 	return time.Duration(n) * time.Second, nil
+}
+
+func getEnvInt(key string, fallback int) (int, error) {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback, nil
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		return 0, fmt.Errorf("%s must be a positive integer", key)
+	}
+	return n, nil
+}
+
+func splitList(v string) []string {
+	var out []string
+	for _, part := range strings.Split(v, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
+// MinTokenLength adalah panjang minimum yang dianjurkan untuk token akses. Token yang lebih pendek tetap
+// diterima, tetapi aggregator mencatat peringatan.
+const MinTokenLength = 32
+
+// WeakTokens menyebut nama konfigurasi token yang terisi tetapi lebih pendek dari MinTokenLength, atau yang
+// dipakai ganda oleh dua endpoint berbeda.
+func (c Config) WeakTokens() []string {
+	var out []string
+	for name, v := range map[string]string{"AUDIT_TOKEN": c.AuditToken, "DASHBOARD_TOKEN": c.DashboardToken} {
+		if v != "" && len(v) < MinTokenLength {
+			out = append(out, name+" lebih pendek dari "+strconv.Itoa(MinTokenLength)+" karakter")
+		}
+	}
+	if c.AuditToken != "" && c.AuditToken == c.DashboardToken {
+		out = append(out, "AUDIT_TOKEN dan DASHBOARD_TOKEN sama: pisahkan agar pemegang dashboard tidak memegang token penguji")
+	}
+	sort.Strings(out)
+	return out
 }

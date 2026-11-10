@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -11,12 +12,15 @@ import (
 	"time"
 
 	"aggregator/internal/api"
+	"aggregator/internal/audit"
 	"aggregator/internal/bmkgclient"
 	"aggregator/internal/broker"
 	"aggregator/internal/config"
+	"aggregator/internal/dashboard"
 	"aggregator/internal/httpx"
 	"aggregator/internal/poller"
 	"aggregator/internal/pvmbgclient"
+	"aggregator/internal/shardstore"
 	"aggregator/internal/store"
 
 	"github.com/joho/godotenv"
@@ -36,22 +40,13 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	mongoStart := time.Now()
-	mongoClient, err := store.Connect(cfg.MongoURI)
+	hazardStore, closeStore, err := buildStore(cfg, log)
 	if err != nil {
-		log.Error("mongo connect failed", "err", err, "target", "mongodb", "operation", "connect",
-			"duration_ms", time.Since(mongoStart).Milliseconds(), "success", false)
+		log.Error("storage setup failed", "err", err)
 		os.Exit(1)
 	}
-	log.Info("connected to mongo", "target", "mongodb", "operation", "connect",
-		"duration_ms", time.Since(mongoStart).Milliseconds(), "success", true)
-	defer mongoClient.Disconnect(context.Background()) // ini bwt nutup klo nnti koneksi mati
-
-	hazardStore, err := store.NewHazardStore(mongoClient, cfg.MongoDBName, cfg.MongoHazardCollection)
-	if err != nil {
-		log.Error("mongo index setup failed", "err", err)
-		os.Exit(1)
-	}
+	defer closeStore()
+	go hazardStore.Run(ctx) // pemeriksaan kesehatan unit dan perbaikan penempatan data
 
 	rabbitStart := time.Now()
 	publisher, err := broker.NewPublisher(cfg.RabbitMQURL, cfg.RabbitMQExchange, cfg.RabbitMQExchangeType)
@@ -69,7 +64,18 @@ func main() {
 	p := poller.New(bmkg, pvmbg, hazardStore, publisher, cfg.PollInterval, cfg.PVMBGStaleAfter, log)
 	go p.Run(ctx)
 
-	handler := api.NewHandler(hazardStore, p, publisher, log)
+	handler := api.NewHandler(hazardStore, p, publisher, log).
+		WithAudit(audit.New(hazardStore, nil, cfg.AuditToken).WithLogger(log)).
+		WithDashboard(dashboard.New(hazardStore, cfg.DashboardToken).WithLogger(log))
+	for _, w := range cfg.WeakTokens() {
+		log.Warn("konfigurasi token lemah", "detail", w)
+	}
+	if cfg.AuditToken == "" {
+		log.Warn("AUDIT_TOKEN kosong: Audit API menolak semua permintaan")
+	}
+	if cfg.DashboardToken == "" {
+		log.Warn("DASHBOARD_TOKEN kosong: dashboard analitik menolak semua permintaan data")
+	}
 	routes := handler.Routes(cfg.AggregatorAPIKey, httpx.Observe(log))
 
 	srv := &http.Server{
@@ -97,4 +103,66 @@ func main() {
 	// ListenAndServe returns as soon as Shutdown is called; wait for in-flight requests to drain
 	// before the deferred Mongo and RabbitMQ cleanup runs.
 	<-shutdownDone
+}
+
+// buildStore membuat penyimpanan tersebar dari konfigurasi. Tanpa STORE_UNIT_NAMES, dipakai satu unit dari
+// MONGO_URI sehingga deployment lama tetap berjalan.
+func buildStore(cfg config.Config, log *slog.Logger) (*shardstore.Router, func(), error) {
+	type target struct{ name, uri string }
+	var targets []target
+	if len(cfg.StoreUnitNames) == 0 {
+		targets = []target{{name: "store-0", uri: cfg.MongoURI}}
+	} else {
+		for _, name := range cfg.StoreUnitNames {
+			targets = append(targets, target{name: name, uri: fmt.Sprintf(cfg.StoreURITemplate, name)})
+		}
+	}
+
+	var mongoUnits []*store.MongoUnit
+	units := make([]shardstore.Unit, 0, len(targets))
+	closeAll := func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		for _, u := range mongoUnits {
+			u.Close(ctx)
+		}
+	}
+	for _, t := range targets {
+		u, err := store.NewMongoUnit(t.name, t.uri, cfg.MongoDBName, cfg.MongoHazardCollection)
+		if err != nil {
+			closeAll()
+			return nil, nil, fmt.Errorf("unit %s: %w", t.name, err)
+		}
+		mongoUnits = append(mongoUnits, u)
+		units = append(units, u)
+	}
+
+	var resolvers shardstore.FallbackNodes
+	if static, err := shardstore.ParseStaticNodes(cfg.StoreNodeMap); err != nil {
+		closeAll()
+		return nil, nil, err
+	} else if len(static) > 0 {
+		resolvers = append(resolvers, static)
+	}
+	if kube, err := shardstore.NewKubeNodes(); err == nil {
+		resolvers = append(resolvers, kube)
+	} else {
+		log.Info("resolver node Kubernetes tidak aktif, nama node memakai STORE_NODE_MAP", "reason", err.Error())
+	}
+
+	router, err := shardstore.New(units, shardstore.Config{
+		ReplicationFactor: cfg.StoreReplicationFactor,
+		VNodes:            cfg.StoreVNodes,
+		UnitTimeout:       cfg.StoreUnitTimeout,
+		PingInterval:      cfg.StorePingInterval,
+		RepairInterval:    cfg.StoreRepairInterval,
+		Nodes:             resolvers,
+		Log:               log,
+	})
+	if err != nil {
+		closeAll()
+		return nil, nil, err
+	}
+	log.Info("storage configured", "units", router.UnitNames(), "replication_factor", router.ReplicationFactor())
+	return router, closeAll, nil
 }

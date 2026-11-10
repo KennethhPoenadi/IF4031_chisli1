@@ -3,19 +3,21 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
 
-	"aggregator/internal/hazard"
+	"aggregator/internal/audit"
+	"aggregator/internal/dashboard"
 	"aggregator/internal/httpx"
 	"aggregator/internal/poller"
-	"aggregator/internal/store"
+	"aggregator/internal/shardstore"
 )
 
 var (
-	validHazardTypes = map[string]bool{"SEISMIC": true, "VOLCANIC": true}
+	validHazardTypes = map[string]bool{"SEISMIC": true, "VOLCANIC": true, "WILDFIRE": true, "COASTAL": true}
 	validSeverities  = map[string]bool{"NORMAL": true, "WASPADA": true, "SIAGA": true, "AWAS": true}
 )
 
@@ -25,8 +27,10 @@ type BrokerStatus interface {
 	Connected() bool
 }
 
+// EventReader membaca event dari penyimpanan tersebar. Page.Partial dan Page.Unavailable memberi tahu
+// klien bila sebagian data tidak terjangkau.
 type EventReader interface {
-	GetHazardEvents(limit int64, filter store.Filter) ([]hazard.Event, error)
+	ListEvents(ctx context.Context, q shardstore.ListQuery) (shardstore.Page, error)
 	Ping(ctx context.Context) error
 }
 
@@ -39,6 +43,20 @@ type Handler struct {
 	poller      SourceStatus
 	broker      BrokerStatus
 	log         *slog.Logger
+	audit       *audit.Handler
+	dash        *dashboard.Handler
+}
+
+// WithDashboard mengaktifkan dashboard analitik (/dashboard) pada handler ini.
+func (h *Handler) WithDashboard(d *dashboard.Handler) *Handler {
+	h.dash = d
+	return h
+}
+
+// WithAudit mengaktifkan Audit API (Lampiran A) pada handler ini.
+func (h *Handler) WithAudit(a *audit.Handler) *Handler {
+	h.audit = a
+	return h
 }
 
 func NewHandler(hazardStore EventReader, p SourceStatus, b BrokerStatus, log *slog.Logger) *Handler {
@@ -75,10 +93,10 @@ func (h *Handler) GetHazardEvents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	filter := store.Filter{}
+	filter := shardstore.Filter{}
 	if v := q.Get("hazard_type"); v != "" {
 		if !validHazardTypes[v] {
-			http.Error(w, "hazard_type must be SEISMIC or VOLCANIC", http.StatusBadRequest)
+			http.Error(w, "hazard_type must be SEISMIC, VOLCANIC, WILDFIRE or COASTAL", http.StatusBadRequest)
 			return
 		}
 		filter.HazardType = v
@@ -96,31 +114,59 @@ func (h *Handler) GetHazardEvents(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "since must be an RFC3339 timestamp", http.StatusBadRequest)
 			return
 		}
-		filter.Since = &parsed
+		filter.OccurredAfter = &parsed
 	}
 
 	queryStart := time.Now()
-	events, err := h.hazardStore.GetHazardEvents(limit, filter)
+	page, err := h.hazardStore.ListEvents(r.Context(), shardstore.ListQuery{
+		Filter: filter, Limit: int(limit), Cursor: q.Get("cursor"), Order: shardstore.NewestFirst,
+	})
 	h.logMongoCall(r, "find_hazard_events", queryStart, err)
-	if err != nil {
+	switch {
+	case errors.Is(err, shardstore.ErrBadCursor):
+		http.Error(w, "cursor is not valid", http.StatusBadRequest)
+		return
+	case errors.Is(err, shardstore.ErrUnavailable):
+		// tidak ada satu pun unit penyimpanan yang terjangkau: jawab cepat dan jelas, bukan 500 atau menggantung
+		writeJSONError(w, http.StatusServiceUnavailable, "store_unavailable", "penyimpanan tidak terjangkau")
+		return
+	case err != nil:
 		http.Error(w, "failed to fetch hazard events", http.StatusInternalServerError)
 		return
 	}
 
+	unavailable := page.Unavailable
+	if unavailable == nil {
+		unavailable = []string{}
+	}
+	meta := map[string]any{
+		"sources": map[string]any{
+			"pvmbg": h.poller.PVMBGStatus(),
+		},
+		// partial=true berarti ada data yang tidak punya salinan terjangkau, jadi jawaban tidak lengkap
+		"partial":           page.Partial,
+		"unavailable_units": unavailable,
+	}
+	if page.NextCursor != "" {
+		meta["next_cursor"] = page.NextCursor
+	}
 	response := struct {
 		Data []any `json:"data"`
 		Meta any   `json:"meta"`
 	}{
-		Data: toAnySlice(events),
-		Meta: map[string]any{
-			"sources": map[string]any{
-				"pvmbg": h.poller.PVMBGStatus(),
-			},
-		},
+		Data: toAnySlice(page.Events),
+		Meta: meta,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+// writeJSONError menulis kesalahan dengan bentuk yang sama dengan Lampiran A.
+func writeJSONError(w http.ResponseWriter, status int, code, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": code, "message": message}})
 }
 
 func toAnySlice[T any](items []T) []any {
@@ -165,5 +211,13 @@ func (h *Handler) Routes(internalKey string, observe func(http.Handler) http.Han
 	mux.HandleFunc("GET /health", h.health)
 	mux.Handle("GET /hazard-events", httpx.RequireInternalKey(internalKey)(http.HandlerFunc(h.GetHazardEvents)))
 	mux.Handle("GET /pvmbg-status", httpx.RequireInternalKey(internalKey)(http.HandlerFunc(h.GetPVMBGStatus)))
+	if h.dash != nil {
+		// Halaman statis tanpa data. Data dilayani /dashboard/api/summary dengan token Bearer.
+		h.dash.Register(mux)
+	}
+	if h.audit != nil {
+		// Audit API memakai tokennya sendiri (Authorization: Bearer), bukan X-Internal-Key.
+		h.audit.Register(mux)
+	}
 	return observe(mux)
 }
