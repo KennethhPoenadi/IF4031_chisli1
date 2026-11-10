@@ -248,7 +248,9 @@ func TestSummaryAnswersWith503WhenNoStorageUnitIsReachable(t *testing.T) {
 	var body struct {
 		Error struct{ Code string } `json:"error"`
 	}
-	json.Unmarshal(rec.Body.Bytes(), &body)
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("bukan JSON: %v\n%s", err, rec.Body.String())
+	}
 	if body.Error.Code != "unavailable" {
 		t.Fatalf("body = %s", rec.Body.String())
 	}
