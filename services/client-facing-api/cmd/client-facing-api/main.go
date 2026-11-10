@@ -14,6 +14,7 @@ import (
 	"client-facing-api/internal/authn"
 	"client-facing-api/internal/config"
 	"client-facing-api/internal/httpx"
+	"client-facing-api/internal/priority"
 	"client-facing-api/internal/upstream"
 	"telemetry"
 )
@@ -52,11 +53,24 @@ func main() {
 	}
 	verifier := authn.NewVerifier(pub, cfg.Issuer)
 	go verifier.SyncRevocations(ctx, cfg.AuthURL, cfg.AuthInternalKey, cfg.RevocationPoll, log)
+	admission, err := priority.New(priority.Config{
+		MaxInFlight:         cfg.MaxInflight,
+		ReservedForPriority: cfg.PriorityReserved,
+		MaxPriorityQueued:   cfg.MaxPriorityQueued,
+		IsPriority: func(r *http.Request) bool {
+			claims := authn.ClaimsFrom(r.Context())
+			return claims != nil && claims.Subject == cfg.PriorityClientID
+		},
+	})
+	if err != nil {
+		log.Error("invalid priority admission configuration", "err", err)
+		os.Exit(1)
+	}
 
 	agg := upstream.New(cfg.AggregatorURL, cfg.AggregatorKey, cfg.AggregatorTimeout, cfg.MaxInflight, log)
-	handler := api.NewHandler(agg).Routes(verifier, httpx.Limit(cfg.MaxInflight), httpx.Observe(log))
+	handler := api.NewHandler(agg).Routes(verifier, admission.Middleware, httpx.Observe(log))
 	if tel != nil {
-		// span dan metrik dihitung paling luar, jadi penolakan 429 oleh Limit juga terukur
+		// span dan metrik dihitung paling luar, jadi penolakan 429 oleh admission juga terukur
 		agg.WithTransport(tel.Transport)
 		handler = tel.Middleware(handler)
 	}
@@ -78,7 +92,9 @@ func main() {
 		_ = srv.Shutdown(shutdownCtx)
 	}()
 
-	log.Info("client-facing-api listening", "port", cfg.Port, "max_inflight", cfg.MaxInflight, "aggregator_timeout_ms", cfg.AggregatorTimeout.Milliseconds())
+	log.Info("client-facing-api listening", "port", cfg.Port, "max_inflight", cfg.MaxInflight,
+		"priority_reserved", cfg.PriorityReserved, "max_priority_queued", cfg.MaxPriorityQueued,
+		"priority_client", cfg.PriorityClientID, "aggregator_timeout_ms", cfg.AggregatorTimeout.Milliseconds())
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Error("server failed", "err", err)
 		os.Exit(1)
