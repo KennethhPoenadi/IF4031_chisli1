@@ -11,7 +11,9 @@ import (
 
 	"aggregator/internal/hazard"
 	"aggregator/internal/mapper"
+	"aggregator/internal/pantaiclient"
 	"aggregator/internal/pvmbgclient"
+	"aggregator/internal/resilience"
 	"telemetry"
 )
 
@@ -32,6 +34,34 @@ type EventStore interface {
 	SaveHazardEvent(event hazard.Event) error
 }
 
+type CoastalSource interface {
+	Fetch(ctx context.Context, cursor string) (pantaiclient.Page, error)
+	Stations(ctx context.Context) (pantaiclient.StationPage, error)
+}
+
+type CoastalRejection struct {
+	Observation   map[string]any
+	Reason        string
+	CorrelationID string
+	RejectedAt    time.Time
+}
+
+type CoastalStateStore interface {
+	LoadCursor(ctx context.Context) (string, error)
+	SaveCursor(ctx context.Context, cursor string) error
+	Quarantine(ctx context.Context, rejection CoastalRejection) error
+}
+
+type CoastalConfig struct {
+	Source          CoastalSource
+	StateStore      CoastalStateStore
+	Breaker         *resilience.Breaker
+	PollInterval    time.Duration
+	StaleAfter      time.Duration
+	StationCacheTTL time.Duration
+	Now             func() time.Time
+}
+
 const cursorFormat = time.RFC3339Nano
 
 const (
@@ -47,13 +77,22 @@ type PVMBGStatus struct {
 }
 
 type Poller struct {
-	bmkg       SeismicSource
-	pvmbg      VolcanicSource
-	store      EventStore
-	publisher  Publisher
-	interval   time.Duration
-	staleAfter time.Duration
-	log        *slog.Logger
+	bmkg                   SeismicSource
+	pvmbg                  VolcanicSource
+	store                  EventStore
+	publisher              Publisher
+	interval               time.Duration
+	staleAfter             time.Duration
+	log                    *slog.Logger
+	coastal                CoastalSource
+	coastalState           CoastalStateStore
+	coastalBreaker         *resilience.Breaker
+	coastalPollInterval    time.Duration
+	coastalStaleAfter      time.Duration
+	coastalStationCacheTTL time.Duration
+	coastalNow             func() time.Time
+	coastalStations        map[string]map[string]any
+	coastalStationsAt      time.Time
 
 	bmkgSince  string
 	pvmbgSince string
@@ -62,6 +101,38 @@ type Poller struct {
 	sourceStatus  string
 	lastSuccessAt time.Time
 	staleSince    time.Time
+}
+
+func (p *Poller) ConfigureCoastal(cfg CoastalConfig) error {
+	if cfg.Source == nil {
+		return errors.New("coastal source is required")
+	}
+	if cfg.StateStore == nil {
+		return errors.New("coastal state store is required")
+	}
+	if cfg.Breaker == nil {
+		return errors.New("coastal circuit breaker is required")
+	}
+	if cfg.PollInterval <= 0 {
+		cfg.PollInterval = p.interval
+	}
+	if cfg.StaleAfter <= 0 {
+		cfg.StaleAfter = 30 * time.Second
+	}
+	if cfg.StationCacheTTL <= 0 {
+		cfg.StationCacheTTL = 5 * time.Minute
+	}
+	if cfg.Now == nil {
+		cfg.Now = time.Now
+	}
+	p.coastal = cfg.Source
+	p.coastalState = cfg.StateStore
+	p.coastalBreaker = cfg.Breaker
+	p.coastalPollInterval = cfg.PollInterval
+	p.coastalStaleAfter = cfg.StaleAfter
+	p.coastalStationCacheTTL = cfg.StationCacheTTL
+	p.coastalNow = cfg.Now
+	return nil
 }
 
 func New(bmkg SeismicSource, pvmbg VolcanicSource, hazardStore EventStore, publisher Publisher, interval time.Duration, staleAfter time.Duration, log *slog.Logger) *Poller {
@@ -97,6 +168,9 @@ func (p *Poller) PVMBGStatus() PVMBGStatus {
 func (p *Poller) Run(ctx context.Context) {
 	var workers sync.WaitGroup
 	workers.Add(2)
+	if p.coastal != nil {
+		workers.Add(1)
+	}
 
 	go func() {
 		defer workers.Done()
@@ -107,6 +181,13 @@ func (p *Poller) Run(ctx context.Context) {
 		defer workers.Done()
 		p.runPVMBGWorker(ctx)
 	}()
+
+	if p.coastal != nil {
+		go func() {
+			defer workers.Done()
+			p.runCoastalWorker(ctx)
+		}()
+	}
 
 	workers.Wait()
 }
