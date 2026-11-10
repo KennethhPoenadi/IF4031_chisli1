@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard Analitik BNPB</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f5f5f3;
+    --surface: #fcfcfb;
+    --border: #dddcd6;
+    --grid: #e9e8e3;
+    --text: #0b0b0b;
+    --text-2: #52514e;
+    --text-3: #75746f;
+    --accent: #2a78d6;
+    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4;
+    --sev-normal: #86b6ef; --sev-waspada: #3987e5; --sev-siaga: #1c5cab; --sev-awas: #0d366b;
+    --warn-bg: #fff3d6; --warn-fg: #6b4a00; --warn-border: #eda100;
+    --bad-bg: #fde4e3; --bad-fg: #8a1f1e; --bad-border: #e34948;
+    --ok-bg: #e0f3ea; --ok-fg: #0d5a3d; --ok-border: #1baf7a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --bg: #121211; --surface: #1a1a19; --border: #33322f; --grid: #2a2a28;
+      --text: #f0efec; --text-2: #c3c2b7; --text-3: #9c9b92; --accent: #3987e5;
+      --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181;
+      --sev-normal: #184f95; --sev-waspada: #256abf; --sev-siaga: #3987e5; --sev-awas: #86b6ef;
+      --warn-bg: #3a2c05; --warn-fg: #f3d58a; --warn-border: #c98500;
+      --bad-bg: #3d1717; --bad-fg: #f5b5b4; --bad-border: #e66767;
+      --ok-bg: #0f2e22; --ok-fg: #a6e3c9; --ok-border: #199e70;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 20px 16px 48px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-bottom: 16px; }
+  h1 { font-size: 22px; margin: 0; font-weight: 650; }
+  h2 { font-size: 15px; margin: 0 0 12px; font-weight: 650; }
+  .muted { color: var(--text-2); font-size: 13px; }
+  .status { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; border: 1px solid; font-size: 13px; font-weight: 600; }
+  .status.ok { background: var(--ok-bg); color: var(--ok-fg); border-color: var(--ok-border); }
+  .status.warn { background: var(--warn-bg); color: var(--warn-fg); border-color: var(--warn-border); }
+  .status.bad { background: var(--bad-bg); color: var(--bad-fg); border-color: var(--bad-border); }
+  .controls { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: end; margin-bottom: 16px; }
+  .controls label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--text-2); }
+  .controls label.inline { flex-direction: row; align-items: center; gap: 8px; padding-bottom: 6px; }
+  select, input[type=password], button { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; min-height: 36px; }
+  button { cursor: pointer; }
+  button:hover, select:hover { border-color: var(--text-3); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .banner { display: none; border: 1px solid; border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; font-weight: 600; }
+  .banner.show { display: block; }
+  .banner.bad { background: var(--bad-bg); color: var(--bad-fg); border-color: var(--bad-border); }
+  .banner.warn { background: var(--warn-bg); color: var(--warn-fg); border-color: var(--warn-border); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  .grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+  @media (min-width: 860px) { .grid { grid-template-columns: 1fr 1fr; } }
+  .grid .card { margin-bottom: 0; }
+  .total { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+  .total .n { font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 8px 0 4px; padding: 0; list-style: none; }
+  .legend li { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); }
+  .legend .sw { width: 14px; height: 4px; border-radius: 2px; flex: none; }
+  .legend b { color: var(--text); font-variant-numeric: tabular-nums; }
+  .chart-box { position: relative; }
+  svg.chart { width: 100%; height: auto; display: block; touch-action: pan-y; }
+  svg.chart text { fill: var(--text-3); font-size: 11px; font-family: inherit; }
+  .tip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.18); min-width: 170px; display: none; z-index: 2; }
+  .tip .t { font-weight: 650; margin-bottom: 4px; color: var(--text); }
+  .tip .row { display: flex; align-items: center; gap: 8px; color: var(--text-2); }
+  .tip .row .sw { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .tip .row .v { margin-left: auto; color: var(--text); font-variant-numeric: tabular-nums; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--text-2); font-weight: 600; position: sticky; top: 0; background: var(--surface); }
+  td.num, th.num { text-align: right; }
+  .scroll { max-height: 320px; overflow: auto; }
+  .bars { display: grid; gap: 10px; }
+  .bar-row { display: grid; grid-template-columns: 84px 1fr 56px; align-items: center; gap: 10px; font-size: 13px; }
+  .bar-track { height: 14px; background: var(--grid); border-radius: 4px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 0 4px 4px 0; min-width: 2px; }
+  .bar-row .v { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .area-bar { display: block; height: 6px; border-radius: 3px; background: var(--s1); min-width: 2px; }
+  .empty { color: var(--text-3); padding: 24px 0; text-align: center; }
+  .tokenrow { display: flex; gap: 6px; }
+  th.w30 { width: 30%; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Dashboard Analitik Kejadian Bencana</h1>
+    <span id="status" class="status warn" role="status">Menunggu data</span>
+    <span id="asof" class="muted"></span>
+  </header>
+
+  <div class="controls">
+    <label>Rentang waktu
+      <select id="range">
+        <option value="1h">1 jam terakhir</option>
+        <option value="6h">6 jam terakhir</option>
+        <option value="24h" selected>24 jam terakhir</option>
+        <option value="7d">7 hari terakhir</option>
+        <option value="30d">30 hari terakhir</option>
+        <option value="90d">90 hari terakhir</option>
+      </select>
+    </label>
+    <label>Token akses
+      <span class="tokenrow">
+        <input id="token" type="password" autocomplete="off" placeholder="Bearer token" aria-label="Token akses">
+        <button id="save" type="button">Simpan</button>
+      </span>
+    </label>
+    <label class="inline"><input id="auto" type="checkbox" checked> Segarkan otomatis (10 dtk)</label>
+    <label class="inline"><input id="tableview" type="checkbox"> Tampilkan sebagai tabel</label>
+  </div>
+
+  <div id="banner-partial" class="banner bad" role="alert"></div>
+  <div id="banner-rebalance" class="banner warn" role="status"></div>
+  <div id="banner-error" class="banner bad" role="alert"></div>
+
+  <section class="card" aria-labelledby="h-series">
+    <div class="total"><span class="n" id="total">–</span><span class="muted">kejadian pada rentang terpilih</span></div>
+    <h2 id="h-series">Jumlah kejadian per jenis bahaya terhadap waktu</h2>
+    <ul class="legend" id="legend" aria-label="Legenda jenis bahaya"></ul>
+    <div class="chart-box" id="chartbox">
+      <svg id="chart" class="chart" viewBox="0 0 760 300" role="img" tabindex="0"
+           aria-label="Grafik garis jumlah kejadian per jenis bahaya. Gunakan tombol panah kiri dan kanan untuk membaca nilai."></svg>
+      <div class="tip" id="tip" role="tooltip"></div>
+    </div>
+    <div id="series-table" class="scroll" hidden></div>
+  </section>
+
+  <div class="grid">
+    <section class="card" aria-labelledby="h-sev">
+      <h2 id="h-sev">Jumlah kejadian per tingkat severity</h2>
+      <div class="bars" id="severity"></div>
+    </section>
+    <section class="card" aria-labelledby="h-area">
+      <h2 id="h-area">Jumlah kejadian per wilayah</h2>
+      <div class="scroll"><table id="areas"><thead><tr><th>Wilayah</th><th class="num">Kejadian</th><th aria-hidden="true" class="w30"></th></tr></thead><tbody></tbody></table></div>
+    </section>
+  </div>
+  <p class="muted">Angka dihitung dari seluruh unit penyimpanan dan sama dengan hitungan langsung dari Audit API.
+     Tsunami adalah kejadian gempa yang membawa peringatan tsunami BMKG; kejadian itu tidak dihitung lagi sebagai gempa. Waktu dalam WIB.</p>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var SERIES_VARS = ["--s1", "--s2", "--s3", "--s4", "--s5"];
+  var SEV_VARS = { NORMAL: "--sev-normal", WASPADA: "--sev-waspada", SIAGA: "--sev-siaga", AWAS: "--sev-awas" };
+  var SEV_LABEL = { NORMAL: "Normal", WASPADA: "Waspada", SIAGA: "Siaga", AWAS: "Awas" };
+  var $ = function (id) { return document.getElementById(id); };
+  var nf = new Intl.NumberFormat("id-ID");
+  var data = null, hoverIdx = -1, timer = null, token = "";
+
+  try { token = sessionStorage.getItem("dash-token") || ""; } catch (e) {}
+  $("token").value = token ? "••••••••" : "";
+
+  function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+  function fmtTime(iso, bucket, long) {
+    var d = new Date(iso);
+    var opt = bucket === "day" && !long
+      ? { day: "2-digit", month: "short", timeZone: "Asia/Jakarta" }
+      : { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Jakarta" };
+    return new Intl.DateTimeFormat("id-ID", opt).format(d);
+  }
+  function el(tag, attrs, text) {
+    var n = document.createElement(tag);
+    if (attrs) for (var k in attrs) n.setAttribute(k, attrs[k]);
+    if (text !== undefined) n.textContent = text;
+    return n;
+  }
+  function svgEl(tag, attrs) {
+    var n = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    if (attrs) for (var k in attrs) n.setAttribute(k, attrs[k]);
+    return n;
+  }
+  // Skala sumbu Y dengan langkah bulat (1, 2, 5, 10, ...) agar tanda sumbu mudah dibaca. Jumlah kejadian
+  // adalah bilangan bulat, jadi langkah tidak pernah di bawah 1.
+  function niceScale(max) {
+    if (max <= 0) return { ymax: 4, step: 1 };
+    var rough = max / 4;
+    var p = Math.pow(10, Math.floor(Math.log10(rough)));
+    var f = rough / p;
+    var step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
+    step = Math.max(1, step);
+    return { ymax: Math.ceil(max / step) * step, step: step };
+  }
+
+  function setBanner(id, text) {
+    var b = $(id);
+    b.textContent = text || "";
+    b.classList.toggle("show", !!text);
+  }
+
+  function render() {
+    var d = data;
+    if (!d) return;
+    var incomplete = d.partial;
+    var st = $("status");
+    if (d.partial) { st.className = "status bad"; st.textContent = "Data belum lengkap"; }
+    else if (d.rebalancing) { st.className = "status warn"; st.textContent = "Rebalancing berlangsung"; }
+    else { st.className = "status ok"; st.textContent = "Data lengkap"; }
+    $("asof").textContent = "Diperbarui " + fmtTime(d.as_of, "hour", true) + " WIB";
+
+    setBanner("banner-partial", d.partial
+      ? "Angka belum lengkap: sebagian data tidak terjangkau karena unit penyimpanan " + d.unavailable_units.join(", ") +
+        " tidak merespons dan salinannya juga tidak tersedia. Jangan dipakai sebagai angka final."
+      : "");
+    var notes = [];
+    if (!d.partial && d.rebalancing) notes.push("Penempatan data sedang disamakan setelah perubahan node. Angka bisa sedikit kurang sampai selesai.");
+    if (!d.partial && d.unavailable_units.length) notes.push("Unit " + d.unavailable_units.join(", ") + " tidak terjangkau, tetapi seluruh data masih tersedia dari salinannya.");
+    setBanner("banner-rebalance", notes.join(" "));
+    setBanner("banner-error", "");
+
+    $("total").textContent = nf.format(d.total);
+    renderLegend(d);
+    renderChart(d);
+    renderSeriesTable(d);
+    renderSeverity(d);
+    renderAreas(d);
+  }
+
+  function renderLegend(d) {
+    var ul = $("legend");
+    ul.replaceChildren();
+    d.categories.forEach(function (c, i) {
+      var li = el("li");
+      var sw = el("span", { "class": "sw", "aria-hidden": "true" });
+      sw.style.background = "var(" + SERIES_VARS[i] + ")";
+      li.appendChild(sw);
+      li.appendChild(document.createTextNode(c.label + " "));
+      li.appendChild(el("b", null, nf.format(d.totals[c.key] || 0)));
+      ul.appendChild(li);
+    });
+  }
+
+  var W = 760, H = 300, M = { l: 44, r: 16, t: 12, b: 28 };
+  function renderChart(d) {
+    var svg = $("chart");
+    svg.replaceChildren();
+    var n = d.series.length;
+    var max = 0;
+    d.series.forEach(function (p) { d.categories.forEach(function (c) { max = Math.max(max, p.counts[c.key] || 0); }); });
+    var scale = niceScale(max), ymax = scale.ymax;
+    var iw = W - M.l - M.r, ih = H - M.t - M.b;
+    var x = function (i) { return M.l + (n <= 1 ? iw / 2 : (i / (n - 1)) * iw); };
+    var y = function (v) { return M.t + ih - (v / ymax) * ih; };
+
+    for (var v = 0; v <= ymax + 1e-9; v += scale.step) {
+      var yy = y(v);
+      svg.appendChild(svgEl("line", { x1: M.l, x2: W - M.r, y1: yy, y2: yy, stroke: cssVar("--grid"), "stroke-width": 1 }));
+      var t = svgEl("text", { x: M.l - 8, y: yy + 4, "text-anchor": "end" });
+      t.textContent = nf.format(Math.round(v));
+      svg.appendChild(t);
+    }
+    var ticks = Math.min(6, n);
+    for (var k = 0; k < ticks; k++) {
+      var i = ticks === 1 ? 0 : Math.round((k / (ticks - 1)) * (n - 1));
+      var tx = svgEl("text", { x: x(i), y: H - 8, "text-anchor": k === 0 ? "start" : k === ticks - 1 ? "end" : "middle" });
+      tx.textContent = fmtTime(d.series[i].t, d.range.bucket);
+      svg.appendChild(tx);
+    }
+    d.categories.forEach(function (c, ci) {
+      var pts = d.series.map(function (p, i) { return x(i).toFixed(1) + "," + y(p.counts[c.key] || 0).toFixed(1); }).join(" ");
+      svg.appendChild(svgEl("polyline", { points: pts, fill: "none", stroke: "var(" + SERIES_VARS[ci] + ")",
+        "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+    });
+    var cross = svgEl("g", { id: "cross", visibility: "hidden" });
+    cross.appendChild(svgEl("line", { id: "crossline", y1: M.t, y2: H - M.b, stroke: cssVar("--text-3"), "stroke-width": 1, "stroke-dasharray": "3 3" }));
+    d.categories.forEach(function (c, ci) {
+      cross.appendChild(svgEl("circle", { id: "dot" + ci, r: 4, fill: "var(" + SERIES_VARS[ci] + ")", stroke: cssVar("--surface"), "stroke-width": 2 }));
+    });
+    svg.appendChild(cross);
+    svg.__x = x; svg.__y = y;
+    if (hoverIdx >= 0) showHover(hoverIdx);
+  }
+
+  function showHover(i) {
+    var d = data, svg = $("chart");
+    if (!d || !d.series.length) return;
+    i = Math.max(0, Math.min(d.series.length - 1, i));
+    hoverIdx = i;
+    var p = d.series[i], px = svg.__x(i);
+    var cross = svg.querySelector("#cross");
+    cross.setAttribute("visibility", "visible");
+    var line = svg.querySelector("#crossline");
+    line.setAttribute("x1", px); line.setAttribute("x2", px);
+    d.categories.forEach(function (c, ci) {
+      var dot = svg.querySelector("#dot" + ci);
+      dot.setAttribute("cx", px); dot.setAttribute("cy", svg.__y(p.counts[c.key] || 0));
+    });
+    var tip = $("tip");
+    tip.replaceChildren();
+    tip.appendChild(el("div", { "class": "t" }, fmtTime(p.t, d.range.bucket, true) + " WIB"));
+    d.categories.forEach(function (c, ci) {
+      var row = el("div", { "class": "row" });
+      var sw = el("span", { "class": "sw" });
+      sw.style.background = "var(" + SERIES_VARS[ci] + ")";
+      row.appendChild(sw);
+      row.appendChild(el("span", null, c.label));
+      row.appendChild(el("span", { "class": "v" }, nf.format(p.counts[c.key] || 0)));
+      tip.appendChild(row);
+    });
+    tip.style.display = "block";
+    var box = $("chartbox").getBoundingClientRect(), r = svg.getBoundingClientRect();
+    var left = (px / W) * r.width + 12;
+    if (left + tip.offsetWidth > box.width) left = (px / W) * r.width - tip.offsetWidth - 12;
+    tip.style.left = Math.max(0, left) + "px";
+    tip.style.top = "8px";
+  }
+  function hideHover() {
+    hoverIdx = -1;
+    var cross = $("chart").querySelector("#cross");
+    if (cross) cross.setAttribute("visibility", "hidden");
+    $("tip").style.display = "none";
+  }
+
+  $("chart").addEventListener("pointermove", function (e) {
+    if (!data) return;
+    var r = this.getBoundingClientRect();
+    var vx = ((e.clientX - r.left) / r.width) * W;
+    var n = data.series.length;
+    var i = n <= 1 ? 0 : Math.round(((vx - M.l) / (W - M.l - M.r)) * (n - 1));
+    showHover(i);
+  });
+  $("chart").addEventListener("pointerleave", hideHover);
+  $("chart").addEventListener("keydown", function (e) {
+    if (!data) return;
+    if (e.key === "ArrowLeft") { showHover((hoverIdx < 0 ? data.series.length : hoverIdx) - 1); e.preventDefault(); }
+    else if (e.key === "ArrowRight") { showHover(hoverIdx + 1); e.preventDefault(); }
+    else if (e.key === "Escape") hideHover();
+  });
+  $("chart").addEventListener("blur", hideHover);
+
+  function renderSeriesTable(d) {
+    var box = $("series-table");
+    box.replaceChildren();
+    var table = el("table");
+    var thead = el("thead"), hr = el("tr");
+    hr.appendChild(el("th", null, "Waktu (WIB)"));
+    d.categories.forEach(function (c) { hr.appendChild(el("th", { "class": "num" }, c.label)); });
+    thead.appendChild(hr); table.appendChild(thead);
+    var tb = el("tbody");
+    d.series.forEach(function (p) {
+      var tr = el("tr");
+      tr.appendChild(el("td", null, fmtTime(p.t, d.range.bucket, true)));
+      d.categories.forEach(function (c) { tr.appendChild(el("td", { "class": "num" }, nf.format(p.counts[c.key] || 0))); });
+      tb.appendChild(tr);
+    });
+    table.appendChild(tb);
+    box.appendChild(table);
+    var asTable = $("tableview").checked;
+    box.hidden = !asTable;
+    $("chartbox").hidden = asTable;
+    $("legend").hidden = false;
+  }
+
+  function renderSeverity(d) {
+    var box = $("severity");
+    box.replaceChildren();
+    var max = Math.max(1, Math.max.apply(null, d.severity.map(function (s) { return s.count; })));
+    d.severity.forEach(function (s) {
+      var row = el("div", { "class": "bar-row" });
+      row.appendChild(el("span", null, SEV_LABEL[s.key] || s.key));
+      var track = el("div", { "class": "bar-track", "aria-hidden": "true" });
+      var fill = el("div", { "class": "bar-fill" });
+      fill.style.width = (s.count / max) * 100 + "%";
+      fill.style.background = "var(" + SEV_VARS[s.key] + ")";
+      track.appendChild(fill);
+      row.appendChild(track);
+      row.appendChild(el("span", { "class": "v" }, nf.format(s.count)));
+      box.appendChild(row);
+    });
+  }
+
+  function renderAreas(d) {
+    var tb = $("areas").querySelector("tbody");
+    tb.replaceChildren();
+    if (!d.areas.length) {
+      var tr0 = el("tr"), td0 = el("td", { colspan: 3, "class": "empty" }, "Belum ada kejadian pada rentang ini");
+      tr0.appendChild(td0); tb.appendChild(tr0);
+      return;
+    }
+    var max = d.areas[0].count || 1;
+    d.areas.forEach(function (a) {
+      var tr = el("tr");
+      tr.appendChild(el("td", null, a.area || "(tanpa nama)"));
+      tr.appendChild(el("td", { "class": "num" }, nf.format(a.count)));
+      var td = el("td", { "aria-hidden": "true" });
+      var bar = el("span", { "class": "area-bar" });
+      bar.style.width = (a.count / max) * 100 + "%";
+      td.appendChild(bar); tr.appendChild(td);
+      tb.appendChild(tr);
+    });
+  }
+
+  function load() {
+    if (!token) { setBanner("banner-error", "Masukkan token akses lalu tekan Simpan."); return; }
+    fetch("/dashboard/api/summary?range=" + encodeURIComponent($("range").value), {
+      headers: { Authorization: "Bearer " + token }, cache: "no-store"
+    }).then(function (r) {
+      return r.json().then(function (body) { return { status: r.status, body: body }; });
+    }).then(function (res) {
+      if (res.status === 200) { data = res.body; render(); return; }
+      var msg = res.status === 401 ? "Token tidak valid. Periksa lalu simpan ulang."
+        : res.status === 503 ? "Penyimpanan tidak terjangkau. Angka di bawah adalah data terakhir yang berhasil dimuat."
+        : (res.body && res.body.error && res.body.error.message) || "Gagal memuat data.";
+      setBanner("banner-error", msg);
+      var st = $("status"); st.className = "status bad"; st.textContent = "Gagal memuat";
+    }).catch(function () {
+      setBanner("banner-error", "Tidak dapat menghubungi server. Mencoba lagi pada penyegaran berikutnya.");
+      var st = $("status"); st.className = "status bad"; st.textContent = "Tidak terhubung";
+    });
+  }
+  function schedule() {
+    if (timer) clearInterval(timer);
+    timer = $("auto").checked ? setInterval(load, 10000) : null;
+  }
+
+  $("range").addEventListener("change", load);
+  $("auto").addEventListener("change", schedule);
+  $("tableview").addEventListener("change", function () { if (data) renderSeriesTable(data); });
+  $("save").addEventListener("click", function () {
+    var v = $("token").value.trim();
+    if (!v || /^•+$/.test(v)) return;
+    token = v;
+    try { sessionStorage.setItem("dash-token", token); } catch (e) {}
+    $("token").value = "••••••••";
+    load();
+  });
+  $("token").addEventListener("focus", function () { if (/^•+$/.test(this.value)) this.value = ""; });
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function () { if (data) render(); });
+
+  schedule();
+  load();
+})();
+</script>
+</body>
+</html>
