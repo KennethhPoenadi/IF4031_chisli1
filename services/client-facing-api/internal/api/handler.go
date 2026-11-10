@@ -75,7 +75,7 @@ func (h *Handler) GetHazardEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 var (
-	validTypes      = map[string]bool{"SEISMIC": true, "VOLCANIC": true}
+	validTypes      = map[string]bool{"SEISMIC": true, "VOLCANIC": true, "WILDFIRE": true, "COASTAL": true}
 	validSeverities = map[string]bool{"NORMAL": true, "WASPADA": true, "SIAGA": true, "AWAS": true}
 )
 
@@ -90,7 +90,7 @@ func buildUpstreamQuery(q url.Values) (url.Values, error) {
 	}
 	if v := q.Get("hazard_type"); v != "" {
 		if !validTypes[v] {
-			return nil, errors.New("hazard_type must be SEISMIC or VOLCANIC")
+			return nil, errors.New("hazard_type must be SEISMIC, VOLCANIC, WILDFIRE or COASTAL")
 		}
 		up.Set("hazard_type", v)
 	}
@@ -105,6 +105,13 @@ func buildUpstreamQuery(q url.Values) (url.Values, error) {
 			return nil, errors.New("since must be an RFC3339 timestamp")
 		}
 		up.Set("since", v)
+	}
+	// cursor adalah string buram dari meta.next_cursor respons sebelumnya. Aggregator yang memeriksa isinya.
+	if v := q.Get("cursor"); v != "" {
+		if len(v) > 512 {
+			return nil, errors.New("cursor is too long")
+		}
+		up.Set("cursor", v)
 	}
 	return up, nil
 }

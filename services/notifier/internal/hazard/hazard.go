@@ -5,8 +5,10 @@ import "time"
 type Source string
 
 const (
-	SourceBMKG  Source = "BMKG"
-	SourcePVMBG Source = "PVMBG"
+	SourceBMKG         Source = "BMKG"
+	SourcePVMBG        Source = "PVMBG"
+	SourceSatelit      Source = "SATELIT"
+	SourceSensorPantai Source = "SENSOR_PANTAI"
 )
 
 type Type string
@@ -14,6 +16,13 @@ type Type string
 const (
 	TypeSeismic  Type = "SEISMIC"
 	TypeVolcanic Type = "VOLCANIC"
+	TypeWildfire Type = "WILDFIRE"
+	TypeCoastal  Type = "COASTAL"
+)
+
+var (
+	ValidTypes   = []Type{TypeSeismic, TypeVolcanic, TypeWildfire, TypeCoastal}
+	ValidSources = []Source{SourceBMKG, SourcePVMBG, SourceSatelit, SourceSensorPantai}
 )
 
 type Severity string

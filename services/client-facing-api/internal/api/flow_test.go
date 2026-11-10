@@ -257,3 +257,19 @@ func TestBuildUpstreamQueryAcceptsTheDocumentedParameters(t *testing.T) {
 		t.Fatalf("empty query: %v %v", empty, err)
 	}
 }
+
+func TestBuildUpstreamQueryForwardsCursorAndAcceptsNewHazardTypes(t *testing.T) {
+	got, err := buildUpstreamQuery(url.Values{"cursor": {"eyJ0IjoiMjAyNiJ9"}, "hazard_type": {"WILDFIRE"}})
+	if err != nil {
+		t.Fatalf("buildUpstreamQuery() error = %v", err)
+	}
+	if got.Get("cursor") != "eyJ0IjoiMjAyNiJ9" || got.Get("hazard_type") != "WILDFIRE" {
+		t.Fatalf("got %v, cursor dan hazard_type harus diteruskan", got)
+	}
+	if _, err := buildUpstreamQuery(url.Values{"hazard_type": {"COASTAL"}}); err != nil {
+		t.Fatalf("COASTAL harus diterima: %v", err)
+	}
+	if _, err := buildUpstreamQuery(url.Values{"cursor": {strings.Repeat("a", 513)}}); err == nil {
+		t.Fatal("cursor terlalu panjang harus ditolak")
+	}
+}
