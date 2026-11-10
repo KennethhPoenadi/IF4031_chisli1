@@ -5,6 +5,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"telemetry"
 )
 
 // RepairStats adalah ringkasan satu putaran perbaikan.
@@ -15,6 +17,11 @@ type RepairStats struct {
 	Removed     int      // salinan pada unit yang bukan pemilik, dihapus setelah pemilik lengkap
 	Unavailable []string // unit yang tidak terjangkau selama putaran ini
 }
+
+var (
+	repairReplicated = telemetry.Counter("store_repair_replicated", "salinan yang dibuat oleh perbaikan penempatan data")
+	repairRemoved    = telemetry.Counter("store_repair_removed", "salinan usang yang dihapus oleh perbaikan penempatan data")
+)
 
 type holder struct {
 	unit string
@@ -37,7 +44,7 @@ func (r *Router) RepairOnce(ctx context.Context) (RepairStats, error) {
 
 	var mu sync.Mutex
 	byID := map[string][]holder{}
-	failed := r.each(ctx, r.cfg.RepairTimeout, func(uctx context.Context, u Unit) error {
+	failed := r.each(ctx, "store.repair.scan", r.cfg.RepairTimeout, func(uctx context.Context, u Unit) error {
 		var local []KeyRecord
 		if err := u.Keys(uctx, func(k KeyRecord) error {
 			local = append(local, k)
@@ -150,6 +157,8 @@ func (r *Router) RepairOnce(ctx context.Context) (RepairStats, error) {
 		}
 	}
 
+	repairReplicated(ctx, int64(stats.Replicated))
+	repairRemoved(ctx, int64(stats.Removed))
 	if allUp {
 		r.repairNeeded.Store(false)
 	}

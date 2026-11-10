@@ -30,6 +30,12 @@ func New(baseURL, token string, timeout time.Duration, log *slog.Logger) *Client
 	}
 }
 
+// WithTransport mengganti RoundTripper klien, dipakai untuk menyisipkan instrumentasi trace.
+func (c *Client) WithTransport(rt http.RoundTripper) *Client {
+	c.http.Transport = rt
+	return c
+}
+
 func (c *Client) VolcanicReports(ctx context.Context, since string, correlationID string) ([]map[string]any, error) {
 	url := c.baseURL + "/volcanic-reports"
 	if since != "" {

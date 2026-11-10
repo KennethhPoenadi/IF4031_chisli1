@@ -12,6 +12,7 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 
 	"aggregator/internal/hazard"
+	"telemetry"
 )
 
 const publishTimeout = 5 * time.Second
@@ -103,23 +104,36 @@ func (p *Publisher) Publish(ctx context.Context, event hazard.Event, correlation
 	ctx, cancel := context.WithTimeout(ctx, publishTimeout)
 	defer cancel()
 
+	// Konteks trace ikut dikirim lewat header pesan, sehingga pemrosesan di notifier dan dashboard-updater
+	// tersambung ke trace yang sama dengan pengambilan data di aggregator.
+	headers := amqp.Table{}
+	ctx, endSpan := telemetry.StartProducerSpan(ctx, "publish "+p.exchange, headers,
+		"messaging.system", "rabbitmq", "messaging.destination.name", p.exchange,
+		"messaging.rabbitmq.destination.routing_key", routingKey, "hazard.id", event.HazardID)
+	var spanErr error
+	defer func() { endSpan(spanErr) }()
+
 	confirmation, err := p.ch.PublishWithDeferredConfirmWithContext(ctx, p.exchange, routingKey, false, false, amqp.Publishing{
 		ContentType:   "application/json",
 		DeliveryMode:  amqp.Persistent,
 		CorrelationId: correlationID,
+		Headers:       headers,
 		Body:          body,
 	})
 	if err != nil {
 		p.closeLocked()
-		return fmt.Errorf("rabbitmq publish: %w", err)
+		spanErr = fmt.Errorf("rabbitmq publish: %w", err)
+		return spanErr
 	}
 	acked, err := confirmation.WaitContext(ctx)
 	if err != nil {
 		p.closeLocked()
-		return fmt.Errorf("rabbitmq confirm: %w", err)
+		spanErr = fmt.Errorf("rabbitmq confirm: %w", err)
+		return spanErr
 	}
 	if !acked {
-		return errors.New("rabbitmq nacked the message")
+		spanErr = errors.New("rabbitmq nacked the message")
+		return spanErr
 	}
 	return nil
 }

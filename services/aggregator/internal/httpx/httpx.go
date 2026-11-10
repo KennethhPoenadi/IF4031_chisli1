@@ -10,6 +10,8 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"telemetry"
 )
 
 type ctxKey int
@@ -45,13 +47,13 @@ func Observe(log *slog.Logger) func(http.Handler) http.Handler {
 			wrapped := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 			next.ServeHTTP(wrapped, r.WithContext(ctx))
 
-			log.Info("request",
+			log.Info("request", append([]any{
 				"method", r.Method,
 				"path", r.URL.Path,
 				"status", wrapped.status,
 				"duration_ms", time.Since(started).Milliseconds(),
 				"correlation_id", id,
-			)
+			}, telemetry.LogAttrs(ctx)...)...)
 		})
 	}
 }

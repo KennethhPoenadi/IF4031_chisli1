@@ -15,7 +15,38 @@ import (
 	"time"
 
 	"aggregator/internal/hazard"
+	"telemetry"
 )
+
+var degradedWrites = telemetry.Counter("store_writes_degraded", "penulisan yang tersimpan kurang dari jumlah salinan yang seharusnya")
+
+// RegisterMetrics mendaftarkan metrik kesehatan penyimpanan untuk Prometheus: status tiap unit, apakah
+// rebalancing sedang berlangsung, dan jumlah salinan.
+func (r *Router) RegisterMetrics() {
+	telemetry.GaugeFunc("store_unit_up", "1 bila unit penyimpanan terjangkau, 0 bila tidak", func() []telemetry.Sample {
+		down := r.downSet()
+		names := r.UnitNames()
+		out := make([]telemetry.Sample, 0, len(names))
+		for _, n := range names {
+			v := 1.0
+			if down[n] {
+				v = 0
+			}
+			out = append(out, telemetry.Sample{Value: v, Attrs: []any{"unit", n}})
+		}
+		return out
+	})
+	telemetry.GaugeFunc("store_rebalancing", "1 bila penempatan data sedang disamakan (perbaikan tertunda)", func() []telemetry.Sample {
+		v := 0.0
+		if r.repairNeeded.Load() {
+			v = 1
+		}
+		return []telemetry.Sample{{Value: v}}
+	})
+	telemetry.GaugeFunc("store_replication_factor", "jumlah salinan tiap event", func() []telemetry.Sample {
+		return []telemetry.Sample{{Value: float64(r.rf)}}
+	})
+}
 
 type Config struct {
 	ReplicationFactor int
@@ -135,7 +166,7 @@ func sortedKeys(m map[string]bool) []string {
 	return out
 }
 
-func (r *Router) each(ctx context.Context, timeout time.Duration, fn func(ctx context.Context, u Unit) error) []string {
+func (r *Router) each(ctx context.Context, op string, timeout time.Duration, fn func(ctx context.Context, u Unit) error) []string {
 	failed := map[string]bool{}
 	var mu sync.Mutex
 	var wg sync.WaitGroup
@@ -149,7 +180,10 @@ func (r *Router) each(ctx context.Context, timeout time.Duration, fn func(ctx co
 			defer wg.Done()
 			uctx, cancel := context.WithTimeout(ctx, timeout)
 			defer cancel()
-			if err := fn(uctx, u); err != nil {
+			uctx, endSpan := telemetry.StartSpan(uctx, op, "db.system", "mongodb", "store.unit", name)
+			err := fn(uctx, u)
+			endSpan(err)
+			if err != nil {
 				r.markDown(name, err)
 				mu.Lock()
 				failed[name] = true
@@ -181,7 +215,10 @@ func (r *Router) Save(ctx context.Context, ev hazard.Event) error {
 			defer wg.Done()
 			uctx, cancel := context.WithTimeout(ctx, r.cfg.UnitTimeout)
 			defer cancel()
-			if err := r.units[name].Upsert(uctx, ev, owners); err != nil {
+			sctx, endSpan := telemetry.StartSpan(uctx, "store.upsert", "db.system", "mongodb", "store.unit", name, "hazard.id", ev.HazardID)
+			err := r.units[name].Upsert(sctx, ev, owners)
+			endSpan(err)
+			if err != nil {
 				r.markDown(name, err)
 				return
 			}
@@ -202,6 +239,7 @@ func (r *Router) Save(ctx context.Context, ev hazard.Event) error {
 				r.markDown(name, err)
 				continue
 			}
+			degradedWrites(ctx, 1)
 			r.repairNeeded.Store(true)
 			r.cfg.Log.Warn("pemilik tidak terjangkau, event dititipkan sementara", "hazard_id", ev.HazardID, "unit", name)
 			return nil
@@ -209,6 +247,7 @@ func (r *Router) Save(ctx context.Context, ev hazard.Event) error {
 		return fmt.Errorf("%w: pemilik %v", ErrUnavailable, owners)
 	}
 	if int(okCount.Load()) < len(owners) {
+		degradedWrites(ctx, 1)
 		r.repairNeeded.Store(true)
 		r.cfg.Log.Warn("event hanya tersimpan sebagian, menunggu perbaikan", "hazard_id", ev.HazardID,
 			"tersimpan", okCount.Load(), "seharusnya", len(owners))
@@ -278,7 +317,7 @@ func (r *Router) ListEvents(ctx context.Context, q ListQuery) (Page, error) {
 
 	var mu sync.Mutex
 	merged := map[string]hazard.Event{}
-	failed := r.each(ctx, r.cfg.UnitTimeout, func(uctx context.Context, u Unit) error {
+	failed := r.each(ctx, "store.query", r.cfg.UnitTimeout, func(uctx context.Context, u Unit) error {
 		events, err := u.Query(uctx, UnitQuery{Filter: q.Filter, After: after, Limit: q.Limit + 1, Order: q.Order})
 		if err != nil {
 			return err
@@ -329,7 +368,7 @@ type LocationResult struct {
 func (r *Router) Location(ctx context.Context, hazardID string) (LocationResult, error) {
 	var mu sync.Mutex
 	var holders []string
-	failed := r.each(ctx, r.cfg.UnitTimeout, func(uctx context.Context, u Unit) error {
+	failed := r.each(ctx, "store.locate", r.cfg.UnitTimeout, func(uctx context.Context, u Unit) error {
 		ev, err := u.Get(uctx, hazardID)
 		if err != nil {
 			return err
@@ -379,7 +418,7 @@ type ChecksumResult struct {
 func (r *Router) Checksum(ctx context.Context, source string) (ChecksumResult, error) {
 	var mu sync.Mutex
 	refs := map[string]string{} // hazard_id -> source_ref_id
-	failed := r.each(ctx, r.cfg.RepairTimeout, func(uctx context.Context, u Unit) error {
+	failed := r.each(ctx, "store.checksum", r.cfg.RepairTimeout, func(uctx context.Context, u Unit) error {
 		local := map[string]string{}
 		err := u.Keys(uctx, func(k KeyRecord) error {
 			if source == "" || k.Source == source {
@@ -456,7 +495,7 @@ func (r *Router) Analytics(ctx context.Context, q AggregateQuery) (Analytics, er
 		down := sortedKeys(r.downSet())
 		var mu sync.Mutex
 		merged := NewAggregateResult()
-		failed = r.each(ctx, r.cfg.RepairTimeout, func(uctx context.Context, u Unit) error {
+		failed = r.each(ctx, "store.aggregate", r.cfg.RepairTimeout, func(uctx context.Context, u Unit) error {
 			agg, err := u.Aggregate(uctx, q, down)
 			if err != nil {
 				return err

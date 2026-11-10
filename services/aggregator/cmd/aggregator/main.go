@@ -22,6 +22,7 @@ import (
 	"aggregator/internal/pvmbgclient"
 	"aggregator/internal/shardstore"
 	"aggregator/internal/store"
+	"telemetry"
 
 	"github.com/joho/godotenv"
 )
@@ -40,12 +41,25 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Telemetry gagal dimulai tidak boleh mematikan layanan: lanjut tanpa instrumentasi dan catat peringatan.
+	tel, err := telemetry.Init(ctx, "aggregator", log)
+	if err != nil {
+		log.Warn("telemetry disabled", "err", err)
+	} else {
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = tel.Shutdown(shutdownCtx)
+		}()
+	}
+
 	hazardStore, closeStore, err := buildStore(cfg, log)
 	if err != nil {
 		log.Error("storage setup failed", "err", err)
 		os.Exit(1)
 	}
 	defer closeStore()
+	hazardStore.RegisterMetrics()
 	go hazardStore.Run(ctx) // pemeriksaan kesehatan unit dan perbaikan penempatan data
 
 	rabbitStart := time.Now()
@@ -61,6 +75,10 @@ func main() {
 
 	bmkg := bmkgclient.New(cfg.BMKGBaseURL, cfg.BMKGAPIKey, cfg.BMKGTimeout, log)
 	pvmbg := pvmbgclient.New(cfg.PVMBGBaseURL, cfg.PVMBGToken, cfg.PVMBGTimeout, log)
+	if tel != nil {
+		bmkg.WithTransport(tel.Transport(nil))
+		pvmbg.WithTransport(tel.Transport(nil))
+	}
 	p := poller.New(bmkg, pvmbg, hazardStore, publisher, cfg.PollInterval, cfg.PVMBGStaleAfter, log)
 	go p.Run(ctx)
 
@@ -77,6 +95,9 @@ func main() {
 		log.Warn("DASHBOARD_TOKEN kosong: dashboard analitik menolak semua permintaan data")
 	}
 	routes := handler.Routes(cfg.AggregatorAPIKey, httpx.Observe(log))
+	if tel != nil {
+		routes = tel.Middleware(routes)
+	}
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.AggregatorPort,

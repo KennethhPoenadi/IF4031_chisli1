@@ -12,6 +12,7 @@ import (
 	"aggregator/internal/hazard"
 	"aggregator/internal/mapper"
 	"aggregator/internal/pvmbgclient"
+	"telemetry"
 )
 
 type Publisher interface {
@@ -263,12 +264,35 @@ func (p *Poller) markPVMBGUnavailable() {
 	}
 }
 
-func (p *Poller) persist(ctx context.Context, event hazard.Event, correlationID string) error {
+var (
+	ingested = telemetry.Counter("hazard_events_ingested", "HazardEvent yang berhasil disimpan dan dipublikasikan")
+	failed   = telemetry.Counter("hazard_events_failed", "HazardEvent yang gagal diproses, per tahap")
+)
+
+// contextSaver adalah penyimpanan yang menerima ctx, agar span penyimpanan menjadi anak dari span pengambilan
+// data. Penyimpanan tersebar (shardstore.Router) memenuhinya; EventStore lama tetap didukung.
+type contextSaver interface {
+	Save(ctx context.Context, event hazard.Event) error
+}
+
+func (p *Poller) persist(ctx context.Context, event hazard.Event, correlationID string) (err error) {
+	ctx, endSpan := telemetry.StartSpan(ctx, "ingest hazard event",
+		"hazard.id", event.HazardID, "hazard.type", string(event.HazardType),
+		"hazard.source", string(event.Source), "correlation.id", correlationID)
+	defer func() { endSpan(err) }()
+	attrs := []any{"source", string(event.Source), "type", string(event.HazardType)}
+
 	saveStart := time.Now()
-	saveErr := p.store.SaveHazardEvent(event)
+	var saveErr error
+	if cs, ok := p.store.(contextSaver); ok {
+		saveErr = cs.Save(ctx, event)
+	} else {
+		saveErr = p.store.SaveHazardEvent(event)
+	}
 	p.logCall("mongodb", "save_hazard_event", saveStart, saveErr, correlationID, event.HazardID)
 	if saveErr != nil {
-		p.log.Error("failed to save hazard event", "err", saveErr, "hazard_id", event.HazardID, "correlation_id", correlationID)
+		failed(ctx, 1, append(attrs, "stage", "store")...)
+		p.log.Error("failed to save hazard event", append([]any{"err", saveErr, "hazard_id", event.HazardID, "correlation_id", correlationID}, telemetry.LogAttrs(ctx)...)...)
 		return saveErr
 	}
 	if p.publisher != nil {
@@ -276,11 +300,13 @@ func (p *Poller) persist(ctx context.Context, event hazard.Event, correlationID 
 		publishErr := p.publisher.Publish(ctx, event, correlationID)
 		p.logCall("rabbitmq", "publish", publishStart, publishErr, correlationID, event.HazardID)
 		if publishErr != nil {
-			p.log.Error("failed to publish hazard event", "err", publishErr, "hazard_id", event.HazardID, "correlation_id", correlationID)
+			failed(ctx, 1, append(attrs, "stage", "publish")...)
+			p.log.Error("failed to publish hazard event", append([]any{"err", publishErr, "hazard_id", event.HazardID, "correlation_id", correlationID}, telemetry.LogAttrs(ctx)...)...)
 			return publishErr
 		}
 	}
-	p.log.Info("hazard event ingested", "hazard_id", event.HazardID, "hazard_type", event.HazardType, "severity", event.Severity, "correlation_id", correlationID)
+	ingested(ctx, 1, append(attrs, "severity", string(event.Severity))...)
+	p.log.Info("hazard event ingested", append([]any{"hazard_id", event.HazardID, "hazard_type", event.HazardType, "severity", event.Severity, "correlation_id", correlationID}, telemetry.LogAttrs(ctx)...)...)
 	return nil
 }
 
