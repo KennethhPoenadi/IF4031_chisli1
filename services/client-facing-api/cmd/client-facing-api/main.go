@@ -15,6 +15,7 @@ import (
 	"client-facing-api/internal/config"
 	"client-facing-api/internal/httpx"
 	"client-facing-api/internal/upstream"
+	"telemetry"
 )
 
 func main() {
@@ -29,6 +30,18 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Telemetry gagal dimulai tidak boleh mematikan layanan: lanjut tanpa instrumentasi dan catat peringatan.
+	tel, err := telemetry.Init(ctx, "client-facing-api", log)
+	if err != nil {
+		log.Warn("telemetry disabled", "err", err)
+	} else {
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = tel.Shutdown(shutdownCtx)
+		}()
+	}
+
 	pub := cfg.PinnedPublicKey
 	if pub == nil {
 		pub, err = authn.FetchPublicKey(ctx, cfg.AuthURL, 30, log)
@@ -42,6 +55,11 @@ func main() {
 
 	agg := upstream.New(cfg.AggregatorURL, cfg.AggregatorKey, cfg.AggregatorTimeout, cfg.MaxInflight, log)
 	handler := api.NewHandler(agg).Routes(verifier, httpx.Limit(cfg.MaxInflight), httpx.Observe(log))
+	if tel != nil {
+		// span dan metrik dihitung paling luar, jadi penolakan 429 oleh Limit juga terukur
+		agg.WithTransport(tel.Transport)
+		handler = tel.Middleware(handler)
+	}
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,

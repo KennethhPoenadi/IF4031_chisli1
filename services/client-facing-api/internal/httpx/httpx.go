@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"telemetry"
 )
 
 type ctxKey int
@@ -62,8 +64,9 @@ func Observe(log *slog.Logger) func(http.Handler) http.Handler {
 					sw.status = http.StatusInternalServerError
 					WriteError(w, http.StatusInternalServerError, "internal_error", "internal error")
 				}
-				log.Info("request", "method", r.Method, "path", r.URL.Path, "status", sw.status,
-					"duration_ms", time.Since(start).Milliseconds(), "client", info.Client, "correlation_id", id)
+				log.Info("request", append([]any{"method", r.Method, "path", r.URL.Path, "status", sw.status,
+					"duration_ms", time.Since(start).Milliseconds(), "client", info.Client, "correlation_id", id},
+					telemetry.LogAttrs(ctx)...)...)
 			}()
 			next.ServeHTTP(sw, r.WithContext(ctx))
 		})
