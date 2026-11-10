@@ -1,7 +1,8 @@
 services:
   bmkg-mock:
     build:
-      context: ./services/bmkg-mock
+      context: ./services
+      dockerfile: bmkg-mock/Dockerfile
     environment:
       BMKG_PORT: ${BMKG_PORT:-8081}
       BMKG_API_KEY: ${BMKG_API_KEY:?BMKG_API_KEY must be set in .env}
@@ -20,7 +21,8 @@ services:
 
   pvmbg-mock:
     build:
-      context: ./services/pvmbg-mock
+      context: ./services
+      dockerfile: pvmbg-mock/Dockerfile
     environment:
       PVMBG_PORT: ${PVMBG_PORT:-8082}
       PVMBG_TOKEN: ${PVMBG_TOKEN:?PVMBG_TOKEN must be set in .env}
@@ -39,7 +41,9 @@ services:
       start_period: 5s
 
   auth-service:
-    build: ./services/auth-service
+    build:
+      context: ./services
+      dockerfile: auth-service/Dockerfile
     environment:
       AUTH_PORT: ${AUTH_PORT:-8091}
       AUTH_SIGNING_SEED: ${AUTH_SIGNING_SEED:?AUTH_SIGNING_SEED must be set in .env}
@@ -63,7 +67,9 @@ services:
       start_period: 5s
 
   client-facing-api:
-    build: ./services/client-facing-api
+    build:
+      context: ./services
+      dockerfile: client-facing-api/Dockerfile
     environment:
       CLIENT_API_PORT: ${CLIENT_API_PORT:-8080}
       AGGREGATOR_URL: http://aggregator:${AGGREGATOR_PORT:-8090}
@@ -90,7 +96,9 @@ services:
       start_period: 5s
 
   notifier:
-    build: ./services/notifier
+    build:
+      context: ./services
+      dockerfile: notifier/Dockerfile
     environment:
       RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER must be set in .env}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set in .env}@rabbitmq:5672/
       RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-hazard_events}
@@ -150,7 +158,9 @@ services:
       retries: 10
 
   aggregator:
-    build: ./services/aggregator
+    build:
+      context: ./services
+      dockerfile: aggregator/Dockerfile
     networks:
       - default
       - store-net
@@ -190,7 +200,9 @@ services:
       start_period: 5s
 
   dashboard-updater:
-    build: ./services/dashboard-updater
+    build:
+      context: ./services
+      dockerfile: dashboard-updater/Dockerfile
     environment:
       RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER must be set in .env}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set in .env}@rabbitmq:5672/
       RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-hazard_events}

@@ -1,11 +1,14 @@
 FROM golang:1.26 AS builder
-
-WORKDIR /app
-
-COPY go.mod go.sum ./
+# Konteks build adalah folder services/ (lihat docker-compose.yml), karena modul telemetry dipakai bersama
+# oleh semua service lewat `replace telemetry => ../telemetry`.
+WORKDIR /src
+COPY telemetry/go.mod telemetry/go.sum telemetry/
+COPY auth-service/go.mod auth-service/go.sum auth-service/
+WORKDIR /src/auth-service
 RUN go mod download
 
-COPY . .
+COPY telemetry/ /src/telemetry/
+COPY auth-service/ /src/auth-service/
 RUN CGO_ENABLED=0 GOOS=linux go build -o auth-service ./cmd/auth-service
 
 FROM alpine:3.22
@@ -14,7 +17,7 @@ RUN addgroup -S -g 65532 app && adduser -S -u 65532 -G app app
 
 WORKDIR /app
 
-COPY --from=builder /app/auth-service .
+COPY --from=builder /src/auth-service/auth-service .
 
 USER 65532:65532
 

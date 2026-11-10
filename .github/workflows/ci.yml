@@ -43,6 +43,7 @@ jobs:
           - dashboard-updater
           - notifier
           - pvmbg-mock
+          - telemetry
     steps:
       - uses: actions/checkout@v4
       - uses: actions/cache@v4
@@ -74,6 +75,7 @@ jobs:
           - dashboard-updater
           - notifier
           - pvmbg-mock
+          - telemetry
     steps:
       - uses: actions/checkout@v4
       - uses: actions/cache@v4
@@ -163,6 +165,7 @@ jobs:
           - dashboard-updater
           - notifier
           - pvmbg-mock
+          - telemetry
     env:
       GOVULNCHECK_VERSION: v1.1.4
     steps:
