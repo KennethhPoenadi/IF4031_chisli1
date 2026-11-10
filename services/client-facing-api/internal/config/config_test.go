@@ -25,6 +25,8 @@ func setValidEnv(t *testing.T) {
 	for _, key := range []string{
 		"CLIENT_API_PORT", "AUTH_TOKEN_ISSUER", "AGGREGATOR_URL", "CLIENT_API_AGGREGATOR_TIMEOUT_MS",
 		"AUTH_SERVICE_URL", "CLIENT_API_REVOCATION_POLL_MS", "CLIENT_API_MAX_INFLIGHT", "AUTH_PUBLIC_KEY",
+		"CLIENT_API_PRIORITY_RESERVED", "CLIENT_API_MAX_PRIORITY_QUEUED", "CLIENT_API_PRIORITY_CLIENT_ID",
+		"AUTH_CLIENT_FIELD_ID",
 	} {
 		t.Setenv(key, "")
 	}
@@ -46,6 +48,9 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	if cfg.AggregatorTimeout != 1500*time.Millisecond || cfg.RevocationPoll != 250*time.Millisecond || cfg.MaxInflight != 200 {
 		t.Fatalf("timeouts/limits: %s %s %d", cfg.AggregatorTimeout, cfg.RevocationPoll, cfg.MaxInflight)
 	}
+	if cfg.PriorityReserved != 20 || cfg.MaxPriorityQueued != 400 || cfg.PriorityClientID != "field-demo" {
+		t.Fatalf("priority defaults: reserved=%d queued=%d client=%q", cfg.PriorityReserved, cfg.MaxPriorityQueued, cfg.PriorityClientID)
+	}
 	if cfg.PinnedPublicKey != nil {
 		t.Fatal("no public key is pinned unless configured")
 	}
@@ -55,6 +60,9 @@ func TestLoadReadsOverridesAndFallsBackOnUnusableNumbers(t *testing.T) {
 	setValidEnv(t)
 	t.Setenv("CLIENT_API_PORT", "9090")
 	t.Setenv("CLIENT_API_MAX_INFLIGHT", "75")
+	t.Setenv("CLIENT_API_PRIORITY_RESERVED", "10")
+	t.Setenv("CLIENT_API_MAX_PRIORITY_QUEUED", "120")
+	t.Setenv("CLIENT_API_PRIORITY_CLIENT_ID", "field-agency")
 	t.Setenv("CLIENT_API_AGGREGATOR_TIMEOUT_MS", "800")
 	t.Setenv("CLIENT_API_REVOCATION_POLL_MS", "abc")
 	t.Setenv("AGGREGATOR_URL", "http://agg:1")
@@ -63,7 +71,8 @@ func TestLoadReadsOverridesAndFallsBackOnUnusableNumbers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.Port != "9090" || cfg.MaxInflight != 75 || cfg.AggregatorTimeout != 800*time.Millisecond || cfg.AggregatorURL != "http://agg:1" {
+	if cfg.Port != "9090" || cfg.MaxInflight != 75 || cfg.PriorityReserved != 10 || cfg.MaxPriorityQueued != 120 ||
+		cfg.PriorityClientID != "field-agency" || cfg.AggregatorTimeout != 800*time.Millisecond || cfg.AggregatorURL != "http://agg:1" {
 		t.Fatalf("overrides not applied: %#v", cfg)
 	}
 	if cfg.RevocationPoll != 250*time.Millisecond {
@@ -73,6 +82,50 @@ func TestLoadReadsOverridesAndFallsBackOnUnusableNumbers(t *testing.T) {
 	t.Setenv("CLIENT_API_MAX_INFLIGHT", "0")
 	if cfg, _ = Load(); cfg.MaxInflight != 200 {
 		t.Fatalf("a zero limit would reject every request, expected the default, got %d", cfg.MaxInflight)
+	}
+}
+
+func TestLoadFallsBackToFieldClientIdentity(t *testing.T) {
+	setValidEnv(t)
+	t.Setenv("AUTH_CLIENT_FIELD_ID", "field-from-auth")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.PriorityClientID != "field-from-auth" {
+		t.Fatalf("priority client = %q, want field-from-auth", cfg.PriorityClientID)
+	}
+}
+
+func TestLoadRejectsPriorityCapacityThatConsumesAllSlots(t *testing.T) {
+	tests := []struct {
+		max      string
+		reserved string
+	}{
+		{max: "1"},
+		{max: "10", reserved: "10"},
+		{max: "10", reserved: "11"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.max+"/"+tt.reserved, func(t *testing.T) {
+			setValidEnv(t)
+			t.Setenv("CLIENT_API_MAX_INFLIGHT", tt.max)
+			if tt.reserved != "" {
+				t.Setenv("CLIENT_API_PRIORITY_RESERVED", tt.reserved)
+			}
+			if _, err := Load(); err == nil {
+				t.Fatal("Load accepted a configuration with no regular capacity")
+			}
+		})
+	}
+}
+
+func TestLoadRejectsBlankPriorityClient(t *testing.T) {
+	setValidEnv(t)
+	t.Setenv("CLIENT_API_PRIORITY_CLIENT_ID", "   ")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load accepted a blank priority client identity")
 	}
 }
 
