@@ -14,6 +14,7 @@ import (
 
 	"dashboard-updater/internal/config"
 	"dashboard-updater/internal/hazard"
+	"telemetry"
 )
 
 func Run(ctx context.Context, cfg config.Config, seen *SeenSet, state *State, connected *atomic.Bool, log *slog.Logger) error {
@@ -68,9 +69,25 @@ func Run(ctx context.Context, cfg config.Config, seen *SeenSet, state *State, co
 	}
 }
 
+var (
+	messages = telemetry.Counter("dashboard_updater_messages", "pesan yang diproses dashboard-updater, per hasil")
+	latency  = telemetry.Histogram("dashboard_update_latency", "detik dari event disimpan aggregator sampai dashboard diperbarui")
+)
+
 func handle(seen *SeenSet, state *State, msg amqp.Delivery, log *slog.Logger) {
+	// span ini melanjutkan trace aggregator lewat header pesan
+	ctx, endSpan := telemetry.StartConsumerSpan(context.Background(), "process hazard event", msg.Headers,
+		"messaging.system", "rabbitmq", "messaging.rabbitmq.destination.routing_key", msg.RoutingKey,
+		"correlation.id", msg.CorrelationId)
+	outcome := "applied"
+	defer func() {
+		endSpan(nil)
+		messages(ctx, 1, "outcome", outcome)
+	}()
+
 	var event hazard.Event
 	if err := json.Unmarshal(msg.Body, &event); err != nil {
+		outcome = "dropped"
 		log.Warn("dropping unparsable message", "action", "drop", "err", err, "routing_key", msg.RoutingKey, "correlation_id", msg.CorrelationId)
 		_ = msg.Nack(false, false)
 		return
@@ -78,6 +95,7 @@ func handle(seen *SeenSet, state *State, msg amqp.Delivery, log *slog.Logger) {
 
 	key := event.HazardID + "|" + string(event.Severity)
 	if seen.Has(key) {
+		outcome = "duplicate"
 		log.Info("duplicate skipped", "action", "duplicate", "hazard_id", event.HazardID, "severity", event.Severity, "correlation_id", msg.CorrelationId)
 		_ = msg.Ack(false)
 		return
@@ -89,6 +107,7 @@ func handle(seen *SeenSet, state *State, msg amqp.Delivery, log *slog.Logger) {
 
 	state.Apply(event)
 	seen.Add(key)
+	latency(ctx, time.Since(event.IngestedAt).Seconds(), "severity", string(event.Severity))
 	_ = msg.Ack(false)
 }
 

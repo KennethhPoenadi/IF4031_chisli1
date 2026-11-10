@@ -19,6 +19,7 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 
 	"notifier/internal/hazard"
+	"telemetry"
 )
 
 type config struct {
@@ -63,6 +64,18 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// Telemetry gagal dimulai tidak boleh mematikan layanan: lanjut tanpa instrumentasi dan catat peringatan.
+	tel, err := telemetry.Init(ctx, "notifier", log)
+	if err != nil {
+		log.Warn("telemetry disabled", "err", err)
+	} else {
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = tel.Shutdown(shutdownCtx)
+		}()
+	}
 
 	var connected atomic.Bool
 	go serveHealth(ctx, cfg.healthPort, &connected, log)
@@ -137,9 +150,24 @@ func run(ctx context.Context, cfg config, seen *seenSet, connected *atomic.Bool,
 	}
 }
 
+var (
+	messages = telemetry.Counter("notifier_messages", "pesan yang diproses notifier, per hasil")
+	latency  = telemetry.Histogram("notification_latency", "detik dari event disimpan aggregator sampai notifikasi diproses")
+)
+
 func handle(ctx context.Context, cfg config, seen *seenSet, msg amqp.Delivery, log *slog.Logger) {
+	// span ini melanjutkan trace aggregator lewat header pesan
+	ctx, endSpan := telemetry.StartConsumerSpan(ctx, "process hazard event", msg.Headers,
+		"messaging.system", "rabbitmq", "messaging.rabbitmq.destination.routing_key", msg.RoutingKey,
+		"correlation.id", msg.CorrelationId)
+	outcome := "cancelled"
+	defer func() {
+		endSpan(nil)
+		messages(ctx, 1, "outcome", outcome)
+	}()
 	var ev hazard.Event
 	if err := json.Unmarshal(msg.Body, &ev); err != nil {
+		outcome = "dropped"
 		log.Warn("dropping unparsable message", "err", err, "routing_key", msg.RoutingKey, "correlation_id", msg.CorrelationId)
 		_ = msg.Nack(false, false)
 		return
@@ -147,6 +175,7 @@ func handle(ctx context.Context, cfg config, seen *seenSet, msg amqp.Delivery, l
 
 	key := ev.HazardID + "|" + string(ev.Severity)
 	if seen.has(key) {
+		outcome = "duplicate"
 		log.Info("duplicate skipped", "hazard_id", ev.HazardID, "severity", ev.Severity, "correlation_id", msg.CorrelationId)
 		_ = msg.Ack(false)
 		return
@@ -166,11 +195,15 @@ func handle(ctx context.Context, cfg config, seen *seenSet, msg amqp.Delivery, l
 		"age_ms", time.Since(ev.IngestedAt).Milliseconds(),
 		"correlation_id", msg.CorrelationId,
 	}
+	attrs = append(attrs, telemetry.LogAttrs(ctx)...)
 	if ev.Severity.Rank() >= cfg.minSeverity.Rank() {
+		outcome = "alert"
 		log.Info("ALERT dispatched (simulated)", attrs...)
 	} else {
+		outcome = "below_threshold"
 		log.Info("event received, below alert threshold", attrs...)
 	}
+	latency(ctx, time.Since(ev.IngestedAt).Seconds(), "outcome", outcome, "severity", string(ev.Severity))
 
 	seen.add(key)
 	_ = msg.Ack(false)

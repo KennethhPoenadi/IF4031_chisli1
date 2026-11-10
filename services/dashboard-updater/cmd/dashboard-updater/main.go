@@ -12,6 +12,7 @@ import (
 	"dashboard-updater/internal/config"
 	"dashboard-updater/internal/consumer"
 	"dashboard-updater/internal/health"
+	"telemetry"
 )
 
 func main() {
@@ -25,6 +26,18 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// Telemetry gagal dimulai tidak boleh mematikan layanan: lanjut tanpa instrumentasi dan catat peringatan.
+	tel, err := telemetry.Init(ctx, "dashboard-updater", log)
+	if err != nil {
+		log.Warn("telemetry disabled", "err", err)
+	} else {
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = tel.Shutdown(shutdownCtx)
+		}()
+	}
 
 	var connected atomic.Bool
 	state := consumer.NewState()
