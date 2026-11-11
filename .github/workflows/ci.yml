@@ -18,7 +18,7 @@ permissions:
   contents: read
 
 env:
-  GO_IMAGE: golang:1.26.10
+  GO_IMAGE: golang:1.26.11
   GOFLAGS: -mod=readonly
   # Image name under ghcr.io/<owner>/. Must equal APP_IMAGE_NAME in the infra repo.
   IMAGE_NAME: ${{ vars.APP_IMAGE_NAME || github.event.repository.name }}
@@ -63,7 +63,7 @@ jobs:
   unit-test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    container: golang:1.26.10
+    container: golang:1.26.11
     strategy:
       fail-fast: false
       matrix:
@@ -153,7 +153,7 @@ jobs:
     needs: [lint, unit-test, sast-diff]
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    container: golang:1.26.10
+    container: golang:1.26.11
     strategy:
       fail-fast: false
       matrix:
@@ -186,7 +186,7 @@ jobs:
     needs: [lint, unit-test, sast-diff]
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    container: golang:1.26.10
+    container: golang:1.26.11
     # packages: write is what lets the built-in GITHUB_TOKEN push to ghcr.io; no PAT is needed.
     permissions:
       contents: read
