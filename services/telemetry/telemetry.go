@@ -1,15 +1,3 @@
-// Package telemetry adalah instrumentasi bersama seluruh service: trace terdistribusi (OpenTelemetry, OTLP),
-// metrik (OpenTelemetry yang diekspos sebagai Prometheus), dan atribut untuk menautkan log ke trace.
-//
-// Prinsipnya: service tetap berjalan normal bila kolektor tidak ada. Tanpa OTEL_EXPORTER_OTLP_ENDPOINT, trace
-// tidak diekspor tetapi konteksnya tetap dipropagasi ke service berikutnya.
-//
-// Konfigurasi lewat variabel lingkungan standar OpenTelemetry:
-//
-//	OTEL_EXPORTER_OTLP_ENDPOINT  alamat kolektor OTLP/HTTP, mis. http://alloy.observability.svc:4318 (kosong = tidak ekspor)
-//	OTEL_TRACES_SAMPLER_ARG      rasio sampling 0..1 (bawaan 1). Turunkan saat load test besar
-//	TELEMETRY_METRICS_ADDR       alamat /metrics Prometheus (bawaan :9102, "off" untuk mematikan)
-//	POD_NAME, POD_NAMESPACE, NODE_NAME   atribut resource, diisi chart dari downward API
 package telemetry
 
 import (
@@ -38,23 +26,18 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// DefaultMetricsAddr adalah alamat bawaan endpoint /metrics, terpisah dari port aplikasi agar tidak terkena
-// autentikasi dan NetworkPolicy milik API.
 const DefaultMetricsAddr = ":9102"
 
-// CorrelationHeader adalah header correlation ID yang sudah dipakai sejak M1.
 const CorrelationHeader = "X-Correlation-ID"
 
-// Provider memegang trace, metrik, dan propagator sebuah service.
 type Provider struct {
-	service string
-	tp      *sdktrace.TracerProvider
-	mp      *sdkmetric.MeterProvider
-	reg     *prometheus.Registry
-	prop    propagation.TextMapPropagator
-	srv     *http.Server
-	log     *slog.Logger
-	// Exporting true bila trace dikirim ke kolektor.
+	service   string
+	tp        *sdktrace.TracerProvider
+	mp        *sdkmetric.MeterProvider
+	reg       *prometheus.Registry
+	prop      propagation.TextMapPropagator
+	srv       *http.Server
+	log       *slog.Logger
 	Exporting bool
 }
 
@@ -91,7 +74,6 @@ func settingsFromEnv(service string) settings {
 	return s
 }
 
-// Init menyiapkan telemetry sebuah service dari variabel lingkungan dan memasang endpoint /metrics.
 func Init(ctx context.Context, service string, log *slog.Logger) (*Provider, error) {
 	s := settingsFromEnv(service)
 	var exp sdktrace.SpanExporter
@@ -112,7 +94,6 @@ func Init(ctx context.Context, service string, log *slog.Logger) (*Provider, err
 	return p, nil
 }
 
-// build merakit Provider. syncExport dipakai tes agar span langsung terekspor tanpa menunggu batch.
 func build(s settings, exp sdktrace.SpanExporter, syncExport bool, log *slog.Logger) (*Provider, error) {
 	if log == nil {
 		log = slog.Default()
@@ -154,7 +135,6 @@ func build(s settings, exp sdktrace.SpanExporter, syncExport bool, log *slog.Log
 	return &Provider{service: s.service, tp: tp, mp: mp, reg: reg, prop: prop, log: log, Exporting: exp != nil}, nil
 }
 
-// MetricsHandler mengembalikan handler /metrics format Prometheus.
 func (p *Provider) MetricsHandler() http.Handler {
 	return promhttp.HandlerFor(p.reg, promhttp.HandlerOpts{})
 }
@@ -170,7 +150,6 @@ func (p *Provider) serveMetrics(addr string) {
 	}()
 }
 
-// Shutdown mengosongkan span yang tersisa dan menutup endpoint /metrics.
 func (p *Provider) Shutdown(ctx context.Context) error {
 	var errs []error
 	if p.srv != nil {
@@ -180,24 +159,17 @@ func (p *Provider) Shutdown(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// Meter mengembalikan meter untuk metrik bisnis buatan service sendiri.
 func (p *Provider) Meter(name string) metric.Meter { return p.mp.Meter(name) }
 
-// Tracer mengembalikan tracer untuk span buatan service sendiri (mis. pemrosesan pesan).
 func (p *Provider) Tracer(name string) trace.Tracer { return p.tp.Tracer(name) }
 
-// skipPath menandai path yang tidak perlu ditelusuri maupun diukur (health check berkala).
 func skipPath(r *http.Request) bool {
 	return r.URL.Path == "/health" || r.URL.Path == "/healthz" || r.URL.Path == "/metrics"
 }
 
-// Middleware membungkus handler server: membuat span per permintaan (melanjutkan traceparent dari pemanggil),
-// mengukur latensi, error rate, dan throughput, serta menempelkan correlation ID ke span agar trace dapat
-// dicari dari log (dan sebaliknya).
 func (p *Provider) Middleware(next http.Handler) http.Handler {
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		next.ServeHTTP(w, r)
-		// Header ini baru diisi middleware correlation ID milik service, jadi dibaca setelah handler selesai.
 		if id := w.Header().Get(CorrelationHeader); id != "" {
 			trace.SpanFromContext(r.Context()).SetAttributes(attribute.String("correlation.id", id))
 		}
@@ -211,8 +183,6 @@ func (p *Provider) Middleware(next http.Handler) http.Handler {
 	)
 }
 
-// Transport membungkus RoundTripper klien keluar: setiap panggilan ke service lain menjadi span anak dan
-// membawa traceparent, sehingga satu permintaan dapat diikuti lintas service.
 func (p *Provider) Transport(base http.RoundTripper) http.RoundTripper {
 	if base == nil {
 		base = http.DefaultTransport
@@ -224,7 +194,6 @@ func (p *Provider) Transport(base http.RoundTripper) http.RoundTripper {
 	)
 }
 
-// LogAttrs mengembalikan trace_id dan span_id untuk ditambahkan ke log, atau nil bila tidak ada span aktif.
 func LogAttrs(ctx context.Context) []any {
 	sc := trace.SpanContextFromContext(ctx)
 	if !sc.IsValid() {
@@ -233,7 +202,6 @@ func LogAttrs(ctx context.Context) []any {
 	return []any{"trace_id", sc.TraceID().String(), "span_id", sc.SpanID().String()}
 }
 
-// MapCarrier menyesuaikan header AMQP (map[string]any) ke antarmuka propagasi OpenTelemetry.
 type MapCarrier map[string]any
 
 func (c MapCarrier) Get(key string) string {
@@ -251,12 +219,10 @@ func (c MapCarrier) Keys() []string {
 	return keys
 }
 
-// Inject menaruh konteks trace pada header pesan sebelum dipublikasikan.
 func Inject(ctx context.Context, headers map[string]any) {
 	otel.GetTextMapPropagator().Inject(ctx, MapCarrier(headers))
 }
 
-// Extract membaca konteks trace dari header pesan yang diterima.
 func Extract(ctx context.Context, headers map[string]any) context.Context {
 	return otel.GetTextMapPropagator().Extract(ctx, MapCarrier(headers))
 }

@@ -35,6 +35,7 @@ Port di bawah berlaku untuk Docker Compose.
 | auth-service | 8091 | penerbit token |
 | rabbitmq | 127.0.0.1:5672 dan 15672 | 15672 untuk UI manajemen |
 | notifier, dashboard-updater | tidak dibuka ke host | consumer, health di 8093 dan 8092 di dalam jaringan Docker |
+| situation-analyst | tidak dibuka ke host | analisis situasi (bonus AI), health dan `/analysis/latest` di 8094 di dalam jaringan Docker |
 | mongo | tidak dibuka ke host | hanya bisa dijangkau aggregator |
 
 Port BMKG, PVMBG, dan client-facing-api bisa diganti lewat `BMKG_PORT`, `PVMBG_PORT`, dan `CLIENT_API_PORT`.
@@ -224,6 +225,17 @@ docker compose logs | grep <correlation_id>
 ```
 
 Log tidak disimpan permanen. Simpan dulu dengan `docker compose logs --no-color > log.txt` sebelum container dihapus.
+
+## Analisis situasi (komponen AI, bonus)
+
+`situation-analyst` membaca kejadian dari antreannya sendiri (`situation-analyst-queue`) dan menghasilkan ringkasan serta deteksi lonjakan tidak wajar, yang tampil sebagai panel "Analisis situasi" di dashboard. Komponen ini **hanya menampilkan informasi**: tidak mengubah tingkat keparahan, tidak menulis ke store, dan tidak berada di jalur peringatan.
+
+- Deteksi lonjakan memakai statistik biasa (ekor Poisson terhadap rata-rata bergerak), tanpa LLM. Ringkasan templat selalu dihitung lebih dulu.
+- LLM (API kompatibel OpenAI, opsional) hanya menulis ulang ringkasan itu. Prompt hanya berisi agregat (jumlah per kategori, keparahan, 5 area teratas) dengan nama area yang disanitasi, bukan isi mentah event. Jawaban dibuang bila memuat URL, markup, atau angka yang tidak ada di data, lalu dipakai templat.
+- Bila LLM mati, lambat, kena batas anggaran per jam, atau jawabannya tidak valid, dashboard tetap menampilkan ringkasan templat. Bila situation-analyst sendiri mati, panel menampilkan "belum tersedia" dan dashboard lain tidak terpengaruh. Antreannya dibatasi (`x-max-length`, `drop-head`) sehingga tidak bisa menumpuk dan membebani broker.
+- Kunci LLM (`LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`) hanya diisi lewat `.env` lokal atau Secret `llm-credentials` di cluster (terpisah dari `app-secrets`), tidak pernah di Git, log, maupun prompt. Kosongkan untuk memakai templat saja.
+
+Bukti isolasi ada di test `internal/engine` (event diproses cepat walau LLM menggantung) dan `internal/llm` (breaker, anggaran, tanpa redirect, kunci tidak bocor ke galat).
 
 ## Test
 

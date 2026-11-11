@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"aggregator/internal/analysis"
 	"aggregator/internal/api"
 	"aggregator/internal/audit"
 	"aggregator/internal/bmkgclient"
@@ -41,7 +42,6 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Telemetry gagal dimulai tidak boleh mematikan layanan: lanjut tanpa instrumentasi dan catat peringatan.
 	tel, err := telemetry.Init(ctx, "aggregator", log)
 	if err != nil {
 		log.Warn("telemetry disabled", "err", err)
@@ -60,7 +60,7 @@ func main() {
 	}
 	defer closeStore()
 	hazardStore.RegisterMetrics()
-	go hazardStore.Run(ctx) // pemeriksaan kesehatan unit dan perbaikan penempatan data
+	go hazardStore.Run(ctx)
 
 	rabbitStart := time.Now()
 	publisher, err := broker.NewPublisher(cfg.RabbitMQURL, cfg.RabbitMQExchange, cfg.RabbitMQExchangeType)
@@ -82,9 +82,22 @@ func main() {
 	p := poller.New(bmkg, pvmbg, hazardStore, publisher, cfg.PollInterval, cfg.PVMBGStaleAfter, log)
 	go p.Run(ctx)
 
+	var analysisRT http.RoundTripper
+	if tel != nil {
+		analysisRT = tel.Transport(nil)
+	}
+	analysisClient, err := analysis.New(cfg.SituationAnalystURL, cfg.AggregatorAPIKey, 0, analysisRT)
+	if err != nil {
+		log.Error("invalid SITUATION_ANALYST_URL", "err", err)
+		os.Exit(1)
+	}
+	dash := dashboard.New(hazardStore, cfg.DashboardToken).WithLogger(log)
+	if analysisClient != nil {
+		dash.WithAnalysis(analysisClient)
+	}
 	handler := api.NewHandler(hazardStore, p, publisher, log).
 		WithAudit(audit.New(hazardStore, nil, cfg.AuditToken).WithLogger(log)).
-		WithDashboard(dashboard.New(hazardStore, cfg.DashboardToken).WithLogger(log))
+		WithDashboard(dash)
 	for _, w := range cfg.WeakTokens() {
 		log.Warn("konfigurasi token lemah", "detail", w)
 	}
@@ -121,13 +134,9 @@ func main() {
 		log.Error("server failed", "err", err)
 		os.Exit(1)
 	}
-	// ListenAndServe returns as soon as Shutdown is called; wait for in-flight requests to drain
-	// before the deferred Mongo and RabbitMQ cleanup runs.
 	<-shutdownDone
 }
 
-// buildStore membuat penyimpanan tersebar dari konfigurasi. Tanpa STORE_UNIT_NAMES, dipakai satu unit dari
-// MONGO_URI sehingga deployment lama tetap berjalan.
 func buildStore(cfg config.Config, log *slog.Logger) (*shardstore.Router, func(), error) {
 	type target struct{ name, uri string }
 	var targets []target

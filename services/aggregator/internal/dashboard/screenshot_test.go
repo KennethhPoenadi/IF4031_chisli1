@@ -16,10 +16,6 @@ import (
 	"aggregator/internal/shardstore"
 )
 
-// Tes visual opsional: dilewati kecuali DASH_SCREENSHOT_DIR diisi dan Chrome tersedia.
-// Menyalakan dashboard dengan data contoh lalu mengambil tangkapan layar (terang, gelap, dan data tidak lengkap).
-//
-//	DASH_SCREENSHOT_DIR=/tmp/dash go test ./internal/dashboard -run TestScreenshots -v
 func TestScreenshots(t *testing.T) {
 	dir := os.Getenv("DASH_SCREENSHOT_DIR")
 	if dir == "" {
@@ -76,11 +72,8 @@ func TestScreenshots(t *testing.T) {
 		mux := http.NewServeMux()
 		h.Register(mux)
 
-		// Token tidak boleh lewat URL, jadi disuntikkan ke sessionStorage lewat satu skrip tambahan. CSP dihitung
-		// dengan fungsi produksi yang sama, sehingga tes ini juga membuktikan CSP berbasis hash bekerja di browser.
 		doc := strings.Replace(string(page), "<script>", `<script>sessionStorage.setItem("dash-token","`+token+`")</script><script>`, 1)
 		if c.dark {
-			// Chrome headless mengabaikan flag mode gelap, jadi blok @media gelap dibuka agar token gelapnya terlihat.
 			doc = strings.Replace(doc, "@media (prefers-color-scheme: dark) {", "@media all {", 1)
 		}
 		outer := http.NewServeMux()

@@ -269,8 +269,6 @@ var (
 	failed   = telemetry.Counter("hazard_events_failed", "HazardEvent yang gagal diproses, per tahap")
 )
 
-// contextSaver adalah penyimpanan yang menerima ctx, agar span penyimpanan menjadi anak dari span pengambilan
-// data. Penyimpanan tersebar (shardstore.Router) memenuhinya; EventStore lama tetap didukung.
 type contextSaver interface {
 	Save(ctx context.Context, event hazard.Event) error
 }

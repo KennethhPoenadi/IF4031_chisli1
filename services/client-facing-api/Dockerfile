@@ -1,6 +1,4 @@
 FROM golang:1.26 AS builder
-# Konteks build adalah folder services/ (lihat docker-compose.yml), karena modul telemetry dipakai bersama
-# oleh semua service lewat `replace telemetry => ../telemetry`.
 WORKDIR /src
 COPY telemetry/go.mod telemetry/go.sum telemetry/
 COPY client-facing-api/go.mod client-facing-api/go.sum client-facing-api/

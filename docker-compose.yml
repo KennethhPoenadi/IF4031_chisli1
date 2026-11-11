@@ -183,6 +183,8 @@ services:
       AGGREGATOR_BMKG_TIMEOUT_MS: ${AGGREGATOR_BMKG_TIMEOUT_MS:-2000}
       AGGREGATOR_PVMBG_TIMEOUT_MS: ${AGGREGATOR_PVMBG_TIMEOUT_MS:-4000}
       AGGREGATOR_PVMBG_STALE_AFTER_SECONDS: ${AGGREGATOR_PVMBG_STALE_AFTER_SECONDS:-30}
+      SITUATION_ANALYST_URL: http://situation-analyst:${SITUATION_ANALYST_PORT:-8094}
+      DASHBOARD_TOKEN: ${DASHBOARD_TOKEN:-}
     depends_on:
       mongo:
         condition: service_healthy
@@ -217,6 +219,29 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:$${DASHBOARD_UPDATER_HEALTH_PORT}/health >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+      start_period: 5s
+
+  situation-analyst:
+    build:
+      context: ./services
+      dockerfile: situation-analyst/Dockerfile
+    environment:
+      SITUATION_ANALYST_PORT: ${SITUATION_ANALYST_PORT:-8094}
+      ANALYST_API_KEY: ${AGGREGATOR_API_KEY:?AGGREGATOR_API_KEY must be set in .env}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER must be set in .env}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set in .env}@rabbitmq:5672/
+      RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-hazard_events}
+      ANALYST_QUEUE: ${ANALYST_QUEUE:-situation-analyst-queue}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:$${SITUATION_ANALYST_PORT}/health >/dev/null || exit 1"]
       interval: 5s
       timeout: 2s
       retries: 5

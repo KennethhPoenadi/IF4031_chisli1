@@ -38,7 +38,6 @@ func attr(span tracetest.SpanStub, key string) string {
 }
 
 func TestOneTraceFollowsARequestAcrossTwoServices(t *testing.T) {
-	// client-facing-api memanggil aggregator; keduanya diinstrumentasi dan menulis ke exporter terpisah
 	aggP, aggExp := newProvider(t, "aggregator")
 	apiP, apiExp := newProvider(t, "client-facing-api")
 
@@ -71,7 +70,6 @@ func TestOneTraceFollowsARequestAcrossTwoServices(t *testing.T) {
 	if len(aggSpans) != 1 {
 		t.Fatalf("aggregator span = %d, want 1", len(aggSpans))
 	}
-	// span client-facing: server (induk) dan client (anak, panggilan ke aggregator)
 	var serverSpan, clientSpan tracetest.SpanStub
 	for _, s := range apiSpans {
 		switch s.SpanKind {
@@ -143,10 +141,10 @@ func TestMetricsExposeRateErrorsAndDuration(t *testing.T) {
 	p.MetricsHandler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 	body := rec.Body.String()
 	for _, want := range []string{
-		"http_server_request_duration_seconds_bucket", // latensi (histogram) untuk p50/p95/p99
-		"http_server_request_duration_seconds_count",  // throughput
-		`http_response_status_code="500"`,             // error rate
-		"go_goroutines",                               // metrik runtime
+		"http_server_request_duration_seconds_bucket",
+		"http_server_request_duration_seconds_count",
+		`http_response_status_code="500"`,
+		"go_goroutines",
 		"process_resident_memory_bytes",
 	} {
 		if !strings.Contains(body, want) {
@@ -380,7 +378,7 @@ func TestInitExportsTracesToTheOTLPCollector(t *testing.T) {
 	}
 	resp.Body.Close()
 
-	if err := p.Shutdown(context.Background()); err != nil { // mengosongkan batch ke kolektor
+	if err := p.Shutdown(context.Background()); err != nil {
 		t.Fatalf("shutdown: %v", err)
 	}
 	select {
@@ -397,7 +395,7 @@ func TestInitExportsTracesToTheOTLPCollector(t *testing.T) {
 }
 
 func TestExportFailureDoesNotBreakTheService(t *testing.T) {
-	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:1") // tidak ada kolektor
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:1")
 	t.Setenv("TELEMETRY_METRICS_ADDR", "off")
 	p, err := Init(context.Background(), "svc", quiet())
 	if err != nil {
@@ -414,5 +412,5 @@ func TestExportFailureDoesNotBreakTheService(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	_ = p.Shutdown(ctx) // boleh mengembalikan error ekspor, tidak boleh menggantung
+	_ = p.Shutdown(ctx)
 }

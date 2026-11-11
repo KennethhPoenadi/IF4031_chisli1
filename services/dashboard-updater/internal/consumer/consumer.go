@@ -75,7 +75,6 @@ var (
 )
 
 func handle(seen *SeenSet, state *State, msg amqp.Delivery, log *slog.Logger) {
-	// span ini melanjutkan trace aggregator lewat header pesan
 	ctx, endSpan := telemetry.StartConsumerSpan(context.Background(), "process hazard event", msg.Headers,
 		"messaging.system", "rabbitmq", "messaging.rabbitmq.destination.routing_key", msg.RoutingKey,
 		"correlation.id", msg.CorrelationId)

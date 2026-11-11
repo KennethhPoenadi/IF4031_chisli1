@@ -39,7 +39,6 @@ func New(base, key string, timeout time.Duration, maxConnections int, log *slog.
 	}
 }
 
-// WithTransport membungkus RoundTripper klien (mis. dengan instrumentasi trace) tanpa mengubah pengaturan pool.
 func (c *Client) WithTransport(wrap func(http.RoundTripper) http.RoundTripper) *Client {
 	c.http.Transport = wrap(c.http.Transport)
 	return c

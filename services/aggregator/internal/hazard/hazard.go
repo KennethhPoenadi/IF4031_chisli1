@@ -48,8 +48,6 @@ type Event struct {
 	Attributes  map[string]any `bson:"attributes" json:"attributes"` //ini map nanti yang bikin bisa handle field baru, handle perbedaan dataa
 }
 
-// Kategori dashboard analitik. Lima kategori yang saling lepas: tsunami dipisah dari gempa agar total
-// kategori sama dengan jumlah event.
 const (
 	CategorySeismic  = string(TypeSeismic)
 	CategoryTsunami  = "TSUNAMI"
@@ -58,11 +56,8 @@ const (
 	CategoryCoastal  = string(TypeCoastal)
 )
 
-// TsunamiWarningKey adalah atribut yang dibawa event SEISMIC bila BMKG menerbitkan peringatan tsunami.
 const TsunamiWarningKey = "tsunami_warning_threat_level"
 
-// Category menentukan kategori dashboard sebuah event. Event SEISMIC yang membawa peringatan tsunami dihitung
-// sebagai TSUNAMI, bukan SEISMIC.
 func (e Event) Category() string {
 	if e.HazardType == TypeSeismic {
 		if _, ok := e.Attributes[TsunamiWarningKey]; ok {

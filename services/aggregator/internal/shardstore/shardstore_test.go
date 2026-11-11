@@ -181,7 +181,6 @@ func truncate(t time.Time, bucket string) time.Time {
 	return t.Truncate(time.Hour)
 }
 
-// Aggregate meniru semantik Mongo: hanya event yang pemilik efektifnya unit ini yang dihitung.
 func (f *fakeUnit) Aggregate(_ context.Context, q AggregateQuery, down []string) (AggregateResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -266,8 +265,7 @@ func event(i int) hazard.Event {
 		Severity:    hazard.SeverityWaspada,
 		AreaName:    "Area",
 		OccurredAt:  t0.Add(time.Duration(i) * time.Second),
-		// beberapa event sengaja berbagi ingested_at agar tie-break hazard_id teruji
-		IngestedAt: t0.Add(time.Duration(i/3) * time.Second),
+		IngestedAt:  t0.Add(time.Duration(i/3) * time.Second),
 	}
 }
 
@@ -305,7 +303,6 @@ func TestRingSpreadsKeysEvenlyRegardlessOfKeyPattern(t *testing.T) {
 	counts := map[string]int{}
 	const n = 30000
 	for i := 0; i < n; i++ {
-		// kunci berurutan, menyerupai gempa yang menumpuk pada satu wilayah dan satu rentang waktu
 		counts[ring.Owners(fmt.Sprintf("hz-jalur-sunda-%08d", i), 1)[0]]++
 	}
 	for u, c := range counts {
@@ -499,7 +496,6 @@ func TestStuckNodeDoesNotHangTheRequest(t *testing.T) {
 		t.Fatalf("event = %d, want %d", len(page.Events), len(events))
 	}
 
-	// permintaan berikutnya langsung melewati unit yang sudah ditandai tidak terjangkau
 	start = time.Now()
 	if _, err := r.ListEvents(context.Background(), ListQuery{Limit: 10}); err != nil {
 		t.Fatal(err)
@@ -512,13 +508,13 @@ func TestStuckNodeDoesNotHangTheRequest(t *testing.T) {
 func TestWritesContinueWhileOneNodeIsDownAndRepairCompletesThemLater(t *testing.T) {
 	r, fakes := newCluster(t, "store-0", "store-1", "store-2")
 	fakes[0].set(true)
-	events := load(t, r, 120) // tidak boleh gagal walau store-0 mati
+	events := load(t, r, 120)
 	if len(events) != 120 {
 		t.Fatal("penulisan harus berjalan terus")
 	}
 
 	fakes[0].set(false)
-	r.pingAll(context.Background()) // pemeriksaan kesehatan menandai store-0 pulih
+	r.pingAll(context.Background())
 	if _, err := r.RepairOnce(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -546,18 +542,15 @@ func TestWipedNodeIsRebuiltWithoutLosingAnyEvent(t *testing.T) {
 	r, fakes := newCluster(t, "store-0", "store-1", "store-2")
 	events := load(t, r, 300)
 
-	// node mati dan seluruh datanya dihapus
 	victim := fakes[1]
 	victim.set(true)
 	victim.wipe()
 
-	// selama node mati, semua event tetap terbaca
 	page, err := r.ListEvents(context.Background(), ListQuery{Limit: 1000, Order: NewestFirst})
 	if err != nil || len(page.Events) != len(events) {
 		t.Fatalf("selama node mati: %d event, err=%v, want %d", len(page.Events), err, len(events))
 	}
 
-	// node kembali dengan disk kosong
 	victim.set(false)
 	r.pingAll(context.Background())
 	stats, err := r.RepairOnce(context.Background())
@@ -571,7 +564,6 @@ func TestWipedNodeIsRebuiltWithoutLosingAnyEvent(t *testing.T) {
 		t.Fatal("node pengganti tetap kosong")
 	}
 
-	// kembali mampu bertahan dari kehilangan satu node berikutnya
 	for _, f := range fakes {
 		if f == victim {
 			continue
@@ -590,7 +582,6 @@ func TestAddingANodeRebalancesDataAndRemovesStaleCopies(t *testing.T) {
 	r3, fakes := newCluster(t, "store-0", "store-1", "store-2")
 	events := load(t, r3, 600)
 
-	// operator menambah store-3: router baru dibangun dari konfigurasi unit yang diperbarui
 	fresh := newFake("store-3")
 	units := []Unit{fakes[0], fakes[1], fakes[2], fresh}
 	r4, err := New(units, quietCfg())
@@ -598,12 +589,10 @@ func TestAddingANodeRebalancesDataAndRemovesStaleCopies(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// selama rebalancing, pembacaan tetap lengkap tanpa menunggu perbaikan
 	page, err := r4.ListEvents(context.Background(), ListQuery{Limit: 1000, Order: NewestFirst})
 	if err != nil || len(page.Events) != len(events) {
 		t.Fatalf("sebelum perbaikan: %d event, err=%v, want %d", len(page.Events), err, len(events))
 	}
-	// penulisan berjalan terus dan langsung memakai cincin baru
 	extra := event(10_000)
 	if err := r4.SaveHazardEvent(extra); err != nil {
 		t.Fatal(err)
@@ -638,7 +627,6 @@ func TestAddingANodeRebalancesDataAndRemovesStaleCopies(t *testing.T) {
 			}
 		}
 	}
-	// beban terbagi ke empat node, tidak ada yang memegang seluruh data
 	for _, f := range append(fakes, fresh) {
 		if f.count() >= len(all) {
 			t.Fatalf("%s menyimpan seluruh data", f.name)
@@ -752,7 +740,6 @@ func TestRepairLetsTheNewestVersionWin(t *testing.T) {
 	owners := r.Owners(ev.HazardID)
 	stale, fresh := fakeByName(fakes, owners[0]), fakeByName(fakes, owners[1])
 
-	// replika kedua memegang versi lebih baru (mis. pembaruan kebakaran yang hanya sampai di satu unit)
 	updated := ev
 	updated.Severity = hazard.SeverityAwas
 	updated.IngestedAt = ev.IngestedAt.Add(time.Minute)
@@ -769,7 +756,6 @@ func TestRepairLetsTheNewestVersionWin(t *testing.T) {
 	}
 }
 
-// groundTruth menghitung agregasi langsung dari daftar event, tanpa penyimpanan tersebar.
 func groundTruth(events []hazard.Event, q AggregateQuery) AggregateResult {
 	out := NewAggregateResult()
 	for _, ev := range events {
@@ -890,7 +876,6 @@ func TestAnalyticsRecoversWhenAUnitDiesDuringTheCalculation(t *testing.T) {
 	r, fakes := newCluster(t, "store-0", "store-1", "store-2")
 	events := loadAnalytics(t, r, 300)
 
-	// unit belum ditandai down, tetapi gagal saat dihitung: hitungan diulang dengan replikanya
 	fakes[1].set(true)
 	got, err := r.Analytics(context.Background(), analyticsRange)
 	if err != nil {
@@ -922,7 +907,7 @@ func TestAnalyticsIsMarkedPartialWhenDataIsUnreachable(t *testing.T) {
 func TestAnalyticsFlagsRebalancingUntilRepairCompletes(t *testing.T) {
 	r, fakes := newCluster(t, "store-0", "store-1", "store-2")
 	fakes[0].set(true)
-	events := loadAnalytics(t, r, 150) // sebagian event hanya tersimpan di satu salinan
+	events := loadAnalytics(t, r, 150)
 	fakes[0].set(false)
 	r.pingAll(context.Background())
 

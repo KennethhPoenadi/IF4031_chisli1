@@ -9,13 +9,12 @@ import (
 	"telemetry"
 )
 
-// RepairStats adalah ringkasan satu putaran perbaikan.
 type RepairStats struct {
-	Scanned     int      // jumlah hazard_id unik yang ditemukan
-	Replicated  int      // salinan yang dibuat atau diperbarui pada pemilik yang kekurangan
-	OwnersFixed int      // catatan pemilik yang diperbarui
-	Removed     int      // salinan pada unit yang bukan pemilik, dihapus setelah pemilik lengkap
-	Unavailable []string // unit yang tidak terjangkau selama putaran ini
+	Scanned     int
+	Replicated  int
+	OwnersFixed int
+	Removed     int
+	Unavailable []string
 }
 
 var (
@@ -28,16 +27,6 @@ type holder struct {
 	rec  KeyRecord
 }
 
-// RepairOnce menyamakan penempatan data dengan cincin saat ini (anti-entropy).
-//
-//   - Event yang kekurangan salinan pada unit pemiliknya (unit baru, disk yang dikosongkan, penulisan yang
-//     terlewat) disalin dari unit yang menyimpannya.
-//   - Bila salinan berbeda, versi dengan ingested_at terbaru menang (last-writer-wins).
-//   - Salinan pada unit yang bukan pemilik (setelah topologi berubah atau titipan sementara) dihapus,
-//     tetapi hanya setelah seluruh pemilik memegang salinan dan seluruh unit terjangkau.
-//
-// Aman dijalankan bersamaan dengan penulisan dan pembacaan: salinan lama baru dihapus setelah salinan
-// baru ada, dan pembacaan menyatukan hasil dari seluruh unit.
 func (r *Router) RepairOnce(ctx context.Context) (RepairStats, error) {
 	r.repairMu.Lock()
 	defer r.repairMu.Unlock()
@@ -84,7 +73,6 @@ func (r *Router) RepairOnce(ctx context.Context) (RepairStats, error) {
 			heldBy[h.unit] = h
 		}
 
-		// pemilik yang kekurangan salinan, atau memegang versi yang lebih lama
 		var targets []string
 		for _, name := range desired {
 			if down[name] {
@@ -114,7 +102,6 @@ func (r *Router) RepairOnce(ctx context.Context) (RepairStats, error) {
 			}
 		}
 
-		// catatan pemilik pada salinan yang sudah benar tetapi pemiliknya usang
 		for _, name := range desired {
 			h, ok := heldBy[name]
 			if !ok || replicated[name] || down[name] || sameOwners(h.rec.Owners, desired) {
@@ -128,7 +115,6 @@ func (r *Router) RepairOnce(ctx context.Context) (RepairStats, error) {
 			}
 		}
 
-		// hapus salinan pada unit yang bukan pemilik, hanya bila semua pemilik sudah lengkap
 		if !allUp {
 			continue
 		}
@@ -187,8 +173,6 @@ func sameOwners(a, b []string) bool {
 	return true
 }
 
-// Run menjalankan pemeriksaan kesehatan unit dan perbaikan berkala sampai ctx selesai.
-// Saat sebuah unit pulih (atau diganti dengan disk kosong), perbaikan segera dijalankan.
 func (r *Router) Run(ctx context.Context) {
 	ping := time.NewTicker(r.cfg.PingInterval)
 	defer ping.Stop()

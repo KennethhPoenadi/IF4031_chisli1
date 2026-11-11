@@ -14,7 +14,6 @@ import (
 	"aggregator/internal/shardstore"
 )
 
-// MongoUnit adalah satu unit penyimpanan: satu instance MongoDB mandiri. Implementasi shardstore.Unit.
 type MongoUnit struct {
 	name       string
 	client     *mongo.Client
@@ -24,14 +23,11 @@ type MongoUnit struct {
 	indexed bool
 }
 
-// stored adalah bentuk dokumen di MongoDB: event ditambah catatan pemilik (unit primary lebih dulu).
 type stored struct {
 	hazard.Event `bson:",inline"`
 	Owners       []string `bson:"owners"`
 }
 
-// NewMongoUnit membuat unit tanpa menghubungi server: unit yang belum menyala saat aggregator start tidak
-// boleh menggagalkan seluruh layanan. Indeks dibuat pada Ping pertama yang berhasil.
 func NewMongoUnit(name, uri, dbName, collectionName string) (*MongoUnit, error) {
 	client, err := mongo.Connect(options.Client().ApplyURI(uri).SetServerSelectionTimeout(2 * time.Second))
 	if err != nil {
@@ -181,9 +177,6 @@ func (u *MongoUnit) Delete(ctx context.Context, hazardID string) error {
 
 var _ shardstore.Unit = (*MongoUnit)(nil)
 
-// Aggregate menghitung event pada rentang [From, To) menurut waktu kejadian. Hanya event yang pemilik
-// efektifnya unit ini yang dihitung: pemilik efektif adalah pemilik pertama pada daftar `owners` yang tidak
-// termasuk down. Event tanpa catatan pemilik (data lama) dihitung oleh unit yang menyimpannya.
 func (u *MongoUnit) Aggregate(ctx context.Context, q shardstore.AggregateQuery, down []string) (shardstore.AggregateResult, error) {
 	downArr := bson.A{}
 	for _, d := range down {

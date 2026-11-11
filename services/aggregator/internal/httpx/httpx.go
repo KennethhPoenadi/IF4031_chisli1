@@ -58,8 +58,6 @@ func Observe(log *slog.Logger) func(http.Handler) http.Handler {
 	}
 }
 
-// TokenEqual membandingkan dua kredensial dalam waktu konstan. Keduanya di-hash dulu agar panjang token tidak
-// bocor lewat waktu respons (subtle.ConstantTimeCompare langsung berhenti bila panjangnya berbeda).
 func TokenEqual(a, b string) bool {
 	ha, hb := sha256.Sum256([]byte(a)), sha256.Sum256([]byte(b))
 	return subtle.ConstantTimeCompare(ha[:], hb[:]) == 1
