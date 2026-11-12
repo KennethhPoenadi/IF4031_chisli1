@@ -60,6 +60,25 @@ func TestLoadAssignsScopesOnTheServerSide(t *testing.T) {
 			t.Fatalf("%s scope = %q, want it to include read:raw", id, scopes[id])
 		}
 	}
+	hasScope := func(list, want string) bool {
+		for _, s := range strings.Fields(list) {
+			if s == want {
+				return true
+			}
+		}
+		return false
+	}
+	if !hasScope(scopes["AUTH_CLIENT_OPS-id"], "ops:unprocessed") {
+		t.Fatal("hanya Internal Ops yang memegang ops:unprocessed, tetapi Ops tidak memilikinya")
+	}
+	for _, id := range []string{"AUTH_CLIENT_MEDIA-id", "AUTH_CLIENT_FIELD-id"} {
+		if hasScope(scopes[id], "ops:unprocessed") {
+			t.Fatalf("%s tidak boleh memeriksa pesan gagal", id)
+		}
+	}
+	if !hasScope(scopes["AUTH_CLIENT_FIELD-id"], "write:field-reports") || hasScope(scopes["AUTH_CLIENT_MEDIA-id"], "write:field-reports") {
+		t.Fatal("hanya Tim Lapangan yang boleh mengirim laporan")
+	}
 }
 
 func TestLoadDefaultsAndOverridesTTL(t *testing.T) {
