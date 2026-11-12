@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -10,7 +11,9 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
+	"aggregator/internal/amqpx"
 	"aggregator/internal/analysis"
 	"aggregator/internal/api"
 	"aggregator/internal/audit"
@@ -18,9 +21,16 @@ import (
 	"aggregator/internal/broker"
 	"aggregator/internal/config"
 	"aggregator/internal/dashboard"
+	"aggregator/internal/deadletter"
+	"aggregator/internal/dlq"
+	"aggregator/internal/fieldreport"
+	"aggregator/internal/hazard"
 	"aggregator/internal/httpx"
+	"aggregator/internal/ingestapi"
+	"aggregator/internal/mapper"
 	"aggregator/internal/poller"
 	"aggregator/internal/pvmbgclient"
+	"aggregator/internal/satingest"
 	"aggregator/internal/shardstore"
 	"aggregator/internal/store"
 	"telemetry"
@@ -53,14 +63,24 @@ func main() {
 		}()
 	}
 
-	hazardStore, closeStore, err := buildStore(cfg, log)
+	hazardStore, docStore, closeStore, err := buildStore(cfg, log)
 	if err != nil {
 		log.Error("storage setup failed", "err", err)
 		os.Exit(1)
 	}
 	defer closeStore()
 	hazardStore.RegisterMetrics()
+	hazardStore.SetTombstones(docStore)
 	go hazardStore.Run(ctx)
+	go docStore.Run(ctx)
+
+	schemaRules, err := mapper.ParseRules(cfg.PVMBGFieldAliases, cfg.PVMBGFieldCoerce)
+	if err != nil {
+		log.Error("invalid PVMBG_FIELD_ALIASES / PVMBG_FIELD_COERCE", "err", err)
+		os.Exit(1)
+	}
+	deadLetters := dlq.New(docStore)
+	deadLetters.RegisterMetrics(ctx)
 
 	rabbitStart := time.Now()
 	publisher, err := broker.NewPublisher(cfg.RabbitMQURL, cfg.RabbitMQExchange, cfg.RabbitMQExchangeType)
@@ -80,7 +100,30 @@ func main() {
 		pvmbg.WithTransport(tel.Transport(nil))
 	}
 	p := poller.New(bmkg, pvmbg, hazardStore, publisher, cfg.PollInterval, cfg.PVMBGStaleAfter, log)
+	p.WithDeadLetters(deadLetters, schemaRules)
+	if !schemaRules.Empty() {
+		log.Info("aturan penyesuaian skema PVMBG aktif", "aliases", cfg.PVMBGFieldAliases, "coerce", cfg.PVMBGFieldCoerce)
+	}
 	go p.Run(ctx)
+
+	var reports *fieldreport.Processor
+	if cfg.FieldReportsEnabled {
+		reports = fieldreport.New(docStore, log, cfg.FieldReportDelay)
+		go reports.Run(ctx, cfg.RabbitMQURL, cfg.FieldReportPrefetch)
+	}
+	if cfg.DeadLetterConsumerOn {
+		go deadletter.New(deadLetters, log).Run(ctx, cfg.RabbitMQURL)
+	}
+	processors := func() map[string]dlq.Processor {
+		procs := p.Processors()
+		procs[dlq.KindAMQP] = amqpProcessor(reports, publisher)
+		return procs
+	}
+	go deadLetters.RunRetry(ctx, cfg.DLQRetryInterval, processors(), nil, log)
+	ingest := &ingestapi.Handler{DLQ: deadLetters, Processors: processors, Reports: reports}
+	satellite := satingest.New(docStore, hazardStore, publisher, log)
+	internalAuth := httpx.RequireInternalKey(cfg.AggregatorAPIKey)
+	statsAuth := internalOrAudit(cfg.AggregatorAPIKey, cfg.AuditToken)
 
 	var analysisRT http.RoundTripper
 	if tel != nil {
@@ -96,8 +139,12 @@ func main() {
 		dash.WithAnalysis(analysisClient)
 	}
 	handler := api.NewHandler(hazardStore, p, publisher, log).
-		WithAudit(audit.New(hazardStore, nil, cfg.AuditToken).WithLogger(log)).
-		WithDashboard(dash)
+		WithAudit(audit.New(hazardStore, deadLetters, cfg.AuditToken).WithLogger(log)).
+		WithDashboard(dash).
+		WithRoutes(func(mux *http.ServeMux) {
+			ingest.Register(mux, internalAuth)
+			satellite.Register(mux, internalAuth, statsAuth)
+		})
 	for _, w := range cfg.WeakTokens() {
 		log.Warn("konfigurasi token lemah", "detail", w)
 	}
@@ -137,7 +184,50 @@ func main() {
 	<-shutdownDone
 }
 
-func buildStore(cfg config.Config, log *slog.Logger) (*shardstore.Router, func(), error) {
+// menerima internal key Aggregator atau token Audit (untuk statistik yang dibaca penguji).
+func internalOrAudit(internalKey, auditToken string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if k := r.Header.Get("X-Internal-Key"); k != "" && httpx.TokenEqual(k, internalKey) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if auditToken != "" && httpx.TokenEqual(r.Header.Get("Authorization"), "Bearer "+auditToken) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": "unauthorized", "message": "token tidak valid"}})
+		})
+	}
+}
+
+// memproses ulang pesan broker yang sempat ditolak konsumer.
+func amqpProcessor(reports *fieldreport.Processor, pub *broker.Publisher) dlq.Processor {
+	return func(ctx context.Context, e dlq.Entry) error {
+		if e.Origin == amqpx.FieldReportsQueue {
+			if reports == nil {
+				return errors.New("jalur laporan tidak aktif")
+			}
+			return reports.DLQProcessor(ctx, e)
+		}
+		raw, err := e.RawPayload()
+		if err != nil || !utf8.Valid(raw) {
+			return dlq.Permanent("malformed: payload bukan UTF-8 valid")
+		}
+		var ev hazard.Event
+		if err := json.Unmarshal(raw, &ev); err != nil {
+			return dlq.Permanent("malformed: " + err.Error())
+		}
+		if ev.HazardID == "" || ev.Source == "" || ev.HazardType == "" {
+			return dlq.Permanent("schema_incompatible: HazardEvent tanpa hazard_id/source/hazard_type")
+		}
+		return pub.Publish(ctx, ev, e.CorrelationID)
+	}
+}
+
+func buildStore(cfg config.Config, log *slog.Logger) (*shardstore.Router, *shardstore.DocStore, func(), error) {
 	type target struct{ name, uri string }
 	var targets []target
 	if len(cfg.StoreUnitNames) == 0 {
@@ -161,7 +251,7 @@ func buildStore(cfg config.Config, log *slog.Logger) (*shardstore.Router, func()
 		u, err := store.NewMongoUnit(t.name, t.uri, cfg.MongoDBName, cfg.MongoHazardCollection)
 		if err != nil {
 			closeAll()
-			return nil, nil, fmt.Errorf("unit %s: %w", t.name, err)
+			return nil, nil, nil, fmt.Errorf("unit %s: %w", t.name, err)
 		}
 		mongoUnits = append(mongoUnits, u)
 		units = append(units, u)
@@ -170,7 +260,7 @@ func buildStore(cfg config.Config, log *slog.Logger) (*shardstore.Router, func()
 	var resolvers shardstore.FallbackNodes
 	if static, err := shardstore.ParseStaticNodes(cfg.StoreNodeMap); err != nil {
 		closeAll()
-		return nil, nil, err
+		return nil, nil, nil, err
 	} else if len(static) > 0 {
 		resolvers = append(resolvers, static)
 	}
@@ -191,8 +281,17 @@ func buildStore(cfg config.Config, log *slog.Logger) (*shardstore.Router, func()
 	})
 	if err != nil {
 		closeAll()
-		return nil, nil, err
+		return nil, nil, nil, err
+	}
+	docUnits := make([]shardstore.DocUnit, 0, len(mongoUnits))
+	for _, u := range mongoUnits {
+		docUnits = append(docUnits, u)
+	}
+	docs, err := shardstore.NewDocStore(router, docUnits)
+	if err != nil {
+		closeAll()
+		return nil, nil, nil, err
 	}
 	log.Info("storage configured", "units", router.UnitNames(), "replication_factor", router.ReplicationFactor())
-	return router, closeAll, nil
+	return router, docs, closeAll, nil
 }

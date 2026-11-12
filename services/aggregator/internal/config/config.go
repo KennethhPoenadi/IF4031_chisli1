@@ -42,6 +42,14 @@ type Config struct {
 
 	PollInterval    time.Duration
 	PVMBGStaleAfter time.Duration
+
+	PVMBGFieldAliases    string
+	PVMBGFieldCoerce     string
+	DLQRetryInterval     time.Duration
+	FieldReportsEnabled  bool
+	FieldReportDelay     time.Duration
+	FieldReportPrefetch  int
+	DeadLetterConsumerOn bool
 }
 
 func Load() (Config, error) {
@@ -111,6 +119,21 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
+	dlqRetry, err := getEnvSeconds("DLQ_RETRY_INTERVAL_SECONDS", 5)
+	if err != nil {
+		return Config{}, err
+	}
+	fieldPrefetch, err := getEnvInt("FIELD_REPORT_PREFETCH", 20)
+	if err != nil {
+		return Config{}, err
+	}
+	fieldDelay := time.Duration(0)
+	if v := os.Getenv("FIELD_REPORT_PROCESS_DELAY_MS"); v != "" && v != "0" {
+		if fieldDelay, err = getEnvMS("FIELD_REPORT_PROCESS_DELAY_MS", 0); err != nil {
+			return Config{}, err
+		}
+	}
+
 	storeNames := splitList(getEnv("STORE_UNIT_NAMES", ""))
 	storeTemplate := getEnv("STORE_URI_TEMPLATE", "")
 	if len(storeNames) > 0 && !strings.Contains(storeTemplate, "%s") {
@@ -148,6 +171,14 @@ func Load() (Config, error) {
 
 		PollInterval:    pollInterval,
 		PVMBGStaleAfter: pvmbgStaleAfter,
+
+		PVMBGFieldAliases:    getEnv("PVMBG_FIELD_ALIASES", ""),
+		PVMBGFieldCoerce:     getEnv("PVMBG_FIELD_COERCE", ""),
+		DLQRetryInterval:     dlqRetry,
+		FieldReportsEnabled:  getEnv("FIELD_REPORTS_ENABLED", "true") != "false",
+		FieldReportDelay:     fieldDelay,
+		FieldReportPrefetch:  fieldPrefetch,
+		DeadLetterConsumerOn: getEnv("DEAD_LETTER_CONSUMER_ENABLED", "true") != "false",
 	}, nil
 }
 
