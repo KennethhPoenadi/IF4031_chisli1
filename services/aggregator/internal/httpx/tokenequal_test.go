@@ -12,7 +12,7 @@ func TestTokenEqual(t *testing.T) {
 	}{
 		{"abc", "abc", true},
 		{"abc", "abd", false},
-		{"abc", "abcd", false}, // panjang berbeda: tetap false, tanpa kebocoran panjang
+		{"abc", "abcd", false},
 		{"", "", true},
 		{"", "x", false},
 		{strings.Repeat("a", 4096), strings.Repeat("a", 4096), true},

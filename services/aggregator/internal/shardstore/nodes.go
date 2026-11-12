@@ -75,7 +75,6 @@ func NewKubeNodes() (*KubeNodes, error) {
 	return &KubeNodes{
 		base:      "https://" + host + ":" + port,
 		namespace: strings.TrimSpace(string(ns)),
-		// token dibaca ulang tiap permintaan karena Kubernetes merotasinya
 		token: func() (string, error) {
 			b, err := os.ReadFile(serviceAccountDir + "/token")
 			return strings.TrimSpace(string(b)), err

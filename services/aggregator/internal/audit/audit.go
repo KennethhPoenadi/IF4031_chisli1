@@ -54,8 +54,6 @@ type Handler struct {
 	log         *slog.Logger
 }
 
-// WithLogger mencatat percobaan autentikasi yang gagal (tanpa pernah mencatat token), agar tebakan token
-// terlihat di log.
 func (h *Handler) WithLogger(l *slog.Logger) *Handler {
 	h.log = l
 	return h
@@ -165,7 +163,6 @@ func (h *Handler) events(w http.ResponseWriter, r *http.Request) {
 		filter.IngestedSince = &t
 	}
 
-	// urutan menaik menurut ingested_at, lalu hazard_id (Lampiran A)
 	page, err := h.store.ListEvents(r.Context(), shardstore.ListQuery{
 		Filter: filter, Limit: limit, Cursor: q.Get("cursor"), Order: shardstore.OldestFirst,
 	})
@@ -231,7 +228,6 @@ func (h *Handler) location(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, err)
 		return
 	}
-	// 404 hanya bila benar-benar tidak ada. Jika sebagian unit tidak terjangkau, ketiadaan tidak bisa dipastikan.
 	if !res.Found && !res.Partial {
 		writeError(w, http.StatusNotFound, "not_found", "hazard_id tidak ditemukan")
 		return

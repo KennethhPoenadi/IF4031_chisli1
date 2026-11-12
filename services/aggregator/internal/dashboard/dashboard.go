@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -40,8 +41,6 @@ func hashesOf(re *regexp.Regexp, doc []byte) string {
 	return strings.Join(out, " ")
 }
 
-// contentSecurityPolicy membangun CSP untuk sebuah dokumen: skrip dan gaya inline hanya boleh yang hash-nya
-// persis sama dengan isi dokumen. Tanpa 'unsafe-inline', sisipan skrip (XSS) tidak akan dijalankan browser.
 func contentSecurityPolicy(doc []byte) string {
 	return "default-src 'none'; script-src " + hashesOf(scriptRe, doc) + "; style-src " + hashesOf(styleRe, doc) +
 		"; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
@@ -73,21 +72,19 @@ const (
 	hourlyMaxSpan = 72 * time.Hour
 )
 
-// Handler melayani halaman dan API ringkasan dashboard.
 type Handler struct {
 	src   Source
 	token string
 	now   func() time.Time
 	log   *slog.Logger
+
+	analysis AnalysisProvider
 }
 
-// New membuat Handler. token kosong berarti API ringkasan menolak semua permintaan. Token dashboard sengaja
-// terpisah dari token Audit API: orang yang hanya melihat dashboard tidak boleh memegang token penguji.
 func New(src Source, token string) *Handler {
 	return &Handler{src: src, token: token, now: time.Now}
 }
 
-// WithLogger mencatat percobaan autentikasi yang gagal (tanpa pernah mencatat token).
 func (h *Handler) WithLogger(l *slog.Logger) *Handler {
 	h.log = l
 	return h
@@ -97,6 +94,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /dashboard", h.page)
 	mux.HandleFunc("GET /dashboard/{$}", h.page)
 	mux.HandleFunc("GET /dashboard/api/summary", h.summary)
+	mux.HandleFunc("GET /dashboard/api/analysis", h.analysisHandler)
 }
 
 func (h *Handler) page(w http.ResponseWriter, r *http.Request) {
@@ -195,15 +193,58 @@ type areaRow struct {
 	Count int    `json:"count"`
 }
 
-func (h *Handler) summary(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) authorized(w http.ResponseWriter, r *http.Request) bool {
 	got, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if !ok || h.token == "" || !httpx.TokenEqual(got, h.token) {
-		if h.log != nil {
-			host, _, _ := net.SplitHostPort(r.RemoteAddr)
-			h.log.Warn("autentikasi dashboard gagal", "path", r.URL.Path, "remote", host,
-				"correlation_id", httpx.CorrelationID(r.Context()))
-		}
-		writeError(w, http.StatusUnauthorized, "unauthorized", "token tidak valid")
+	if ok && h.token != "" && httpx.TokenEqual(got, h.token) {
+		return true
+	}
+	if h.log != nil {
+		host, _, _ := net.SplitHostPort(r.RemoteAddr)
+		h.log.Warn("autentikasi dashboard gagal", "path", r.URL.Path, "remote", host,
+			"correlation_id", httpx.CorrelationID(r.Context()))
+	}
+	writeError(w, http.StatusUnauthorized, "unauthorized", "token tidak valid")
+	return false
+}
+
+type AnalysisProvider interface {
+	Latest(ctx context.Context) (json.RawMessage, error)
+}
+
+func (h *Handler) WithAnalysis(p AnalysisProvider) *Handler {
+	h.analysis = p
+	return h
+}
+
+const analysisGuard = 3 * time.Second
+
+func (h *Handler) analysisHandler(w http.ResponseWriter, r *http.Request) {
+	if !h.authorized(w, r) {
+		return
+	}
+	unavailable := func(reason string) {
+		writeJSON(w, http.StatusOK, map[string]any{"available": false, "reason": reason})
+	}
+	if h.analysis == nil || isNilProvider(h.analysis) {
+		unavailable("situation-analyst tidak dikonfigurasi")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), analysisGuard)
+	defer cancel()
+	raw, err := h.analysis.Latest(ctx)
+	if err != nil {
+		unavailable("analisis sedang tidak tersedia")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(raw)
+}
+
+func (h *Handler) summary(w http.ResponseWriter, r *http.Request) {
+	if !h.authorized(w, r) {
 		return
 	}
 	rs, msg := h.parseRange(r.URL.Query())
@@ -222,7 +263,6 @@ func (h *Handler) summary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// bucket yang berurutan tanpa celah, agar garis tidak melompati periode tanpa kejadian
 	step := time.Hour
 	if rs.bucket == "day" {
 		step = 24 * time.Hour
@@ -271,4 +311,9 @@ func (h *Handler) summary(w http.ResponseWriter, r *http.Request) {
 		"rebalancing":       res.Rebalancing,
 		"unavailable_units": unavailable,
 	})
+}
+
+func isNilProvider(p AnalysisProvider) bool {
+	v := reflect.ValueOf(p)
+	return v.Kind() == reflect.Pointer && v.IsNil()
 }

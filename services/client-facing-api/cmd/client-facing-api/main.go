@@ -30,7 +30,6 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Telemetry gagal dimulai tidak boleh mematikan layanan: lanjut tanpa instrumentasi dan catat peringatan.
 	tel, err := telemetry.Init(ctx, "client-facing-api", log)
 	if err != nil {
 		log.Warn("telemetry disabled", "err", err)
@@ -56,7 +55,6 @@ func main() {
 	agg := upstream.New(cfg.AggregatorURL, cfg.AggregatorKey, cfg.AggregatorTimeout, cfg.MaxInflight, log)
 	handler := api.NewHandler(agg).Routes(verifier, httpx.Limit(cfg.MaxInflight), httpx.Observe(log))
 	if tel != nil {
-		// span dan metrik dihitung paling luar, jadi penolakan 429 oleh Limit juga terukur
 		agg.WithTransport(tel.Transport)
 		handler = tel.Middleware(handler)
 	}
@@ -83,6 +81,5 @@ func main() {
 		log.Error("server failed", "err", err)
 		os.Exit(1)
 	}
-	// ListenAndServe returns as soon as Shutdown is called; wait for in-flight requests to drain.
 	<-shutdownDone
 }

@@ -14,8 +14,8 @@ var ErrBadCursor = errors.New("shardstore: cursor tidak valid")
 type Order int
 
 const (
-	NewestFirst Order = iota // ingested_at menurun, lalu hazard_id menurun
-	OldestFirst              // ingested_at menaik, lalu hazard_id menaik
+	NewestFirst Order = iota
+	OldestFirst
 )
 
 type Filter struct {
@@ -60,13 +60,11 @@ type KeyRecord struct {
 	Owners      []string
 }
 
-// AggregateQuery meminta hitungan event pada rentang waktu kejadian [From, To).
 type AggregateQuery struct {
 	From, To time.Time
-	Bucket   string // "hour" atau "day"
+	Bucket   string
 }
 
-// AggregateResult adalah hitungan event. Series dikunci oleh awal bucket (unix detik) lalu kategori.
 type AggregateResult struct {
 	Series   map[int64]map[string]int
 	Severity map[string]int
@@ -74,12 +72,10 @@ type AggregateResult struct {
 	Total    int
 }
 
-// NewAggregateResult membuat hasil kosong.
 func NewAggregateResult() AggregateResult {
 	return AggregateResult{Series: map[int64]map[string]int{}, Severity: map[string]int{}, Area: map[string]int{}}
 }
 
-// Merge menjumlahkan other ke a.
 func (a *AggregateResult) Merge(other AggregateResult) {
 	for t, cats := range other.Series {
 		if a.Series[t] == nil {
@@ -98,7 +94,6 @@ func (a *AggregateResult) Merge(other AggregateResult) {
 	a.Total += other.Total
 }
 
-// Unit adalah satu unit penyimpanan (satu instance store).
 type Unit interface {
 	Name() string
 	Upsert(ctx context.Context, ev hazard.Event, owners []string) error
@@ -107,8 +102,6 @@ type Unit interface {
 	Keys(ctx context.Context, fn func(KeyRecord) error) error
 	SetOwners(ctx context.Context, hazardID string, owners []string) error
 	Delete(ctx context.Context, hazardID string) error
-	// Aggregate menghitung event. Setiap event dihitung oleh tepat satu unit, yaitu pemilik pertamanya
-	// yang tidak termasuk down, sehingga salinan replika tidak terhitung ganda.
 	Aggregate(ctx context.Context, q AggregateQuery, down []string) (AggregateResult, error)
 	Ping(ctx context.Context) error
 }

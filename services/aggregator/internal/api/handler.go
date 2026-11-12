@@ -27,8 +27,6 @@ type BrokerStatus interface {
 	Connected() bool
 }
 
-// EventReader membaca event dari penyimpanan tersebar. Page.Partial dan Page.Unavailable memberi tahu
-// klien bila sebagian data tidak terjangkau.
 type EventReader interface {
 	ListEvents(ctx context.Context, q shardstore.ListQuery) (shardstore.Page, error)
 	Ping(ctx context.Context) error
@@ -47,13 +45,11 @@ type Handler struct {
 	dash        *dashboard.Handler
 }
 
-// WithDashboard mengaktifkan dashboard analitik (/dashboard) pada handler ini.
 func (h *Handler) WithDashboard(d *dashboard.Handler) *Handler {
 	h.dash = d
 	return h
 }
 
-// WithAudit mengaktifkan Audit API (Lampiran A) pada handler ini.
 func (h *Handler) WithAudit(a *audit.Handler) *Handler {
 	h.audit = a
 	return h
@@ -127,7 +123,6 @@ func (h *Handler) GetHazardEvents(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "cursor is not valid", http.StatusBadRequest)
 		return
 	case errors.Is(err, shardstore.ErrUnavailable):
-		// tidak ada satu pun unit penyimpanan yang terjangkau: jawab cepat dan jelas, bukan 500 atau menggantung
 		writeJSONError(w, http.StatusServiceUnavailable, "store_unavailable", "penyimpanan tidak terjangkau")
 		return
 	case err != nil:
@@ -143,7 +138,6 @@ func (h *Handler) GetHazardEvents(w http.ResponseWriter, r *http.Request) {
 		"sources": map[string]any{
 			"pvmbg": h.poller.PVMBGStatus(),
 		},
-		// partial=true berarti ada data yang tidak punya salinan terjangkau, jadi jawaban tidak lengkap
 		"partial":           page.Partial,
 		"unavailable_units": unavailable,
 	}
@@ -162,7 +156,6 @@ func (h *Handler) GetHazardEvents(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-// writeJSONError menulis kesalahan dengan bentuk yang sama dengan Lampiran A.
 func writeJSONError(w http.ResponseWriter, status int, code, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -212,11 +205,9 @@ func (h *Handler) Routes(internalKey string, observe func(http.Handler) http.Han
 	mux.Handle("GET /hazard-events", httpx.RequireInternalKey(internalKey)(http.HandlerFunc(h.GetHazardEvents)))
 	mux.Handle("GET /pvmbg-status", httpx.RequireInternalKey(internalKey)(http.HandlerFunc(h.GetPVMBGStatus)))
 	if h.dash != nil {
-		// Halaman statis tanpa data. Data dilayani /dashboard/api/summary dengan token Bearer.
 		h.dash.Register(mux)
 	}
 	if h.audit != nil {
-		// Audit API memakai tokennya sendiri (Authorization: Bearer), bukan X-Internal-Key.
 		h.audit.Register(mux)
 	}
 	return observe(mux)

@@ -20,8 +20,6 @@ import (
 
 var degradedWrites = telemetry.Counter("store_writes_degraded", "penulisan yang tersimpan kurang dari jumlah salinan yang seharusnya")
 
-// RegisterMetrics mendaftarkan metrik kesehatan penyimpanan untuk Prometheus: status tiap unit, apakah
-// rebalancing sedang berlangsung, dan jumlah salinan.
 func (r *Router) RegisterMetrics() {
 	telemetry.GaugeFunc("store_unit_up", "1 bila unit penyimpanan terjangkau, 0 bila tidak", func() []telemetry.Sample {
 		down := r.downSet()
@@ -417,7 +415,7 @@ type ChecksumResult struct {
 
 func (r *Router) Checksum(ctx context.Context, source string) (ChecksumResult, error) {
 	var mu sync.Mutex
-	refs := map[string]string{} // hazard_id -> source_ref_id
+	refs := map[string]string{}
 	failed := r.each(ctx, "store.checksum", r.cfg.RepairTimeout, func(uctx context.Context, u Unit) error {
 		local := map[string]string{}
 		err := u.Keys(uctx, func(k KeyRecord) error {
@@ -466,7 +464,6 @@ func (r *Router) Status() Status {
 	return Status{Units: r.UnitNames(), Unavailable: sortedKeys(r.downSet()), Replication: r.rf}
 }
 
-// Ping gagal hanya bila tidak ada unit yang terjangkau. Sebagian unit mati tetap dianggap sehat.
 func (r *Router) Ping(ctx context.Context) error {
 	if len(r.downSet()) >= len(r.units) {
 		return ErrUnavailable
@@ -474,20 +471,14 @@ func (r *Router) Ping(ctx context.Context) error {
 	return nil
 }
 
-// Analytics adalah hitungan lintas seluruh unit untuk dashboard analitik.
 type Analytics struct {
 	AggregateResult
 	AsOf        time.Time
-	Partial     bool     // ada data yang tidak punya salinan terjangkau
-	Unavailable []string // unit yang tidak terjangkau
-	// Rebalancing true bila penempatan data belum selesai disamakan (ada salinan yang belum lengkap),
-	// sehingga angka bisa sedikit kurang sampai perbaikan selesai.
+	Partial     bool
+	Unavailable []string
 	Rebalancing bool
 }
 
-// Analytics menghitung agregasi dari seluruh unit. Tiap event dihitung sekali oleh pemilik efektifnya.
-// Bila sebuah unit gagal di tengah perhitungan, hitungan diulang dengan unit itu dianggap mati, agar event
-// yang menjadi tanggung jawabnya diambil alih replikanya.
 func (r *Router) Analytics(ctx context.Context, q AggregateQuery) (Analytics, error) {
 	var result AggregateResult
 	var failed []string
@@ -510,7 +501,7 @@ func (r *Router) Analytics(ctx context.Context, q AggregateQuery) (Analytics, er
 			return Analytics{}, ErrUnavailable
 		}
 		if len(failed) == len(down) {
-			break // tidak ada unit baru yang gagal selama perhitungan
+			break
 		}
 	}
 	return Analytics{
