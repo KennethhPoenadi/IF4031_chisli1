@@ -92,6 +92,8 @@ type Router struct {
 
 	repairNeeded atomic.Bool
 	repairMu     sync.Mutex
+
+	tombs Tombstones
 }
 
 func New(units []Unit, cfg Config) (*Router, error) {
@@ -416,9 +418,13 @@ type ChecksumResult struct {
 func (r *Router) Checksum(ctx context.Context, source string) (ChecksumResult, error) {
 	var mu sync.Mutex
 	refs := map[string]string{}
+	tombs := r.loadTombstones(ctx)
 	failed := r.each(ctx, "store.checksum", r.cfg.RepairTimeout, func(uctx context.Context, u Unit) error {
 		local := map[string]string{}
 		err := u.Keys(uctx, func(k KeyRecord) error {
+			if tombstoned(tombs, k.HazardID, k.IngestedAt) {
+				return nil
+			}
 			if source == "" || k.Source == source {
 				local[k.HazardID] = k.SourceRefID
 			}

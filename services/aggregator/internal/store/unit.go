@@ -18,9 +18,11 @@ type MongoUnit struct {
 	name       string
 	client     *mongo.Client
 	collection *mongo.Collection
+	docs       *mongo.Collection
 
-	indexMu sync.Mutex
-	indexed bool
+	indexMu    sync.Mutex
+	indexed    bool
+	docIndexed bool
 }
 
 type stored struct {
@@ -33,7 +35,8 @@ func NewMongoUnit(name, uri, dbName, collectionName string) (*MongoUnit, error) 
 	if err != nil {
 		return nil, err
 	}
-	return &MongoUnit{name: name, client: client, collection: client.Database(dbName).Collection(collectionName)}, nil
+	db := client.Database(dbName)
+	return &MongoUnit{name: name, client: client, collection: db.Collection(collectionName), docs: db.Collection(DocCollectionName)}, nil
 }
 
 func (u *MongoUnit) Name() string { return u.name }
