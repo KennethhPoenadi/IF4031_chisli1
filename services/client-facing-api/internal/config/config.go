@@ -20,6 +20,11 @@ type Config struct {
 	PinnedPublicKey   ed25519.PublicKey
 	RevocationPoll    time.Duration
 	MaxInflight       int
+
+	// jalur tulis Tim Lapangan dan pemeriksaan pesan gagal oleh Internal Ops.
+	RabbitMQURL           string
+	FieldReportPublishTTL time.Duration
+	OpsTimeout            time.Duration
 }
 
 func Load() (Config, error) {
@@ -41,6 +46,10 @@ func Load() (Config, error) {
 		AuthInternalKey:   authKey,
 		RevocationPoll:    time.Duration(getInt("CLIENT_API_REVOCATION_POLL_MS", 250)) * time.Millisecond,
 		MaxInflight:       getInt("CLIENT_API_MAX_INFLIGHT", 200),
+
+		RabbitMQURL:           os.Getenv("RABBITMQ_URL"),
+		FieldReportPublishTTL: time.Duration(getInt("FIELD_REPORT_PUBLISH_TIMEOUT_MS", 2000)) * time.Millisecond,
+		OpsTimeout:            time.Duration(getInt("CLIENT_API_OPS_TIMEOUT_MS", 120000)) * time.Millisecond,
 	}
 	if pk := os.Getenv("AUTH_PUBLIC_KEY"); pk != "" {
 		raw, err := base64.StdEncoding.DecodeString(pk)

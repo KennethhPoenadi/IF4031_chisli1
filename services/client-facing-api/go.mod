@@ -4,7 +4,10 @@ go 1.26.5
 
 require github.com/golang-jwt/jwt/v5 v5.3.1
 
-require telemetry v0.0.0
+require (
+	github.com/rabbitmq/amqp091-go v1.15.0
+	telemetry v0.0.0
+)
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect

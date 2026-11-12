@@ -12,6 +12,7 @@ import (
 
 	"client-facing-api/internal/api"
 	"client-facing-api/internal/authn"
+	"client-facing-api/internal/broker"
 	"client-facing-api/internal/config"
 	"client-facing-api/internal/httpx"
 	"client-facing-api/internal/upstream"
@@ -53,9 +54,19 @@ func main() {
 	go verifier.SyncRevocations(ctx, cfg.AuthURL, cfg.AuthInternalKey, cfg.RevocationPoll, log)
 
 	agg := upstream.New(cfg.AggregatorURL, cfg.AggregatorKey, cfg.AggregatorTimeout, cfg.MaxInflight, log)
-	handler := api.NewHandler(agg).Routes(verifier, httpx.Limit(cfg.MaxInflight), httpx.Observe(log))
+	opsAgg := upstream.New(cfg.AggregatorURL, cfg.AggregatorKey, cfg.OpsTimeout, 4, log)
+	apiHandler := api.NewHandler(agg).WithOps(opsAgg)
+	if cfg.RabbitMQURL != "" {
+		reports := broker.New(cfg.RabbitMQURL)
+		defer reports.Close()
+		apiHandler.WithFieldReports(reports, cfg.FieldReportPublishTTL)
+	} else {
+		log.Warn("RABBITMQ_URL kosong: POST /field-reports menjawab 503")
+	}
+	handler := apiHandler.Routes(verifier, httpx.Limit(cfg.MaxInflight), httpx.Observe(log))
 	if tel != nil {
 		agg.WithTransport(tel.Transport)
+		opsAgg.WithTransport(tel.Transport)
 		handler = tel.Middleware(handler)
 	}
 

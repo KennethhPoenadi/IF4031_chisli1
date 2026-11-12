@@ -57,6 +57,30 @@ func (e *StatusError) Error() string {
 	return fmt.Sprintf("aggregator returned HTTP %d", e.Status)
 }
 
+// memanggil endpoint internal Aggregator dan mengembalikan status serta body.
+func (c *Client) Forward(ctx context.Context, method, pathAndQuery, correlationID string) (int, []byte, error) {
+	req, err := http.NewRequestWithContext(ctx, method, c.base+pathAndQuery, nil)
+	if err != nil {
+		return 0, nil, err
+	}
+	req.Header.Set("X-Internal-Key", c.key)
+	req.Header.Set("X-Correlation-ID", correlationID)
+	req.Header.Set("Accept", "application/json")
+	start := time.Now()
+	resp, err := c.http.Do(req)
+	if err != nil {
+		c.log.Warn("upstream call failed", "target", "aggregator", "path", pathAndQuery, "duration_ms", time.Since(start).Milliseconds(), "err", err, "correlation_id", correlationID)
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+	if err != nil {
+		return 0, nil, err
+	}
+	c.log.Info("upstream call", "target", "aggregator", "path", pathAndQuery, "status", resp.StatusCode, "duration_ms", time.Since(start).Milliseconds(), "correlation_id", correlationID)
+	return resp.StatusCode, body, nil
+}
+
 func (c *Client) Events(ctx context.Context, q url.Values, correlationID string) (Result, error) {
 	u := c.base + "/hazard-events"
 	if enc := q.Encode(); enc != "" {

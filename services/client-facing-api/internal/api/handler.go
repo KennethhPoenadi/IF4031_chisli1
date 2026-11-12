@@ -21,6 +21,10 @@ const (
 
 type Handler struct {
 	agg *upstream.Client
+
+	reports        ReportPublisher
+	publishTimeout time.Duration
+	ops            OpsUpstream
 }
 
 func NewHandler(agg *upstream.Client) *Handler { return &Handler{agg: agg} }
@@ -121,5 +125,6 @@ func (h *Handler) Routes(v *authn.Verifier, limit func(http.Handler) http.Handle
 		httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	mux.Handle("GET /hazard-events", v.Require(scopeSummary)(limit(http.HandlerFunc(h.GetHazardEvents))))
+	h.registerM2(mux, v, limit)
 	return observe(mux)
 }
