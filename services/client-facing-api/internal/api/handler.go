@@ -106,7 +106,6 @@ func buildUpstreamQuery(q url.Values) (url.Values, error) {
 		}
 		up.Set("since", v)
 	}
-	// cursor adalah string buram dari meta.next_cursor respons sebelumnya. Aggregator yang memeriksa isinya.
 	if v := q.Get("cursor"); v != "" {
 		if len(v) > 512 {
 			return nil, errors.New("cursor is too long")

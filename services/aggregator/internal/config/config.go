@@ -19,12 +19,10 @@ type Config struct {
 	AggregatorPort        string
 	AggregatorAPIKey      string
 
-	// Audit API (Lampiran A). Kosong berarti endpoint audit menolak semua permintaan.
-	AuditToken string
-	// DashboardToken melindungi dashboard analitik. Sengaja terpisah dari AuditToken (least privilege).
-	DashboardToken string
+	AuditToken          string
+	SituationAnalystURL string
+	DashboardToken      string
 
-	// Penyimpanan tersebar (Problem 1). StoreUnitNames kosong berarti satu unit dari MongoURI.
 	StoreUnitNames         []string
 	StoreURITemplate       string
 	StoreReplicationFactor int
@@ -122,6 +120,7 @@ func Load() (Config, error) {
 	return Config{
 		AuditToken:             getEnv("AUDIT_TOKEN", ""),
 		DashboardToken:         getEnv("DASHBOARD_TOKEN", ""),
+		SituationAnalystURL:    getEnv("SITUATION_ANALYST_URL", ""),
 		StoreUnitNames:         storeNames,
 		StoreURITemplate:       storeTemplate,
 		StoreReplicationFactor: storeRF,
@@ -205,12 +204,8 @@ func splitList(v string) []string {
 	return out
 }
 
-// MinTokenLength adalah panjang minimum yang dianjurkan untuk token akses. Token yang lebih pendek tetap
-// diterima, tetapi aggregator mencatat peringatan.
 const MinTokenLength = 32
 
-// WeakTokens menyebut nama konfigurasi token yang terisi tetapi lebih pendek dari MinTokenLength, atau yang
-// dipakai ganda oleh dua endpoint berbeda.
 func (c Config) WeakTokens() []string {
 	var out []string
 	for name, v := range map[string]string{"AUDIT_TOKEN": c.AuditToken, "DASHBOARD_TOKEN": c.DashboardToken} {

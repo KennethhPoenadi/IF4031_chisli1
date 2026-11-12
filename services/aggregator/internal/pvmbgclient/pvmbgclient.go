@@ -30,7 +30,6 @@ func New(baseURL, token string, timeout time.Duration, log *slog.Logger) *Client
 	}
 }
 
-// WithTransport mengganti RoundTripper klien, dipakai untuk menyisipkan instrumentasi trace.
 func (c *Client) WithTransport(rt http.RoundTripper) *Client {
 	c.http.Transport = rt
 	return c

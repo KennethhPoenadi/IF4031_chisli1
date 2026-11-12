@@ -210,7 +210,6 @@ func TestLocationFoundNotFoundAndPartial(t *testing.T) {
 		t.Fatalf("tidak ada: status %d body %s", rec.Code, rec.Body.String())
 	}
 
-	// tidak ditemukan tetapi sebagian unit tidak terjangkau: tidak boleh mengaku 404
 	partial := &fakeStore{location: shardstore.LocationResult{Partial: true, Unavailable: []string{"store-1"}}}
 	rec = do(routes(partial, nil), "/internal/audit/location?hazard_id=hz-x", "Bearer "+token)
 	body = decode(t, rec)

@@ -25,7 +25,6 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Telemetry gagal dimulai tidak boleh mematikan layanan: lanjut tanpa instrumentasi dan catat peringatan.
 	tel, err := telemetry.Init(ctx, "bmkg-mock", logger)
 	if err != nil {
 		logger.Warn("telemetry disabled", "err", err)
@@ -63,11 +62,9 @@ func main() {
 		logger.Error("server stopped unexpectedly", "error", err)
 		os.Exit(1)
 	}
-	// ListenAndServe returns as soon as Shutdown is called; wait for in-flight requests to drain.
 	<-shutdownDone
 }
 
-// instrument membungkus handler dengan trace dan metrik bila telemetry aktif.
 func instrument(tel *telemetry.Provider, h http.Handler) http.Handler {
 	if tel == nil {
 		return h

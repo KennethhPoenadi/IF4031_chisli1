@@ -20,9 +20,6 @@ import (
 	"aggregator/internal/store"
 )
 
-// Tes integrasi terhadap MongoDB sungguhan. Dilewati kecuali MONGO_TEST_URIS diisi dengan tiga URI yang
-// dipisah koma, mis. MONGO_TEST_URIS=mongodb://localhost:27101,mongodb://localhost:27102,mongodb://localhost:27103
-// Tiap URI adalah satu unit penyimpanan mandiri. Lihat README untuk perintah docker-nya.
 func uris(t *testing.T) []string {
 	t.Helper()
 	raw := os.Getenv("MONGO_TEST_URIS")
@@ -46,7 +43,7 @@ func evt(i int) hazard.Event {
 		HazardType: types[i%4], Severity: hazard.SeverityWaspada, AreaName: "Area",
 		Latitude: -2.5, Longitude: 113.8,
 		OccurredAt: base.Add(time.Duration(i) * time.Second),
-		IngestedAt: base.Add(time.Duration(i/3) * time.Second), // ada yang berbagi waktu: tie-break hazard_id
+		IngestedAt: base.Add(time.Duration(i/3) * time.Second),
 		Attributes: map[string]any{"i": int32(i)},
 	}
 }
@@ -61,7 +58,6 @@ func evtAnalytics(i int) hazard.Event {
 	return ev
 }
 
-// expectedAnalytics menghitung langsung dari daftar event, sebagai pembanding angka dashboard.
 func expectedAnalytics(events []hazard.Event) (total int, byCat, bySeverity, byArea map[string]int) {
 	byCat, bySeverity, byArea = map[string]int{}, map[string]int{}, map[string]int{}
 	for _, ev := range events {
@@ -130,7 +126,6 @@ func newCluster(t *testing.T, uris []string, dbName string) *cluster {
 	return c
 }
 
-// rawCount menghitung dokumen langsung di sebuah server, tanpa lewat router.
 func rawCount(t *testing.T, uri, dbName string) int64 {
 	t.Helper()
 	client, err := mongo.Connect(options.Client().ApplyURI(uri))
@@ -178,7 +173,6 @@ func TestShardedStoreAgainstRealMongoDB(t *testing.T) {
 		}
 	}
 
-	// 1. tidak ada node yang menyimpan seluruh data, total salinan = 2n
 	var total int64
 	counts := make([]int64, 3)
 	for i, u := range three {
@@ -193,7 +187,6 @@ func TestShardedStoreAgainstRealMongoDB(t *testing.T) {
 	}
 	t.Logf("sebaran data per node: %v (total %d, RF=2)", counts, total)
 
-	// 2. pagination lintas node: urutan benar, tanpa duplikat
 	want := make([]string, n)
 	sorted := append([]hazard.Event(nil), events...)
 	sort.Slice(sorted, func(i, j int) bool {
@@ -227,7 +220,6 @@ func TestShardedStoreAgainstRealMongoDB(t *testing.T) {
 		t.Fatalf("urutan atau isi pagination salah: %d event, want %d", len(got), len(want))
 	}
 
-	// 2b. angka dashboard analitik sama dengan hitungan langsung dan tidak menghitung replika dua kali
 	aq := shardstore.AggregateQuery{From: time.Date(2026, 11, 8, 9, 0, 0, 0, time.UTC),
 		To: time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC), Bucket: "hour"}
 	an, err := c.router.Analytics(ctx, aq)
@@ -244,7 +236,6 @@ func TestShardedStoreAgainstRealMongoDB(t *testing.T) {
 		t.Fatalf("checksum awal: %+v err=%v", before, err)
 	}
 
-	// 3. satu node mati (alamat tidak terjangkau): semua event tetap terbaca, cepat, tidak partial
 	dead := newCluster(t, []string{three[0], "mongodb://127.0.0.1:1", three[2]}, dbName)
 	start := time.Now()
 	page, err := dead.router.ListEvents(ctx, shardstore.ListQuery{Limit: 1000, Order: shardstore.NewestFirst})
@@ -264,7 +255,6 @@ func TestShardedStoreAgainstRealMongoDB(t *testing.T) {
 		t.Fatalf("satu node mati: partial=%v unavailable=%v", anDead.Partial, anDead.Unavailable)
 	}
 
-	// 4. node dimatikan dan seluruh datanya dihapus, lalu kembali kosong: perbaikan memulihkan semuanya
 	dropDB(t, three[1], dbName)
 	if got := rawCount(t, three[1], dbName); got != 0 {
 		t.Fatalf("node korban masih berisi %d dokumen", got)
@@ -285,14 +275,13 @@ func TestShardedStoreAgainstRealMongoDB(t *testing.T) {
 	}
 	t.Logf("pemulihan: %+v, checksum tetap %s", stats, after.Checksum)
 
-	// 5. tambah node baru (kosong): ikut menanggung data, salinan lama yang usang terhapus
 	if len(all) < 4 {
 		t.Log("URI keempat tidak diberikan, rebalancing dilewati")
 		return
 	}
 	four := newCluster(t, all[:4], dbName)
 	extra := evt(9999)
-	if err := four.router.SaveHazardEvent(extra); err != nil { // penulisan jalan terus saat rebalancing
+	if err := four.router.SaveHazardEvent(extra); err != nil {
 		t.Fatal(err)
 	}
 	stats, err = four.router.RepairOnce(ctx)

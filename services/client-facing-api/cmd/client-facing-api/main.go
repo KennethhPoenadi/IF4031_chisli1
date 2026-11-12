@@ -31,7 +31,6 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Telemetry gagal dimulai tidak boleh mematikan layanan: lanjut tanpa instrumentasi dan catat peringatan.
 	tel, err := telemetry.Init(ctx, "client-facing-api", log)
 	if err != nil {
 		log.Warn("telemetry disabled", "err", err)
@@ -99,6 +98,5 @@ func main() {
 		log.Error("server failed", "err", err)
 		os.Exit(1)
 	}
-	// ListenAndServe returns as soon as Shutdown is called; wait for in-flight requests to drain.
 	<-shutdownDone
 }

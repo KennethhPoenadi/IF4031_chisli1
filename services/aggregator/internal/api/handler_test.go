@@ -23,7 +23,7 @@ type fakeReader struct {
 	events    []hazard.Event
 	err       error
 	pingErr   error
-	page      shardstore.Page // metadata halaman (partial, cursor) yang dikembalikan bersama events
+	page      shardstore.Page
 	gotLimit  int64
 	gotFilter shardstore.Filter
 	gotCursor string

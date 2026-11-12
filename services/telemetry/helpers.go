@@ -13,8 +13,6 @@ import (
 
 const instrumentationName = "bnpb"
 
-// kv mengubah pasangan kunci, nilai (string, int, bool, float) menjadi atribut OpenTelemetry. Pasangan yang
-// tidak lengkap atau bertipe lain diabaikan, agar salah ketik pada pemanggil tidak pernah menjatuhkan service.
 func kv(pairs []any) []attribute.KeyValue {
 	out := make([]attribute.KeyValue, 0, len(pairs)/2)
 	for i := 0; i+1 < len(pairs); i += 2 {
@@ -38,8 +36,6 @@ func kv(pairs []any) []attribute.KeyValue {
 	return out
 }
 
-// StartSpan memulai span anak dari ctx (bila ada) dan mengembalikan fungsi penutupnya. Pemanggil memanggil
-// end(err) sekali: err yang tidak nil ditandai sebagai kegagalan pada span. Tanpa Init, span tidak berefek.
 func StartSpan(ctx context.Context, name string, attrs ...any) (context.Context, func(error)) {
 	ctx, span := otel.Tracer(instrumentationName).Start(ctx, name, trace.WithAttributes(kv(attrs)...))
 	return ctx, func(err error) {
@@ -51,8 +47,6 @@ func StartSpan(ctx context.Context, name string, attrs ...any) (context.Context,
 	}
 }
 
-// StartConsumerSpan memulai span untuk pemrosesan sebuah pesan, dan menyambungkannya ke trace pengirim lewat
-// header pesan (Inject di sisi pengirim).
 func StartConsumerSpan(ctx context.Context, name string, headers map[string]any, attrs ...any) (context.Context, func(error)) {
 	ctx = Extract(ctx, headers)
 	ctx, span := otel.Tracer(instrumentationName).Start(ctx, name,
@@ -66,7 +60,6 @@ func StartConsumerSpan(ctx context.Context, name string, headers map[string]any,
 	}
 }
 
-// StartProducerSpan memulai span untuk pengiriman pesan dan menaruh konteks trace-nya pada headers.
 func StartProducerSpan(ctx context.Context, name string, headers map[string]any, attrs ...any) (context.Context, func(error)) {
 	ctx, span := otel.Tracer(instrumentationName).Start(ctx, name,
 		trace.WithSpanKind(trace.SpanKindProducer), trace.WithAttributes(kv(attrs)...))
@@ -85,8 +78,6 @@ var (
 	counters      = map[string]metric.Int64Counter{}
 )
 
-// Counter mengembalikan fungsi penambah untuk metrik counter bisnis (mis. event yang diproses). Nama memakai
-// huruf kecil dan garis bawah, dan akan diekspos Prometheus dengan akhiran _total.
 func Counter(name, help string) func(ctx context.Context, n int64, attrs ...any) {
 	instrumentsMu.Lock()
 	defer instrumentsMu.Unlock()
@@ -104,14 +95,11 @@ func Counter(name, help string) func(ctx context.Context, n int64, attrs ...any)
 	}
 }
 
-// Sample adalah satu nilai gauge beserta label-nya.
 type Sample struct {
 	Value float64
 	Attrs []any
 }
 
-// GaugeFunc mendaftarkan gauge yang nilainya dibaca saat Prometheus melakukan scrape (mis. jumlah unit
-// penyimpanan yang tidak terjangkau). fn dipanggil pada setiap scrape dan harus cepat.
 func GaugeFunc(name, help string, fn func() []Sample) {
 	g, err := otel.Meter(instrumentationName).Float64ObservableGauge(name, metric.WithDescription(help))
 	if err != nil {
@@ -130,11 +118,8 @@ var (
 	histograms   = map[string]metric.Float64Histogram{}
 )
 
-// LatencyBuckets adalah batas bucket (detik) untuk latensi alur peringatan, rapat di sekitar target 5 detik.
 var LatencyBuckets = []float64{0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 3, 5, 7.5, 10, 30, 60}
 
-// Histogram mengembalikan fungsi pencatat untuk metrik histogram (mis. latensi dalam detik). boundaries kosong
-// berarti LatencyBuckets. Dari histogram ini Prometheus menghitung p50, p95, dan p99.
 func Histogram(name, help string, boundaries ...float64) func(ctx context.Context, value float64, attrs ...any) {
 	if len(boundaries) == 0 {
 		boundaries = LatencyBuckets

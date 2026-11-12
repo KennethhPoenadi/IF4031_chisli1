@@ -22,7 +22,6 @@ func hash64(s string) uint64 {
 	return binary.BigEndian.Uint64(sum[:8])
 }
 
-// NewRing membangun cincin dari daftar unit. vnodes adalah jumlah titik per unit.
 func NewRing(units []string, vnodes int) *Ring {
 	if vnodes < 1 {
 		vnodes = 1
@@ -43,10 +42,8 @@ func NewRing(units []string, vnodes int) *Ring {
 	return r
 }
 
-// Units mengembalikan nama unit terurut.
 func (r *Ring) Units() []string { return append([]string(nil), r.units...) }
 
-// Owners mengembalikan hingga rf unit berbeda yang memiliki key. Elemen pertama adalah primary.
 func (r *Ring) Owners(key string, rf int) []string {
 	if len(r.points) == 0 || rf < 1 {
 		return nil
@@ -72,8 +69,6 @@ func (r *Ring) ownersFrom(start, rf int) []string {
 	return owners
 }
 
-// Covered memberi tahu apakah setiap kunci masih punya minimal satu pemilik di luar down.
-// Dipakai untuk menentukan apakah sebuah jawaban lengkap saat sebagian unit tidak terjangkau.
 func (r *Ring) Covered(down map[string]bool, rf int) bool {
 	if len(down) == 0 {
 		return true

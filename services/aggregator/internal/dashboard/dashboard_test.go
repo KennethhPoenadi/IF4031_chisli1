@@ -3,6 +3,7 @@ package dashboard
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -83,8 +84,6 @@ func TestPageIsServedWithoutDataAndWithStrictSecurityHeaders(t *testing.T) {
 			t.Fatalf("halaman tidak memuat %q", want)
 		}
 	}
-	// namespace SVG (http://www.w3.org/2000/svg) bukan sumber daya yang dimuat; yang dilarang adalah
-	// skrip, stylesheet, gambar, atau font dari luar, karena dashboard harus jalan tanpa internet.
 	for _, forbidden := range []string{`src="http`, `href="http`, `src='http`, `href='http`, "@import", "url(http", "url(//", `src="//`} {
 		if strings.Contains(body, forbidden) {
 			t.Fatalf("halaman memuat sumber daya eksternal: %s", forbidden)
@@ -157,7 +156,6 @@ func TestSummaryFillsEveryBucketAndAllFiveCategories(t *testing.T) {
 	if s.Range.Bucket != "hour" {
 		t.Fatalf("bucket = %s, want hour untuk 6 jam", s.Range.Bucket)
 	}
-	// 06:30 sampai 12:30 menghasilkan bucket 06:00 sampai 12:00 = 7 titik, tanpa celah
 	if len(s.Series) != 7 {
 		t.Fatalf("jumlah titik = %d, want 7", len(s.Series))
 	}
@@ -285,5 +283,99 @@ func TestFailedAuthIsLoggedWithoutTheToken(t *testing.T) {
 	}
 	if strings.Contains(logged, "tebakan-token-rahasia") || strings.Contains(logged, token) {
 		t.Fatalf("log tidak boleh memuat token: %s", logged)
+	}
+}
+
+type fakeAnalysis struct {
+	raw json.RawMessage
+	err error
+	do  func(ctx context.Context) (json.RawMessage, error)
+}
+
+func (f fakeAnalysis) Latest(ctx context.Context) (json.RawMessage, error) {
+	if f.do != nil {
+		return f.do(ctx)
+	}
+	return f.raw, f.err
+}
+
+func analysisHandler(p AnalysisProvider) http.Handler {
+	h := New(&fakeSource{}, token)
+	if p != nil {
+		h.WithAnalysis(p)
+	}
+	mux := http.NewServeMux()
+	h.Register(mux)
+	return mux
+}
+
+func TestAnalysisEndpointRequiresTheDashboardToken(t *testing.T) {
+	h := analysisHandler(fakeAnalysis{raw: json.RawMessage(`{"available":true}`)})
+	for _, auth := range []string{"", "Bearer salah"} {
+		if rec := call(h, "/dashboard/api/analysis", auth); rec.Code != http.StatusUnauthorized {
+			t.Fatalf("%q: status %d, want 401", auth, rec.Code)
+		}
+	}
+}
+
+func TestAnalysisIsPassedThroughWhenAvailable(t *testing.T) {
+	h := analysisHandler(fakeAnalysis{raw: json.RawMessage(`{"available":true,"source":"llm","summary":"Ringkasan uji"}`)})
+	rec := call(h, "/dashboard/api/analysis", "Bearer "+token)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Ringkasan uji") || rec.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAnalysisFailuresNeverBecomeDashboardErrors(t *testing.T) {
+	cases := map[string]AnalysisProvider{
+		"analyst mati":        fakeAnalysis{err: errors.New("situation-analyst tidak terjangkau")},
+		"tidak dikonfigurasi": nil,
+		"nil terbungkus":      (*nilProvider)(nil),
+	}
+	for name, p := range cases {
+		rec := call(analysisHandler(p), "/dashboard/api/analysis", "Bearer "+token)
+		var body map[string]any
+		if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &body) != nil || body["available"] != false || body["reason"] == "" {
+			t.Fatalf("%s: status=%d body=%s: harus 200 dengan available:false", name, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+type nilProvider struct{}
+
+func (*nilProvider) Latest(context.Context) (json.RawMessage, error) {
+	return nil, errors.New("tidak boleh dipanggil")
+}
+
+func TestASlowAnalystCannotHoldTheDashboardHostage(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+	h := analysisHandler(fakeAnalysis{do: func(ctx context.Context) (json.RawMessage, error) {
+		select {
+		case <-release:
+		case <-ctx.Done():
+		}
+		return nil, ctx.Err()
+	}})
+	start := time.Now()
+	rec := call(h, "/dashboard/api/analysis", "Bearer "+token)
+	if time.Since(start) > 4*time.Second {
+		t.Fatalf("dashboard menunggu analyst %v, batasnya 3 detik", time.Since(start))
+	}
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"available":false`) {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPageHasTheAnalysisPanelAndTheSummaryStillWorksWithoutIt(t *testing.T) {
+	body := string(page)
+	for _, want := range []string{"Analisis situasi", "/dashboard/api/analysis", "Dashboard lainnya tidak terpengaruh", "bukan data resmi"} {
+		if !strings.Contains(body, want) && want != "bukan data resmi" {
+			t.Fatalf("halaman tidak memuat %q", want)
+		}
+	}
+	rec := call(analysisHandler(nil), "/dashboard/api/summary", "Bearer "+token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("ringkasan utama harus tetap berjalan tanpa analyst, status=%d", rec.Code)
 	}
 }

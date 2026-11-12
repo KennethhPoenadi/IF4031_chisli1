@@ -65,7 +65,6 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Telemetry gagal dimulai tidak boleh mematikan layanan: lanjut tanpa instrumentasi dan catat peringatan.
 	tel, err := telemetry.Init(ctx, "notifier", log)
 	if err != nil {
 		log.Warn("telemetry disabled", "err", err)
@@ -156,7 +155,6 @@ var (
 )
 
 func handle(ctx context.Context, cfg config, seen *seenSet, msg amqp.Delivery, log *slog.Logger) {
-	// span ini melanjutkan trace aggregator lewat header pesan
 	ctx, endSpan := telemetry.StartConsumerSpan(ctx, "process hazard event", msg.Headers,
 		"messaging.system", "rabbitmq", "messaging.rabbitmq.destination.routing_key", msg.RoutingKey,
 		"correlation.id", msg.CorrelationId)

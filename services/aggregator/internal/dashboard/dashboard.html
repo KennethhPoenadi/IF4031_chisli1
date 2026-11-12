@@ -87,6 +87,14 @@
   .empty { color: var(--text-3); padding: 24px 0; text-align: center; }
   .tokenrow { display: flex; gap: 6px; }
   th.w30 { width: 30%; }
+  .ai-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 8px; }
+  .ai-head h2 { margin: 0; }
+  .badge { display: inline-flex; align-items: center; padding: 1px 9px; border-radius: 999px; border: 1px solid var(--border); font-size: 12px; font-weight: 600; color: var(--text-2); }
+  .badge.llm { background: var(--ok-bg); color: var(--ok-fg); border-color: var(--ok-border); }
+  .ai-summary { margin: 0 0 8px; font-size: 15px; }
+  .ai-anoms { margin: 8px 0 0; padding-left: 18px; font-size: 13px; color: var(--text); }
+  .ai-anoms li { margin: 2px 0; }
+  .ai-foot { margin: 8px 0 0; font-size: 12px; color: var(--text-3); }
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   [hidden] { display: none !important; }
 </style>
@@ -123,6 +131,17 @@
   <div id="banner-partial" class="banner bad" role="alert"></div>
   <div id="banner-rebalance" class="banner warn" role="status"></div>
   <div id="banner-error" class="banner bad" role="alert"></div>
+
+  <section class="card" aria-labelledby="h-ai">
+    <div class="ai-head">
+      <h2 id="h-ai">Analisis situasi</h2>
+      <span id="ai-badge" class="badge" hidden></span>
+      <span id="ai-time" class="muted"></span>
+    </div>
+    <p id="ai-summary" class="ai-summary muted">Memuat analisis…</p>
+    <ul id="ai-anoms" class="ai-anoms" hidden></ul>
+    <p id="ai-foot" class="ai-foot"></p>
+  </section>
 
   <section class="card" aria-labelledby="h-series">
     <div class="total"><span class="n" id="total">–</span><span class="muted">kejadian pada rentang terpilih</span></div>
@@ -182,8 +201,6 @@
     if (attrs) for (var k in attrs) n.setAttribute(k, attrs[k]);
     return n;
   }
-  // Skala sumbu Y dengan langkah bulat (1, 2, 5, 10, ...) agar tanda sumbu mudah dibaca. Jumlah kejadian
-  // adalah bilangan bulat, jadi langkah tidak pernah di bawah 1.
   function niceScale(max) {
     if (max <= 0) return { ymax: 4, step: 1 };
     var rough = max / 4;
@@ -402,7 +419,47 @@
     });
   }
 
+  function renderAnalysis(a) {
+    var sum = $("ai-summary"), badge = $("ai-badge"), list = $("ai-anoms");
+    list.replaceChildren();
+    list.hidden = true;
+    if (!a || !a.available) {
+      badge.hidden = true;
+      $("ai-time").textContent = "";
+      sum.className = "ai-summary muted";
+      sum.textContent = "Analisis belum tersedia" + (a && a.reason ? " (" + a.reason + ")." : ".");
+      $("ai-foot").textContent = "Dashboard lainnya tidak terpengaruh.";
+      return;
+    }
+    sum.className = "ai-summary";
+    sum.textContent = a.summary;
+    badge.hidden = false;
+    badge.className = "badge" + (a.source === "llm" ? " llm" : "");
+    badge.textContent = a.source === "llm" ? "Ringkasan LLM" : "Ringkasan otomatis (templat)";
+    $("ai-time").textContent = "Dibuat " + fmtTime(a.generated_at, "hour", true) + " WIB";
+    (a.anomalies || []).forEach(function (an) {
+      var li = el("li", null, "Lonjakan tidak wajar: " + an.description + ", " + nf.format(an.count) +
+        " kejadian dalam semenit (biasanya sekitar " + an.expected_per_minute + ").");
+      list.appendChild(li);
+    });
+    list.hidden = list.children.length === 0;
+    var note = (a.disclaimer || "");
+    if (a.llm && a.llm.status && a.llm.status !== "ok" && a.llm.status !== "disabled" && a.llm.status !== "idle") {
+      note += " LLM sedang tidak dipakai (" + a.llm.status + "); ditampilkan ringkasan templat.";
+    }
+    $("ai-foot").textContent = note;
+  }
+
+  function loadAnalysis() {
+    if (!token) return;
+    fetch("/dashboard/api/analysis", { headers: { Authorization: "Bearer " + token }, cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(renderAnalysis)
+      .catch(function () { renderAnalysis(null); });
+  }
+
   function load() {
+    loadAnalysis();
     if (!token) { setBanner("banner-error", "Masukkan token akses lalu tekan Simpan."); return; }
     fetch("/dashboard/api/summary?range=" + encodeURIComponent($("range").value), {
       headers: { Authorization: "Bearer " + token }, cache: "no-store"

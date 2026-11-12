@@ -11,16 +11,14 @@ on:
 
 concurrency:
   group: ci-${{ github.ref }}
-  # Only supersede stale PR runs; never cancel an in-flight build/deploy on main.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
 env:
-  GO_IMAGE: golang:1.26.10
+  GO_IMAGE: golang:1.26.11
   GOFLAGS: -mod=readonly
-  # Image name under ghcr.io/<owner>/. Must equal APP_IMAGE_NAME in the infra repo.
   IMAGE_NAME: ${{ vars.APP_IMAGE_NAME || github.event.repository.name }}
 
 defaults:
@@ -43,6 +41,7 @@ jobs:
           - dashboard-updater
           - notifier
           - pvmbg-mock
+          - situation-analyst
           - telemetry
     steps:
       - uses: actions/checkout@v4
@@ -63,7 +62,7 @@ jobs:
   unit-test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    container: golang:1.26.10
+    container: golang:1.26.11
     strategy:
       fail-fast: false
       matrix:
@@ -75,6 +74,7 @@ jobs:
           - dashboard-updater
           - notifier
           - pvmbg-mock
+          - situation-analyst
           - telemetry
     steps:
       - uses: actions/checkout@v4
@@ -117,7 +117,6 @@ jobs:
           PUSH_BEFORE_SHA: ${{ github.event.before }}
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          # The image sets this and then expects the code at /src; Actions mounts it at $GITHUB_WORKSPACE.
           unset SEMGREP_IN_DOCKER
           BASE=""
           if [ -n "$PR_BASE_SHA" ]; then
@@ -141,7 +140,6 @@ jobs:
           path: semgrep.sarif
           retention-days: 7
           if-no-files-found: ignore
-      # Shows findings in the Security tab. Needs a public repo or GitHub Advanced Security, so it never fails the job.
       - uses: github/codeql-action/upload-sarif@v3
         if: always() && hashFiles('semgrep.sarif') != ''
         continue-on-error: true
@@ -153,7 +151,7 @@ jobs:
     needs: [lint, unit-test, sast-diff]
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    container: golang:1.26.10
+    container: golang:1.26.11
     strategy:
       fail-fast: false
       matrix:
@@ -165,6 +163,7 @@ jobs:
           - dashboard-updater
           - notifier
           - pvmbg-mock
+          - situation-analyst
           - telemetry
     env:
       GOVULNCHECK_VERSION: v1.1.4
@@ -181,13 +180,11 @@ jobs:
         run: $GOPATH/bin/govulncheck ./...
 
   build:
-    # Images are only published from main; PRs stop after lint, test, SAST and dependency scanning.
     if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     needs: [lint, unit-test, sast-diff]
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    container: golang:1.26.10
-    # packages: write is what lets the built-in GITHUB_TOKEN push to ghcr.io; no PAT is needed.
+    container: golang:1.26.11
     permissions:
       contents: read
       packages: write
@@ -202,6 +199,7 @@ jobs:
           - dashboard-updater
           - notifier
           - pvmbg-mock
+          - situation-analyst
     env:
       KO_VERSION: v0.17.1
       KO_BASE_IMAGE: gcr.io/distroless/static-debian12:nonroot
@@ -218,9 +216,6 @@ jobs:
         env:
           SERVICE: ${{ matrix.service }}
         run: |
-          # ko cross-compiles with the Go toolchain (no Docker daemon, no emulation), so one job
-          # publishes a multi-arch (amd64 + arm64) index. Kaniko cannot do this: --custom-platform
-          # applies to every stage, which forces the Go build itself to run under QEMU.
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           go install github.com/google/ko@$KO_VERSION
           echo "$REGISTRY_TOKEN" | $GOPATH/bin/ko login ghcr.io -u "$REGISTRY_USER" --password-stdin
@@ -228,7 +223,6 @@ jobs:
           PKG=./cmd/$SERVICE; [ -d "$PKG" ] || PKG=./cmd/server
           SHORT_SHA="${GITHUB_SHA::8}"
           TAGS="$SERVICE-$SHORT_SHA,$SERVICE-latest"
-          # GHCR requires lowercase repository names.
           export KO_DOCKER_REPO="ghcr.io/$(printf '%s' "$GITHUB_REPOSITORY_OWNER/$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')"
           export KO_DEFAULTBASEIMAGE="$KO_BASE_IMAGE"
           $GOPATH/bin/ko build "$PKG" \
@@ -257,6 +251,7 @@ jobs:
           - dashboard-updater
           - notifier
           - pvmbg-mock
+          - situation-analyst
     env:
       TRIVY_IMAGE: aquasec/trivy:0.76.1
       TRIVY_USERNAME: ${{ github.actor }}
@@ -279,7 +274,6 @@ jobs:
               -v "$HOME/.cache/trivy:/root/.cache/trivy" -v "$PWD/reports:/reports" \
               "$TRIVY_IMAGE" "$@"
           }
-          # The report is produced first so it is uploaded even when the gate below fails.
           trivy image --format sarif -o "/reports/trivy-$SERVICE.sarif" "$IMAGE"
           trivy image --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed "$IMAGE"
       - uses: actions/upload-artifact@v4
@@ -290,7 +284,6 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  # Hands the new image tag to the infra repo; its release workflow commits it to git and Argo CD syncs it.
   deploy-dev:
     needs: [build, dependency-scanning, trivy]
     if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)

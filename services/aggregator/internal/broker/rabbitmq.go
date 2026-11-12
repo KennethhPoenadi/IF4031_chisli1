@@ -104,8 +104,6 @@ func (p *Publisher) Publish(ctx context.Context, event hazard.Event, correlation
 	ctx, cancel := context.WithTimeout(ctx, publishTimeout)
 	defer cancel()
 
-	// Konteks trace ikut dikirim lewat header pesan, sehingga pemrosesan di notifier dan dashboard-updater
-	// tersambung ke trace yang sama dengan pengambilan data di aggregator.
 	headers := amqp.Table{}
 	ctx, endSpan := telemetry.StartProducerSpan(ctx, "publish "+p.exchange, headers,
 		"messaging.system", "rabbitmq", "messaging.destination.name", p.exchange,
