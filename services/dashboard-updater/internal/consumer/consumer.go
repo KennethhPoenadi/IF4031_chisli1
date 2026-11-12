@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 
@@ -16,6 +17,9 @@ import (
 	"dashboard-updater/internal/hazard"
 	"telemetry"
 )
+
+// DLXExchange sama dengan yang dideklarasikan Aggregator (internal/amqpx).
+const DLXExchange = "hazard_events.dlx"
 
 func Run(ctx context.Context, cfg config.Config, seen *SeenSet, state *State, connected *atomic.Bool, log *slog.Logger) error {
 	dialStart := time.Now()
@@ -39,7 +43,11 @@ func Run(ctx context.Context, cfg config.Config, seen *SeenSet, state *State, co
 		return fmt.Errorf("qos: %w", err)
 	}
 
-	q, err := ch.QueueDeclare(cfg.Queue, true, false, false, false, nil)
+	// Pesan yang ditolak dipindah ke dead-letter exchange, lalu disimpan Aggregator di DLQ (tidak dibuang)
+	if err := ch.ExchangeDeclare(DLXExchange, "fanout", true, false, false, false, nil); err != nil {
+		return fmt.Errorf("dlx declare: %w", err)
+	}
+	q, err := ch.QueueDeclare(cfg.Queue, true, false, false, false, amqp.Table{"x-dead-letter-exchange": DLXExchange})
 	if err != nil {
 		return fmt.Errorf("queue declare: %w", err)
 	}
@@ -85,9 +93,15 @@ func handle(seen *SeenSet, state *State, msg amqp.Delivery, log *slog.Logger) {
 	}()
 
 	var event hazard.Event
+	if !utf8.Valid(msg.Body) {
+		outcome = "dead_lettered"
+		log.Warn("pesan bukan UTF-8 valid dipindah ke DLQ", "action", "dead_letter", "routing_key", msg.RoutingKey, "correlation_id", msg.CorrelationId)
+		_ = msg.Nack(false, false)
+		return
+	}
 	if err := json.Unmarshal(msg.Body, &event); err != nil {
-		outcome = "dropped"
-		log.Warn("dropping unparsable message", "action", "drop", "err", err, "routing_key", msg.RoutingKey, "correlation_id", msg.CorrelationId)
+		outcome = "dead_lettered"
+		log.Warn("pesan tidak terbaca dipindah ke DLQ", "action", "dead_letter", "err", err, "routing_key", msg.RoutingKey, "correlation_id", msg.CorrelationId)
 		_ = msg.Nack(false, false)
 		return
 	}
