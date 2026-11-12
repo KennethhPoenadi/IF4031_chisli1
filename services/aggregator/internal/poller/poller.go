@@ -62,6 +62,8 @@ type Poller struct {
 	sourceStatus  string
 	lastSuccessAt time.Time
 	staleSince    time.Time
+
+	tolerant *tolerantIngest
 }
 
 func New(bmkg SeismicSource, pvmbg VolcanicSource, hazardStore EventStore, publisher Publisher, interval time.Duration, staleAfter time.Duration, log *slog.Logger) *Poller {
@@ -213,6 +215,10 @@ func (p *Poller) pollBMKG(ctx context.Context) {
 }
 
 func (p *Poller) pollPVMBG(ctx context.Context) {
+	if src, ok := p.pvmbg.(BatchVolcanicSource); ok && p.tolerant != nil {
+		p.pollPVMBGTolerant(ctx, src)
+		return
+	}
 	correlationID := newCorrelationID()
 	now := time.Now().UTC().Format(cursorFormat)
 
