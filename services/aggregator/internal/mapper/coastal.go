@@ -15,7 +15,6 @@ var coastalKnownFields = map[string]bool{
 
 var coastalStationFields = map[string]bool{"station_id": true, "name": true, "province": true, "latitude": true, "longitude": true}
 
-// MapCoastalEvent maps one observation and its resolved station. Invalid records are rejected whole.
 func MapCoastalEvent(raw, station map[string]any) (hazard.Event, error) {
 	if raw == nil || station == nil {
 		return hazard.Event{}, fmt.Errorf("coastal observation and station must be objects")

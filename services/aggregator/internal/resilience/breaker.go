@@ -47,9 +47,6 @@ type Breaker struct {
 	generation    uint64
 }
 
-// Permit ties one request outcome to the breaker generation that admitted it.
-// Call Success or Failure exactly once. A deferred Failure followed by Success
-// is safe because only the first outcome is applied.
 type Permit struct {
 	breaker    *Breaker
 	generation uint64
@@ -69,7 +66,6 @@ func New(cfg Config) *Breaker {
 	return &Breaker{threshold: cfg.FailureThreshold, openDuration: cfg.OpenDuration, now: cfg.Now}
 }
 
-// Allow admits a request and reserves the single half-open probe.
 func (b *Breaker) Allow() (*Permit, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
