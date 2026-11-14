@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"aggregator/internal/coastalstate"
 	"aggregator/internal/hazard"
 	"aggregator/internal/mapper"
 	"aggregator/internal/pantaiclient"
@@ -39,18 +40,8 @@ type CoastalSource interface {
 	Stations(ctx context.Context) (pantaiclient.StationPage, error)
 }
 
-type CoastalRejection struct {
-	Observation   map[string]any
-	Reason        string
-	CorrelationID string
-	RejectedAt    time.Time
-}
-
-type CoastalStateStore interface {
-	LoadCursor(ctx context.Context) (string, error)
-	SaveCursor(ctx context.Context, cursor string) error
-	Quarantine(ctx context.Context, rejection CoastalRejection) error
-}
+type CoastalRejection = coastalstate.Rejection
+type CoastalStateStore = coastalstate.Store
 
 type CoastalConfig struct {
 	Source          CoastalSource

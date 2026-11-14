@@ -92,6 +92,7 @@ type Router struct {
 
 	repairNeeded atomic.Bool
 	repairMu     sync.Mutex
+	coastalMu    sync.Mutex
 }
 
 func New(units []Unit, cfg Config) (*Router, error) {
