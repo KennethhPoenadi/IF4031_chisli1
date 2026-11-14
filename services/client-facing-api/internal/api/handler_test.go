@@ -95,14 +95,18 @@ func TestGetHazardEventsReturnsServiceUnavailableForUpstreamFailure(t *testing.T
 }
 
 func signToken(t *testing.T, privateKey ed25519.PrivateKey, issuer, scope string) string {
+	return signTokenForClient(t, privateKey, issuer, scope, "test-client")
+}
+
+func signTokenForClient(t *testing.T, privateKey ed25519.PrivateKey, issuer, scope, subject string) string {
 	t.Helper()
 	now := time.Now()
 	claims := authn.Claims{
 		Scope: scope,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    issuer,
-			Subject:   "test-client",
-			ID:        "test-token-" + scope,
+			Subject:   subject,
+			ID:        "test-token-" + subject + "-" + scope,
 			ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute)),
 			IssuedAt:  jwt.NewNumericDate(now),
 		},

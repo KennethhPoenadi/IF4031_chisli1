@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -20,8 +21,10 @@ type Config struct {
 	PinnedPublicKey   ed25519.PublicKey
 	RevocationPoll    time.Duration
 	MaxInflight       int
+	PriorityReserved  int
+	MaxPriorityQueued int
+	PriorityClientID  string
 
-	// jalur tulis Tim Lapangan dan pemeriksaan pesan gagal oleh Internal Ops.
 	RabbitMQURL           string
 	FieldReportPublishTTL time.Duration
 	OpsTimeout            time.Duration
@@ -36,6 +39,23 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	maxInflight := getInt("CLIENT_API_MAX_INFLIGHT", 200)
+	if maxInflight < 2 {
+		return Config{}, fmt.Errorf("CLIENT_API_MAX_INFLIGHT must be at least 2 when priority admission is enabled")
+	}
+	defaultReserved := maxInflight / 10
+	if defaultReserved < 1 {
+		defaultReserved = 1
+	}
+	priorityReserved := getInt("CLIENT_API_PRIORITY_RESERVED", defaultReserved)
+	if priorityReserved >= maxInflight {
+		return Config{}, fmt.Errorf("CLIENT_API_PRIORITY_RESERVED must be less than CLIENT_API_MAX_INFLIGHT")
+	}
+	priorityClientID := strings.TrimSpace(getEnv("CLIENT_API_PRIORITY_CLIENT_ID", getEnv("AUTH_CLIENT_FIELD_ID", "field-demo")))
+	if priorityClientID == "" {
+		return Config{}, fmt.Errorf("CLIENT_API_PRIORITY_CLIENT_ID must not be blank")
+	}
+
 	cfg := Config{
 		Port:              getEnv("CLIENT_API_PORT", "8080"),
 		Issuer:            getEnv("AUTH_TOKEN_ISSUER", "bnpb-auth"),
@@ -45,7 +65,10 @@ func Load() (Config, error) {
 		AuthURL:           getEnv("AUTH_SERVICE_URL", "http://auth-service:8091"),
 		AuthInternalKey:   authKey,
 		RevocationPoll:    time.Duration(getInt("CLIENT_API_REVOCATION_POLL_MS", 250)) * time.Millisecond,
-		MaxInflight:       getInt("CLIENT_API_MAX_INFLIGHT", 200),
+		MaxInflight:       maxInflight,
+		PriorityReserved:  priorityReserved,
+		MaxPriorityQueued: getInt("CLIENT_API_MAX_PRIORITY_QUEUED", 400),
+		PriorityClientID:  priorityClientID,
 
 		RabbitMQURL:           os.Getenv("RABBITMQ_URL"),
 		FieldReportPublishTTL: time.Duration(getInt("FIELD_REPORT_PUBLISH_TIMEOUT_MS", 2000)) * time.Millisecond,

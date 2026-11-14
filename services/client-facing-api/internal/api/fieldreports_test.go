@@ -53,6 +53,12 @@ type m2Rig struct {
 
 func newM2Rig(t *testing.T) *m2Rig {
 	t.Helper()
+	identity := func(next http.Handler) http.Handler { return next }
+	return newM2RigWithLimit(t, identity)
+}
+
+func newM2RigWithLimit(t *testing.T, limit func(http.Handler) http.Handler) *m2Rig {
+	t.Helper()
 	publicKey, privateKey, _ := ed25519.GenerateKey(rand.Reader)
 	r := &m2Rig{priv: privateKey, pub: &fakePub{}}
 	var mu sync.Mutex
@@ -70,7 +76,7 @@ func newM2Rig(t *testing.T) *m2Rig {
 	ops := upstream.New(r.agg.URL, "k", time.Second, 2, testLogger())
 	identity := func(next http.Handler) http.Handler { return next }
 	r.routes = NewHandler(nil).WithOps(ops).WithFieldReports(r.pub, 200*time.Millisecond).
-		Routes(authn.NewVerifier(publicKey, "iss"), identity, identity)
+		Routes(authn.NewVerifier(publicKey, "iss"), limit, identity)
 	return r
 }
 
@@ -110,6 +116,22 @@ func TestFieldReportAcceptedOnlyAfterBrokerConfirms(t *testing.T) {
 	rec = r.do(t, http.MethodPost, "/field-reports", fieldScope, `{"text":"x"}`, nil)
 	if rec.Code != http.StatusServiceUnavailable || rec.Header().Get("Retry-After") == "" {
 		t.Fatalf("tanpa konfirmasi broker tidak boleh 202: %d", rec.Code)
+	}
+}
+
+func TestFieldReportPassesThroughAdmission(t *testing.T) {
+	blocked := func(http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusTooManyRequests)
+		})
+	}
+	r := newM2RigWithLimit(t, blocked)
+	rec := r.do(t, http.MethodPost, "/field-reports", fieldScope, `{"text":"jembatan putus"}`, nil)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusTooManyRequests)
+	}
+	if len(r.pub.msgs) != 0 {
+		t.Fatal("laporan yang ditolak admission tidak boleh diterbitkan")
 	}
 }
 
