@@ -2,6 +2,9 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"sync"
 	"time"
@@ -10,15 +13,18 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
+	"aggregator/internal/coastalstate"
 	"aggregator/internal/hazard"
 	"aggregator/internal/shardstore"
 )
 
 type MongoUnit struct {
-	name       string
-	client     *mongo.Client
-	collection *mongo.Collection
-	docs       *mongo.Collection
+	name              string
+	client            *mongo.Client
+	collection        *mongo.Collection
+	docs              *mongo.Collection
+	coastalState      *mongo.Collection
+	coastalRejections *mongo.Collection
 
 	indexMu    sync.Mutex
 	indexed    bool
@@ -36,7 +42,10 @@ func NewMongoUnit(name, uri, dbName, collectionName string) (*MongoUnit, error) 
 		return nil, err
 	}
 	db := client.Database(dbName)
-	return &MongoUnit{name: name, client: client, collection: db.Collection(collectionName), docs: db.Collection(DocCollectionName)}, nil
+	return &MongoUnit{
+		name: name, client: client, collection: db.Collection(collectionName), docs: db.Collection(DocCollectionName),
+		coastalState: db.Collection("coastal_state"), coastalRejections: db.Collection("coastal_rejections"),
+	}, nil
 }
 
 func (u *MongoUnit) Name() string { return u.name }
@@ -178,7 +187,42 @@ func (u *MongoUnit) Delete(ctx context.Context, hazardID string) error {
 	return err
 }
 
+func (u *MongoUnit) LoadCoastalCursor(ctx context.Context) (coastalstate.Cursor, error) {
+	var cursor coastalstate.Cursor
+	err := u.coastalState.FindOne(ctx, bson.M{"_id": "sensor-pantai-cursor"}).Decode(&cursor)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return coastalstate.Cursor{}, nil
+	}
+	return cursor, err
+}
+
+func (u *MongoUnit) SaveCoastalCursor(ctx context.Context, cursor coastalstate.Cursor) error {
+	_, err := u.coastalState.ReplaceOne(ctx, bson.M{"_id": "sensor-pantai-cursor"}, bson.M{
+		"_id": "sensor-pantai-cursor", "value": cursor.Value,
+		"revision": cursor.Revision, "updated_at": cursor.UpdatedAt.UTC(),
+	}, options.Replace().SetUpsert(true))
+	return err
+}
+
+func (u *MongoUnit) QuarantineCoastal(ctx context.Context, rejection coastalstate.Rejection) error {
+	payload, err := json.Marshal(struct {
+		Observation map[string]any `json:"observation"`
+		Reason      string         `json:"reason"`
+	}{Observation: rejection.Observation, Reason: rejection.Reason})
+	if err != nil {
+		return err
+	}
+	digest := sha256.Sum256(payload)
+	id := hex.EncodeToString(digest[:])
+	_, err = u.coastalRejections.ReplaceOne(ctx, bson.M{"_id": id}, bson.M{
+		"_id": id, "observation": rejection.Observation, "reason": rejection.Reason,
+		"correlation_id": rejection.CorrelationID, "rejected_at": rejection.RejectedAt.UTC(),
+	}, options.Replace().SetUpsert(true))
+	return err
+}
+
 var _ shardstore.Unit = (*MongoUnit)(nil)
+var _ coastalstate.Unit = (*MongoUnit)(nil)
 
 func (u *MongoUnit) Aggregate(ctx context.Context, q shardstore.AggregateQuery, down []string) (shardstore.AggregateResult, error) {
 	downArr := bson.A{}

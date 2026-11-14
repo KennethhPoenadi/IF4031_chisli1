@@ -43,6 +43,16 @@ type Config struct {
 	PollInterval    time.Duration
 	PVMBGStaleAfter time.Duration
 
+	PantaiEnabled         bool
+	PantaiBaseURL         string
+	PantaiToken           string
+	PantaiTimeout         time.Duration
+	PantaiPollInterval    time.Duration
+	PantaiStaleAfter      time.Duration
+	PantaiStationCacheTTL time.Duration
+	PantaiCircuitFailures int
+	PantaiCircuitOpen     time.Duration
+
 	PVMBGFieldAliases    string
 	PVMBGFieldCoerce     string
 	DLQRetryInterval     time.Duration
@@ -96,6 +106,38 @@ func Load() (Config, error) {
 	pvmbgStaleAfter, err := getEnvSeconds("AGGREGATOR_PVMBG_STALE_AFTER_SECONDS", 30)
 	if err != nil {
 		return Config{}, err
+	}
+	pantaiEnabled, err := getEnvBool("AGGREGATOR_PANTAI_ENABLED", false)
+	if err != nil {
+		return Config{}, err
+	}
+	pantaiTimeout, err := getEnvMS("AGGREGATOR_PANTAI_TIMEOUT_MS", 1500)
+	if err != nil {
+		return Config{}, err
+	}
+	pantaiPollInterval, err := getEnvMS("AGGREGATOR_PANTAI_POLL_INTERVAL_MS", 1000)
+	if err != nil {
+		return Config{}, err
+	}
+	pantaiStaleAfter, err := getEnvSeconds("AGGREGATOR_PANTAI_STALE_AFTER_SECONDS", 30)
+	if err != nil {
+		return Config{}, err
+	}
+	pantaiStationCacheTTL, err := getEnvSeconds("AGGREGATOR_PANTAI_STATION_CACHE_TTL_SECONDS", 300)
+	if err != nil {
+		return Config{}, err
+	}
+	pantaiCircuitFailures, err := getEnvInt("AGGREGATOR_PANTAI_CIRCUIT_FAILURES", 3)
+	if err != nil {
+		return Config{}, err
+	}
+	pantaiCircuitOpen, err := getEnvSeconds("AGGREGATOR_PANTAI_CIRCUIT_OPEN_SECONDS", 10)
+	if err != nil {
+		return Config{}, err
+	}
+	pantaiToken := strings.TrimSpace(getEnv("PANTAI_AUTH_TOKEN", ""))
+	if pantaiEnabled && pantaiToken == "" {
+		return Config{}, fmt.Errorf("PANTAI_AUTH_TOKEN is required when AGGREGATOR_PANTAI_ENABLED is true")
 	}
 
 	storeRF, err := getEnvInt("STORE_REPLICATION_FACTOR", 2)
@@ -172,6 +214,16 @@ func Load() (Config, error) {
 		PollInterval:    pollInterval,
 		PVMBGStaleAfter: pvmbgStaleAfter,
 
+		PantaiEnabled:         pantaiEnabled,
+		PantaiBaseURL:         getEnv("PANTAI_BASE_URL", "http://sensor-pantai:8080"),
+		PantaiToken:           pantaiToken,
+		PantaiTimeout:         pantaiTimeout,
+		PantaiPollInterval:    pantaiPollInterval,
+		PantaiStaleAfter:      pantaiStaleAfter,
+		PantaiStationCacheTTL: pantaiStationCacheTTL,
+		PantaiCircuitFailures: pantaiCircuitFailures,
+		PantaiCircuitOpen:     pantaiCircuitOpen,
+
 		PVMBGFieldAliases:    getEnv("PVMBG_FIELD_ALIASES", ""),
 		PVMBGFieldCoerce:     getEnv("PVMBG_FIELD_COERCE", ""),
 		DLQRetryInterval:     dlqRetry,
@@ -223,6 +275,18 @@ func getEnvInt(key string, fallback int) (int, error) {
 		return 0, fmt.Errorf("%s must be a positive integer", key)
 	}
 	return n, nil
+}
+
+func getEnvBool(key string, fallback bool) (bool, error) {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback, nil
+	}
+	parsed, err := strconv.ParseBool(v)
+	if err != nil {
+		return false, fmt.Errorf("%s must be a boolean", key)
+	}
+	return parsed, nil
 }
 
 func splitList(v string) []string {

@@ -15,6 +15,7 @@ import (
 
 	"client-facing-api/internal/authn"
 	"client-facing-api/internal/httpx"
+	"client-facing-api/internal/priority"
 	"client-facing-api/internal/upstream"
 )
 
@@ -38,15 +39,19 @@ type flow struct {
 	lastQuery  atomic.Value // url.Values
 	lastHeader atomic.Value // http.Header
 	delay      time.Duration
+	blockFirst <-chan struct{}
 }
 
 func newFlow(t *testing.T) *flow {
 	t.Helper()
 	f := &flow{}
 	aggregator := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		f.calls.Add(1)
+		callNumber := f.calls.Add(1)
 		f.lastQuery.Store(r.URL.Query())
 		f.lastHeader.Store(r.Header.Clone())
+		if f.blockFirst != nil && callNumber == 1 {
+			<-f.blockFirst
+		}
 		if f.delay > 0 {
 			time.Sleep(f.delay)
 		}
@@ -63,18 +68,90 @@ func newFlow(t *testing.T) *flow {
 	}
 	f.privateKey = priv
 	client := upstream.New(aggregator.URL, "agg-key", 2*time.Second, 10, testLogger())
-	f.routes = NewHandler(client).Routes(authn.NewVerifier(pub, flowIssuer), httpx.Limit(10), httpx.Observe(testLogger()))
+	admission, err := priority.New(priority.Config{
+		MaxInFlight: 2, ReservedForPriority: 1, MaxPriorityQueued: 2,
+		IsPriority: func(r *http.Request) bool {
+			claims := authn.ClaimsFrom(r.Context())
+			return claims != nil && claims.Subject == "field-demo"
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.routes = NewHandler(client).Routes(authn.NewVerifier(pub, flowIssuer), admission.Middleware, httpx.Observe(testLogger()))
 	return f
 }
 
 func (f *flow) get(t *testing.T, scope, target string) *httptest.ResponseRecorder {
+	return f.getAs(t, "test-client", scope, target)
+}
+
+func (f *flow) getAs(t *testing.T, subject, scope, target string) *httptest.ResponseRecorder {
+	t.Helper()
+	return f.serve(f.request(t, subject, scope, target))
+}
+
+func (f *flow) request(t *testing.T, subject, scope, target string) *http.Request {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, target, nil)
-	req.Header.Set("Authorization", "Bearer "+signToken(t, f.privateKey, flowIssuer, scope))
+	req.Header.Set("Authorization", "Bearer "+signTokenForClient(t, f.privateKey, flowIssuer, scope, subject))
 	req.Header.Set("X-Correlation-ID", "flow-corr-1")
+	return req
+}
+
+func (f *flow) serve(req *http.Request) *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
 	f.routes.ServeHTTP(rec, req)
 	return rec
+}
+
+func TestPriorityAdmissionUsesVerifiedClientIdentity(t *testing.T) {
+	f := newFlow(t)
+	gate := make(chan struct{})
+	gateClosed := false
+	defer func() {
+		if !gateClosed {
+			close(gate)
+		}
+	}()
+	f.blockFirst = gate
+	firstDone := make(chan *httptest.ResponseRecorder, 1)
+	firstRequest := f.request(t, "media-demo", scopeSummary, "/hazard-events")
+	go func() {
+		firstDone <- f.serve(firstRequest)
+	}()
+	waitForCalls(t, f, 1)
+
+	media := f.getAs(t, "media-demo", scopeSummary, "/hazard-events")
+	if media.Code != http.StatusTooManyRequests || decode(t, media)["error"] != "too_many_requests" {
+		t.Fatalf("media overload response = %d %s", media.Code, media.Body.String())
+	}
+	field := f.getAs(t, "field-demo", scopeSummary, "/hazard-events")
+	if field.Code != http.StatusOK {
+		t.Fatalf("priority response = %d %s", field.Code, field.Body.String())
+	}
+	close(gate)
+	gateClosed = true
+	select {
+	case first := <-firstDone:
+		if first.Code != http.StatusOK {
+			t.Fatalf("first media response = %d", first.Code)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for the first media request")
+	}
+}
+
+func waitForCalls(t *testing.T, f *flow, want int32) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if f.calls.Load() >= want {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("aggregator calls did not reach %d", want)
 }
 
 func decode(t *testing.T, rec *httptest.ResponseRecorder) map[string]any {

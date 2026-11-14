@@ -173,7 +173,7 @@ func ParseKey(data []byte) (string, error) {
 	at, ok3 := text(m, "acq_time")
 	lat, ok4 := text(m, "latitude", "lat")
 	lon, ok5 := text(m, "longitude", "lon")
-	if !(ok1 && ok2 && ok3 && ok4 && ok5) {
+	if !ok1 || !ok2 || !ok3 || !ok4 || !ok5 {
 		return "", fmt.Errorf("%w: kunci deteksi tidak dapat disusun", ErrInvalid)
 	}
 	return Key(sat, date, at, lat, lon), nil

@@ -28,6 +28,10 @@ func setValidEnv(t *testing.T) {
 		"MONGO_URI", "MONGO_DB_NAME", "MONGO_HAZARD_COLLECTION", "RABBITMQ_EXCHANGE", "RABBITMQ_EXCHANGE_TYPE",
 		"AGGREGATOR_PORT", "BMKG_BASE_URL", "PVMBG_BASE_URL", "AGGREGATOR_POLL_INTERVAL_SECONDS",
 		"AGGREGATOR_BMKG_TIMEOUT_MS", "AGGREGATOR_PVMBG_TIMEOUT_MS", "AGGREGATOR_PVMBG_STALE_AFTER_SECONDS",
+		"AGGREGATOR_PANTAI_ENABLED", "PANTAI_BASE_URL", "PANTAI_AUTH_TOKEN", "AGGREGATOR_PANTAI_TIMEOUT_MS",
+		"AGGREGATOR_PANTAI_POLL_INTERVAL_MS", "AGGREGATOR_PANTAI_STALE_AFTER_SECONDS",
+		"AGGREGATOR_PANTAI_STATION_CACHE_TTL_SECONDS", "AGGREGATOR_PANTAI_CIRCUIT_FAILURES",
+		"AGGREGATOR_PANTAI_CIRCUIT_OPEN_SECONDS",
 	} {
 		t.Setenv(key, "")
 	}
@@ -56,6 +60,11 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	if cfg.PVMBGTimeout <= 3*time.Second {
 		t.Fatal("the PVMBG timeout must exceed PVMBG's maximum 3s delay")
 	}
+	if cfg.PantaiEnabled || cfg.PantaiBaseURL != "http://sensor-pantai:8080" || cfg.PantaiTimeout != 1500*time.Millisecond ||
+		cfg.PantaiPollInterval != time.Second || cfg.PantaiStaleAfter != 30*time.Second ||
+		cfg.PantaiStationCacheTTL != 5*time.Minute || cfg.PantaiCircuitFailures != 3 || cfg.PantaiCircuitOpen != 10*time.Second {
+		t.Fatalf("unexpected Sensor Pantai defaults: %#v", cfg)
+	}
 }
 
 func TestLoadReadsOverrides(t *testing.T) {
@@ -68,6 +77,15 @@ func TestLoadReadsOverrides(t *testing.T) {
 	t.Setenv("BMKG_BASE_URL", "http://bmkg:1")
 	t.Setenv("PVMBG_BASE_URL", "http://pvmbg:2")
 	t.Setenv("MONGO_URI", "mongodb://mongo:27017")
+	t.Setenv("AGGREGATOR_PANTAI_ENABLED", "true")
+	t.Setenv("PANTAI_BASE_URL", "http://pantai:8080")
+	t.Setenv("PANTAI_AUTH_TOKEN", "pantai-token")
+	t.Setenv("AGGREGATOR_PANTAI_TIMEOUT_MS", "900")
+	t.Setenv("AGGREGATOR_PANTAI_POLL_INTERVAL_MS", "750")
+	t.Setenv("AGGREGATOR_PANTAI_STALE_AFTER_SECONDS", "45")
+	t.Setenv("AGGREGATOR_PANTAI_STATION_CACHE_TTL_SECONDS", "120")
+	t.Setenv("AGGREGATOR_PANTAI_CIRCUIT_FAILURES", "5")
+	t.Setenv("AGGREGATOR_PANTAI_CIRCUIT_OPEN_SECONDS", "20")
 
 	cfg, err := Load()
 	if err != nil {
@@ -79,6 +97,12 @@ func TestLoadReadsOverrides(t *testing.T) {
 	}
 	if cfg.BMKGBaseURL != "http://bmkg:1" || cfg.PVMBGBaseURL != "http://pvmbg:2" || cfg.MongoURI != "mongodb://mongo:27017" {
 		t.Fatalf("URL overrides not applied: %#v", cfg)
+	}
+	if !cfg.PantaiEnabled || cfg.PantaiBaseURL != "http://pantai:8080" || cfg.PantaiToken != "pantai-token" ||
+		cfg.PantaiTimeout != 900*time.Millisecond || cfg.PantaiPollInterval != 750*time.Millisecond ||
+		cfg.PantaiStaleAfter != 45*time.Second || cfg.PantaiStationCacheTTL != 2*time.Minute ||
+		cfg.PantaiCircuitFailures != 5 || cfg.PantaiCircuitOpen != 20*time.Second {
+		t.Fatalf("Sensor Pantai overrides not applied: %#v", cfg)
 	}
 }
 
@@ -106,6 +130,13 @@ func TestLoadRejectsInvalidNumbers(t *testing.T) {
 		{"AGGREGATOR_BMKG_TIMEOUT_MS", "0"},
 		{"AGGREGATOR_PVMBG_TIMEOUT_MS", "-1"},
 		{"AGGREGATOR_PVMBG_STALE_AFTER_SECONDS", "0"},
+		{"AGGREGATOR_PANTAI_ENABLED", "sometimes"},
+		{"AGGREGATOR_PANTAI_TIMEOUT_MS", "0"},
+		{"AGGREGATOR_PANTAI_POLL_INTERVAL_MS", "-1"},
+		{"AGGREGATOR_PANTAI_STALE_AFTER_SECONDS", "0"},
+		{"AGGREGATOR_PANTAI_STATION_CACHE_TTL_SECONDS", "0"},
+		{"AGGREGATOR_PANTAI_CIRCUIT_FAILURES", "0"},
+		{"AGGREGATOR_PANTAI_CIRCUIT_OPEN_SECONDS", "0"},
 	}
 
 	for _, tt := range tests {
@@ -116,5 +147,13 @@ func TestLoadRejectsInvalidNumbers(t *testing.T) {
 				t.Fatalf("Load() accepted %s=%s", tt.key, tt.value)
 			}
 		})
+	}
+}
+
+func TestLoadRequiresPantaiTokenWhenEnabled(t *testing.T) {
+	setValidEnv(t)
+	t.Setenv("AGGREGATOR_PANTAI_ENABLED", "true")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() accepted enabled Sensor Pantai without PANTAI_AUTH_TOKEN")
 	}
 }

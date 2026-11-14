@@ -154,7 +154,7 @@ func (h *Handler) forwardOps(internalPath string, withID bool) http.HandlerFunc 
 }
 
 func (h *Handler) registerM2(mux *http.ServeMux, v *authn.Verifier, limit func(http.Handler) http.Handler) {
-	mux.Handle("POST /field-reports", v.Require(scopeFieldReports)(http.HandlerFunc(h.PostFieldReport)))
+	mux.Handle("POST /field-reports", v.Require(scopeFieldReports)(limit(http.HandlerFunc(h.PostFieldReport))))
 	ops := func(hf http.HandlerFunc) http.Handler { return v.Require(scopeOps)(limit(hf)) }
 	mux.Handle("GET /ops/unprocessed", ops(h.forwardOps("/internal/unprocessed", false)))
 	mux.Handle("GET /ops/unprocessed/{id}", ops(h.forwardOps("/internal/unprocessed", true)))
