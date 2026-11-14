@@ -19,8 +19,10 @@ import (
 	"aggregator/internal/config"
 	"aggregator/internal/dashboard"
 	"aggregator/internal/httpx"
+	"aggregator/internal/pantaiclient"
 	"aggregator/internal/poller"
 	"aggregator/internal/pvmbgclient"
+	"aggregator/internal/resilience"
 	"aggregator/internal/shardstore"
 	"aggregator/internal/store"
 	"telemetry"
@@ -80,6 +82,35 @@ func main() {
 		pvmbg.WithTransport(tel.Transport(nil))
 	}
 	p := poller.New(bmkg, pvmbg, hazardStore, publisher, cfg.PollInterval, cfg.PVMBGStaleAfter, log)
+	if cfg.PantaiEnabled {
+		pantaiHTTP := &http.Client{Timeout: cfg.PantaiTimeout}
+		if tel != nil {
+			pantaiHTTP.Transport = tel.Transport(nil)
+		}
+		pantai, err := pantaiclient.New(pantaiclient.Config{
+			BaseURL: cfg.PantaiBaseURL, Token: cfg.PantaiToken, Timeout: cfg.PantaiTimeout,
+			HTTPClient: pantaiHTTP,
+		})
+		if err != nil {
+			log.Error("invalid Sensor Pantai configuration", "err", err)
+			os.Exit(1)
+		}
+		breaker := resilience.New(resilience.Config{
+			FailureThreshold: cfg.PantaiCircuitFailures,
+			OpenDuration:     cfg.PantaiCircuitOpen,
+		})
+		if err := p.ConfigureCoastal(poller.CoastalConfig{
+			Source: pantai, StateStore: hazardStore, Breaker: breaker,
+			PollInterval: cfg.PantaiPollInterval, StaleAfter: cfg.PantaiStaleAfter,
+			StationCacheTTL: cfg.PantaiStationCacheTTL,
+		}); err != nil {
+			log.Error("failed to configure Sensor Pantai ingestion", "err", err)
+			os.Exit(1)
+		}
+		log.Info("Sensor Pantai ingestion enabled", "base_url", cfg.PantaiBaseURL,
+			"poll_interval_ms", cfg.PantaiPollInterval.Milliseconds(),
+			"timeout_ms", cfg.PantaiTimeout.Milliseconds())
+	}
 	go p.Run(ctx)
 
 	var analysisRT http.RoundTripper
