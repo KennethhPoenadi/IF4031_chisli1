@@ -34,13 +34,13 @@ const (
 type Stats map[string]int64
 
 type Changes struct {
-	PutDetections []detection.Detection
+	PutDetections    []detection.Detection
 	FinalDetections  []detection.Detection
 	DeleteDetections []string
 	Late             []detection.Detection
 	UpsertFires      []hazard.Event
 	DeleteFires      []string
-	FinalizedFires []string
+	FinalizedFires   []string
 }
 
 type Engine struct {
@@ -281,8 +281,7 @@ func Components(dets map[string]detection.Detection) [][]detection.Detection {
 	for i := range parent {
 		parent[i] = i
 	}
-	var find func(int) int
-	find = func(i int) int {
+	find := func(i int) int {
 		for parent[i] != i {
 			parent[i] = parent[parent[i]]
 			i = parent[i]

@@ -40,16 +40,6 @@ func newEngine() *Engine {
 	return e
 }
 
-func fires(e *Engine) map[string]int {
-	out := map[string]int{}
-	for _, members := range Components(e.active) {
-		if len(members) >= 2 {
-			out[FireID(members)] = len(members)
-		}
-	}
-	return out
-}
-
 func TestChainAcrossSatellitesFormsOneFire(t *testing.T) {
 	e := newEngine()
 	lat, lon := -2.5, 113.8
