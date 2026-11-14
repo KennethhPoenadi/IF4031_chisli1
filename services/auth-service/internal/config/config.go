@@ -50,8 +50,8 @@ func Load() (Config, error) {
 
 	defs := []struct{ prefix, scope string }{
 		{"AUTH_CLIENT_MEDIA", "read:summary"},
-		{"AUTH_CLIENT_FIELD", "read:summary read:raw"},
-		{"AUTH_CLIENT_OPS", "read:summary read:raw"},
+		{"AUTH_CLIENT_FIELD", "read:summary read:raw write:field-reports"},
+		{"AUTH_CLIENT_OPS", "read:summary read:raw ops:unprocessed"},
 	}
 	ids, secrets := map[string]bool{}, map[string]bool{}
 	for _, d := range defs {

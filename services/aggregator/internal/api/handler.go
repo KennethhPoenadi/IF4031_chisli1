@@ -43,6 +43,13 @@ type Handler struct {
 	log         *slog.Logger
 	audit       *audit.Handler
 	dash        *dashboard.Handler
+	extra       []func(mux *http.ServeMux)
+}
+
+// menambahkan rute dari paket lain (ingest, DLQ, laporan lapangan).
+func (h *Handler) WithRoutes(register func(mux *http.ServeMux)) *Handler {
+	h.extra = append(h.extra, register)
+	return h
 }
 
 func (h *Handler) WithDashboard(d *dashboard.Handler) *Handler {
@@ -209,6 +216,9 @@ func (h *Handler) Routes(internalKey string, observe func(http.Handler) http.Han
 	}
 	if h.audit != nil {
 		h.audit.Register(mux)
+	}
+	for _, register := range h.extra {
+		register(mux)
 	}
 	return observe(mux)
 }

@@ -55,6 +55,7 @@ func (r *Router) RepairOnce(ctx context.Context) (RepairStats, error) {
 	stats := RepairStats{Scanned: len(byID), Unavailable: failed}
 	allUp := len(failed) == 0
 	down := r.downSet()
+	tombs := r.loadTombstones(ctx)
 
 	for id, holders := range byID {
 		if ctx.Err() != nil {
@@ -67,6 +68,16 @@ func (r *Router) RepairOnce(ctx context.Context) (RepairStats, error) {
 			if h.rec.IngestedAt.After(best.rec.IngestedAt) {
 				best = h
 			}
+		}
+		if tombstoned(tombs, id, best.rec.IngestedAt) {
+			for _, h := range holders {
+				uctx, cancel := context.WithTimeout(ctx, r.cfg.UnitTimeout)
+				if err := r.units[h.unit].Delete(uctx, id); err == nil {
+					stats.Removed++
+				}
+				cancel()
+			}
+			continue
 		}
 		heldBy := map[string]holder{}
 		for _, h := range holders {

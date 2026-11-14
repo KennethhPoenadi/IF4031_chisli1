@@ -31,6 +31,7 @@ services:
       PVMBG_SEED_COUNT: ${PVMBG_SEED_COUNT:-20}
       PVMBG_GENERATION_INTERVAL_SECONDS: ${PVMBG_GENERATION_INTERVAL_SECONDS:-10}
       PVMBG_RANDOM_SEED: ${PVMBG_RANDOM_SEED:-4031}
+      PVMBG_ADMIN_TESTER_COMPAT: ${PVMBG_ADMIN_TESTER_COMPAT:-false}
     ports:
       - "${PVMBG_PORT:-8082}:${PVMBG_PORT:-8082}"
     healthcheck:
@@ -81,12 +82,16 @@ services:
       CLIENT_API_MAX_INFLIGHT: ${CLIENT_API_MAX_INFLIGHT:-200}
       CLIENT_API_REVOCATION_POLL_MS: ${CLIENT_API_REVOCATION_POLL_MS:-1000}
       AUTH_PUBLIC_KEY: ${AUTH_PUBLIC_KEY:-}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER must be set in .env}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD must be set in .env}@rabbitmq:5672/
+      FIELD_REPORT_PUBLISH_TIMEOUT_MS: ${FIELD_REPORT_PUBLISH_TIMEOUT_MS:-2000}
     ports:
       - "${CLIENT_API_PORT:-8080}:${CLIENT_API_PORT:-8080}"
     depends_on:
       auth-service:
         condition: service_healthy
       aggregator:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:$${CLIENT_API_PORT}/health >/dev/null || exit 1"]
@@ -185,6 +190,11 @@ services:
       AGGREGATOR_PVMBG_STALE_AFTER_SECONDS: ${AGGREGATOR_PVMBG_STALE_AFTER_SECONDS:-30}
       SITUATION_ANALYST_URL: http://situation-analyst:${SITUATION_ANALYST_PORT:-8094}
       DASHBOARD_TOKEN: ${DASHBOARD_TOKEN:-}
+      AUDIT_TOKEN: ${AUDIT_TOKEN:-}
+      PVMBG_FIELD_ALIASES: ${PVMBG_FIELD_ALIASES:-}
+      PVMBG_FIELD_COERCE: ${PVMBG_FIELD_COERCE:-}
+      DLQ_RETRY_INTERVAL_SECONDS: ${DLQ_RETRY_INTERVAL_SECONDS:-5}
+      FIELD_REPORT_PROCESS_DELAY_MS: ${FIELD_REPORT_PROCESS_DELAY_MS:-0}
     depends_on:
       mongo:
         condition: service_healthy
@@ -242,6 +252,29 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:$${SITUATION_ANALYST_PORT}/health >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+      start_period: 5s
+
+  # Butuh token Feed Satelit dari asisten: docker compose --profile satellite up -d
+  satellite-ingestor:
+    profiles: ["satellite"]
+    build:
+      context: ./services
+      dockerfile: satellite-ingestor/Dockerfile
+    environment:
+      SATELLITE_INGESTOR_PORT: ${SATELLITE_INGESTOR_PORT:-8095}
+      SATELLITE_BASE_URL: ${SATELLITE_BASE_URL:-https://satellite.naufarrel.dev}
+      SATELLITE_TOKEN: ${SATELLITE_TOKEN:-}
+      SATELLITE_LATENESS_MINUTES: ${SATELLITE_LATENESS_MINUTES:-360}
+      AGGREGATOR_URL: http://aggregator:${AGGREGATOR_PORT:-8090}
+      AGGREGATOR_API_KEY: ${AGGREGATOR_API_KEY:?AGGREGATOR_API_KEY must be set in .env}
+    depends_on:
+      aggregator:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:$${SATELLITE_INGESTOR_PORT}/health >/dev/null || exit 1"]
       interval: 5s
       timeout: 2s
       retries: 5

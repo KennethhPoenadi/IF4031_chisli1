@@ -15,6 +15,8 @@ type Config struct {
 	SeedCount          int
 	GenerationInterval time.Duration
 	RandomSeed         int64
+	
+	TesterCompat bool
 }
 
 func ConfigFromEnv() (Config, error) {
@@ -67,6 +69,7 @@ func ConfigFromEnv() (Config, error) {
 		SeedCount:          seedCount,
 		GenerationInterval: time.Duration(intervalSeconds) * time.Second,
 		RandomSeed:         randomSeed,
+		TesterCompat:       os.Getenv("PVMBG_ADMIN_TESTER_COMPAT") == "true",
 	}, nil
 }
 

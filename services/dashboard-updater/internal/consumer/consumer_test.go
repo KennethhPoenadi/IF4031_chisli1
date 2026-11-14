@@ -120,7 +120,7 @@ func TestHandleDropsUnparsableMessagesWithoutRequeue(t *testing.T) {
 	if state.Snapshot(10).Total != 0 {
 		t.Fatal("an unparsable message must not change the state")
 	}
-	if !strings.Contains(logs.String(), "dropping unparsable message") || !strings.Contains(logs.String(), "corr-bad") {
+	if !strings.Contains(logs.String(), "dipindah ke DLQ") || !strings.Contains(logs.String(), "corr-bad") {
 		t.Fatalf("log = %q", logs.String())
 	}
 }

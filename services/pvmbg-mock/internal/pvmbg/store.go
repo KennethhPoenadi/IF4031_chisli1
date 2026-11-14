@@ -16,6 +16,8 @@ type VolcanicReport struct {
 	AshColumnHeightM float64   `json:"ash_column_height_m"`
 	ReportedAt       time.Time `json:"reported_at"`
 	ConfidenceLevel  *float64  `json:"confidence_level,omitempty"`
+	
+	Variant string `json:"-"`
 }
 
 type Store struct {
@@ -26,6 +28,58 @@ type Store struct {
 	outage        bool
 	rng           *rand.Rand
 	now           func() time.Time
+
+	incompatible string
+	corrupt      []string
+	corruptTurn  int
+}
+
+func (s *Store) SetIncompatible(change string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	was := s.incompatible
+	s.incompatible = change
+	if change != "" && was != change {
+		s.generateLocked(s.now().UTC())
+	}
+}
+
+func (s *Store) Incompatible() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.incompatible
+}
+
+// membuat count respons berikutnya rusak dengan jenis kind.
+func (s *Store) ArmCorrupt(kind string, count int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := 0; i < count; i++ {
+		k := kind
+		if k == CorruptAll {
+			k = corruptCycle[s.corruptTurn%len(corruptCycle)]
+			s.corruptTurn++
+		}
+		s.corrupt = append(s.corrupt, k)
+	}
+}
+
+func (s *Store) CorruptPending() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.corrupt)
+}
+
+// mengambil satu jenis kerusakan untuk respons berikutnya ("" bila tidak ada).
+func (s *Store) TakeCorrupt() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.corrupt) == 0 {
+		return ""
+	}
+	k := s.corrupt[0]
+	s.corrupt = s.corrupt[1:]
+	return k
 }
 
 func NewStore(seedCount int, randomSeed int64, now func() time.Time) *Store {
@@ -125,6 +179,13 @@ func (s *Store) generateLocked(reportedAt time.Time) VolcanicReport {
 	if s.schemaEnabled {
 		confidence := round2(0.7 + s.rng.Float64()*0.3)
 		report.ConfidenceLevel = &confidence
+	}
+	switch s.incompatible {
+	case "":
+	case ChangeAll:
+		report.Variant = changeCycle[(s.nextID-1)%len(changeCycle)]
+	default:
+		report.Variant = s.incompatible
 	}
 	s.reports = append(s.reports, report)
 	return report

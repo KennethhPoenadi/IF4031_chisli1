@@ -41,6 +41,7 @@ jobs:
           - dashboard-updater
           - notifier
           - pvmbg-mock
+          - satellite-ingestor
           - situation-analyst
           - telemetry
     steps:
@@ -74,6 +75,7 @@ jobs:
           - dashboard-updater
           - notifier
           - pvmbg-mock
+          - satellite-ingestor
           - situation-analyst
           - telemetry
     steps:
@@ -163,6 +165,7 @@ jobs:
           - dashboard-updater
           - notifier
           - pvmbg-mock
+          - satellite-ingestor
           - situation-analyst
           - telemetry
     env:
@@ -199,6 +202,7 @@ jobs:
           - dashboard-updater
           - notifier
           - pvmbg-mock
+          - satellite-ingestor
           - situation-analyst
     env:
       KO_VERSION: v0.17.1
@@ -251,6 +255,7 @@ jobs:
           - dashboard-updater
           - notifier
           - pvmbg-mock
+          - satellite-ingestor
           - situation-analyst
     env:
       TRIVY_IMAGE: aquasec/trivy:0.76.1

@@ -119,7 +119,7 @@ func TestHandleDropsUnparsableMessagesWithoutRequeue(t *testing.T) {
 	if acker.nacks != 1 || acker.requeue || acker.acks != 0 {
 		t.Fatalf("nacks=%d requeue=%v acks=%d", acker.nacks, acker.requeue, acker.acks)
 	}
-	if !strings.Contains(logs.String(), "dropping unparsable message") || !strings.Contains(logs.String(), "corr-bad") {
+	if !strings.Contains(logs.String(), "dipindah ke DLQ") || !strings.Contains(logs.String(), "corr-bad") {
 		t.Fatalf("log = %q", logs.String())
 	}
 }

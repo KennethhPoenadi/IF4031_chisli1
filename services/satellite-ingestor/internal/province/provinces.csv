@@ -1,0 +1,41 @@
+# Titik pusat provinsi dari tabel referensi BNPB (data.bnpb.go.id, dataset Data Bencana
+# Indonesia, kolom Latitude/Longitude).
+name,lat,lon
+Aceh,4.6951,96.9103
+Sumatera Utara,2.1154,99.8213
+Sumatera Barat,-0.7399,100.4410
+Riau,0.5333,101.4478
+Jambi,-1.6101,103.6131
+Sumatera Selatan,-3.3194,104.0957
+Bengkulu,-3.7928,102.2655
+Lampung,-4.5586,105.4068
+Kepulauan Bangka Belitung,-2.7411,106.4406
+Kepulauan Riau,3.9457,108.1429
+DKI Jakarta,-6.2088,106.8456
+Jawa Barat,-6.8897,107.6405
+Jawa Tengah,-7.1509,110.1403
+DI Yogyakarta,-7.7956,110.3695
+Jawa Timur,-7.2504,112.7508
+Banten,-6.4058,106.0640
+Bali,-8.3405,115.0920
+Nusa Tenggara Barat,-8.6529,116.3249
+Nusa Tenggara Timur,-10.1772,123.6069
+Kalimantan Barat,0.1218,111.4730
+Kalimantan Tengah,-1.6815,113.3824
+Kalimantan Selatan,-3.0926,115.2838
+Kalimantan Timur,0.5247,117.1230
+Kalimantan Utara,3.0731,116.0414
+Sulawesi Utara,1.4307,124.8471
+Sulawesi Tengah,-1.4300,121.4456
+Sulawesi Selatan,-3.6688,119.9741
+Sulawesi Tenggara,-4.1436,122.1746
+Gorontalo,0.5435,123.0706
+Sulawesi Barat,-2.8445,119.2321
+Maluku,-3.2385,129.4922
+Maluku Utara,1.5709,127.8082
+Papua,-2.5337,138.0830
+Papua Barat,-1.3361,133.1747
+Papua Selatan,-7.6711,131.2757
+Papua Tengah,-3.8549,136.0142
+Papua Pegunungan,-4.3924,138.4683
+Papua Barat Daya,-1.0156,132.2680

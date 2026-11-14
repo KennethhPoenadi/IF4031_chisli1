@@ -1,6 +1,7 @@
 package pvmbg
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -13,7 +14,8 @@ import (
 )
 
 type Server struct {
-	token    string
+	token        string
+	testerCompat bool
 	delayMin time.Duration
 	delayMax time.Duration
 	store    *Store
@@ -27,7 +29,8 @@ func NewServer(config Config, store *Store, logs io.Writer) *Server {
 		logs = io.Discard
 	}
 	return &Server{
-		token:    config.Token,
+		token:        config.Token,
+		testerCompat: config.TesterCompat,
 		delayMin: config.DelayMin,
 		delayMax: config.DelayMax,
 		store:    store,
@@ -40,8 +43,8 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.health)
 	mux.HandleFunc("GET /volcanic-reports", s.authorize(s.volcanicReports))
-	mux.HandleFunc("POST /admin/schema-version", s.authorize(s.schemaVersion))
-	mux.HandleFunc("POST /admin/outage", s.authorize(s.outage))
+	mux.HandleFunc("POST /admin/schema-version", s.authorizeAdmin(s.schemaVersion))
+	mux.HandleFunc("POST /admin/outage", s.authorizeAdmin(s.outage))
 	return s.observe(mux)
 }
 
@@ -63,16 +66,142 @@ func (s *Server) volcanicReports(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.sleep(s.store.RandomDelay(s.delayMin, s.delayMax))
-	writeJSON(w, http.StatusOK, s.store.ReportsSince(since))
+	kind := s.store.TakeCorrupt()
+	if kind == "" {
+		writeJSON(w, http.StatusOK, s.store.ReportsSince(since))
+		return
+	}
+	body, err := json.Marshal(s.store.ReportsSince(since))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "encode failed")
+		return
+	}
+	s.logEvent(map[string]any{"event": "corrupt_response", "kind": kind})
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(corruptBody(body, kind))
+}
+
+// schemaRequest = body POST /admin/schema-version.
+//
+//	{"enabled": true}                                   perubahan aditif M1 (field confidence_level)
+//	{"enabled": false}                                  kembali ke skema normal (semua mode mati)
+//	{"mode": "incompatible", "change": "rename"}        rename | type | missing | all (bawaan all)
+//	{"mode": "incompatible", "enabled": false}          matikan perubahan tidak kompatibel
+//	{"mode": "corrupt", "kind": "truncated", "count": 3} truncated | deep | invalid_utf8 | oversize | all
+type schemaRequest struct {
+	Enabled *bool  `json:"enabled"`
+	Mode    string `json:"mode"`
+	Change  string `json:"change"`
+	Kind    string `json:"kind"`
+	Count   int    `json:"count"`
 }
 
 func (s *Server) schemaVersion(w http.ResponseWriter, r *http.Request) {
-	enabled, ok := decodeEnabled(w, r)
-	if !ok {
-		return
+	raw, _ := io.ReadAll(io.LimitReader(r.Body, 4096))
+	_ = r.Body.Close()
+	s.logEvent(map[string]any{"event": "admin_request", "path": r.URL.Path, "remote": r.RemoteAddr,
+		"has_authorization": r.Header.Get("Authorization") != "", "body": clipString(string(raw), 1024)})
+
+	req, err := parseSchemaRequest(raw)
+	if err != nil {
+		if !s.testerCompat {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		req = schemaRequest{Mode: "incompatible", Change: ChangeAll}
 	}
-	s.store.SetSchemaEnabled(enabled)
-	writeJSON(w, http.StatusOK, map[string]bool{"enabled": s.store.SchemaEnabled()})
+
+	switch req.Mode {
+	case "", "additive":
+		if req.Enabled == nil {
+			writeError(w, http.StatusBadRequest, "enabled is required")
+			return
+		}
+		s.store.SetSchemaEnabled(*req.Enabled)
+		if !*req.Enabled {
+			s.store.SetIncompatible("")
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"enabled": s.store.SchemaEnabled()})
+	case "incompatible":
+		change := req.Change
+		if change == "" {
+			change = ChangeAll
+		}
+		if req.Enabled != nil && !*req.Enabled {
+			change = ""
+		}
+		s.store.SetIncompatible(change)
+		writeJSON(w, http.StatusOK, map[string]any{"mode": "incompatible", "change": s.store.Incompatible(),
+			"enabled": s.store.Incompatible() != ""})
+	case "corrupt":
+		kind, count := req.Kind, req.Count
+		if kind == "" {
+			kind = CorruptAll
+		}
+		if count < 1 {
+			count = 1
+		}
+		s.store.ArmCorrupt(kind, min(count, 100))
+		writeJSON(w, http.StatusOK, map[string]any{"mode": "corrupt", "kind": kind, "pending": s.store.CorruptPending()})
+	}
+}
+
+func parseSchemaRequest(raw []byte) (schemaRequest, error) {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	var req schemaRequest
+	if err := decoder.Decode(&req); err != nil {
+		return req, errors.New("body must be JSON with an enabled boolean or a mode")
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return req, errors.New("body must contain one JSON object")
+	}
+	switch req.Mode {
+	case "", "additive":
+		if req.Enabled == nil {
+			return req, errors.New("enabled is required")
+		}
+	case "incompatible":
+		if req.Change != "" && !validChanges[req.Change] {
+			return req, errors.New("change must be rename, type, missing or all")
+		}
+	case "corrupt":
+		if req.Kind != "" && !validCorrupt[req.Kind] {
+			return req, errors.New("kind must be truncated, deep, invalid_utf8, oversize or all")
+		}
+	default:
+		return req, errors.New("mode must be additive, incompatible or corrupt")
+	}
+	return req, nil
+}
+
+func clipString(s string, n int) string {
+	if len(s) > n {
+		return s[:n]
+	}
+	return s
+}
+
+func (s *Server) logEvent(record map[string]any) {
+	record["timestamp"] = time.Now().UTC().Format(time.RFC3339Nano)
+	record["service"] = "pvmbg-mock"
+	s.logMu.Lock()
+	_ = json.NewEncoder(s.logs).Encode(record)
+	s.logMu.Unlock()
+}
+
+// authorizeAdmin sama dengan authorize, kecuali pada mode kompatibel Tester Agent
+// permintaan tanpa header Authorization diterima.
+func (s *Server) authorizeAdmin(next http.HandlerFunc) http.HandlerFunc {
+	strict := s.authorize(next)
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.testerCompat && r.Header.Get("Authorization") == "" {
+			next(w, r)
+			return
+		}
+		strict(w, r)
+	}
 }
 
 func (s *Server) outage(w http.ResponseWriter, r *http.Request) {
