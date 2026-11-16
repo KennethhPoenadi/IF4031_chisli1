@@ -6,7 +6,7 @@ export const options = {
     sustained_parallel_load: {
       executor: 'constant-vus',
       vus: Number(__ENV.VUS || 50),
-      duration: __ENV.TEST_DURATION || '60s',
+      duration: __ENV.DURATION || __ENV.TEST_DURATION || '120s',
     },
   },
   thresholds: {
