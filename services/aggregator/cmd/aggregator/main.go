@@ -27,6 +27,7 @@ import (
 	"aggregator/internal/hazard"
 	"aggregator/internal/httpx"
 	"aggregator/internal/ingestapi"
+	"aggregator/internal/leader"
 	"aggregator/internal/mapper"
 	"aggregator/internal/pantaiclient"
 	"aggregator/internal/poller"
@@ -53,6 +54,32 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	var election *leader.Elector
+	if cfg.LeaderElectionEnabled {
+		leaseStore, err := leader.NewInClusterStore(cfg.LeaderLeaseName)
+		if err != nil {
+			log.Error("leader lease store setup failed", "err", err)
+			os.Exit(1)
+		}
+		election, err = leader.New(leader.Config{
+			Identity:      cfg.LeaderIdentity,
+			LeaseDuration: cfg.LeaderLeaseDuration,
+			RetryPeriod:   cfg.LeaderRetryPeriod,
+			Store:         leaseStore,
+		})
+		if err != nil {
+			log.Error("leader election setup failed", "err", err)
+			os.Exit(1)
+		}
+		go election.Run(ctx)
+		go logLeaderChanges(ctx, election, cfg.LeaderRetryPeriod, log)
+		log.Info("leader election started",
+			"identity", cfg.LeaderIdentity,
+			"lease", cfg.LeaderLeaseName,
+			"lease_duration_seconds", int(cfg.LeaderLeaseDuration.Seconds()),
+			"retry_period_seconds", int(cfg.LeaderRetryPeriod.Seconds()))
+	}
 
 	tel, err := telemetry.Init(ctx, "aggregator", log)
 	if err != nil {
@@ -102,6 +129,10 @@ func main() {
 		pvmbg.WithTransport(tel.Transport(nil))
 	}
 	p := poller.New(bmkg, pvmbg, hazardStore, publisher, cfg.PollInterval, cfg.PVMBGStaleAfter, log)
+	p.WithCursorStore(hazardStore)
+	if election != nil {
+		p.WithLeadership(election)
+	}
 	p.WithDeadLetters(deadLetters, schemaRules)
 	if !schemaRules.Empty() {
 		log.Info("aturan penyesuaian skema PVMBG aktif", "aliases", cfg.PVMBGFieldAliases, "coerce", cfg.PVMBGFieldCoerce)
@@ -213,6 +244,33 @@ func main() {
 		os.Exit(1)
 	}
 	<-shutdownDone
+}
+
+func logLeaderChanges(ctx context.Context, election *leader.Elector, interval time.Duration, log *slog.Logger) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	previous := leader.Snapshot{}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			current := election.Snapshot()
+			if current.Leader == previous.Leader && current.Holder == previous.Holder && current.Token == previous.Token {
+				continue
+			}
+			switch {
+			case current.Leader:
+				log.Info("aggregator leadership acquired", "holder", current.Holder, "fencing_token", current.Token)
+			case previous.Leader:
+				log.Warn("aggregator leadership lost", "holder", current.Holder)
+			case current.Holder != "":
+				log.Info("aggregator leadership observed", "holder", current.Holder, "fencing_token", current.Token)
+			}
+			previous = current
+		}
+	}
 }
 
 // menerima internal key Aggregator atau token Audit (untuk statistik yang dibaca penguji).

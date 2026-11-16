@@ -123,6 +123,26 @@ func TestPollCoastalPrioritizesCriticalQuarantinesInvalidAndAdvancesCursor(t *te
 	}
 }
 
+func TestFollowerDoesNotPollCoastalUpstream(t *testing.T) {
+	now := time.Date(2026, 11, 10, 8, 30, 10, 0, time.UTC)
+	r := newRig()
+	source := &fakeCoastalSource{stations: pantaiclient.StationPage{Stations: []map[string]any{coastalStation()}}}
+	state := &fakeCoastalState{}
+	breaker := resilience.New(resilience.Config{FailureThreshold: 2})
+	configureCoastalTest(t, r.poller, source, state, breaker, &now)
+	r.poller.WithLeadership(&fakeLeadership{leader: false})
+
+	if got := r.poller.pollCoastal(context.Background(), "cursor-1"); got != "cursor-1" {
+		t.Fatalf("cursor = %q, want unchanged cursor-1", got)
+	}
+	if source.stationCalls != 0 || len(source.fetchCursors) != 0 {
+		t.Fatalf("follower called Sensor Pantai: stations=%d fetch=%d", source.stationCalls, len(source.fetchCursors))
+	}
+	if len(state.savedCursors) != 0 || len(state.rejections) != 0 {
+		t.Fatal("follower changed Sensor Pantai state")
+	}
+}
+
 func TestPollCoastalSourceFailureOpensBreakerAndFailsFast(t *testing.T) {
 	now := time.Date(2026, 11, 10, 8, 30, 10, 0, time.UTC)
 	r := newRig()

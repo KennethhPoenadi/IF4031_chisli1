@@ -53,7 +53,7 @@ func (p *Poller) pollPVMBGTolerant(ctx context.Context, src BatchVolcanicSource)
 		e := dlq.Entry{Source: sourcePVMBG, Kind: dlq.KindPVMBGRaw, Status: dlq.StatusParked, Reason: br.Reason,
 			CorrelationID: correlationID, Origin: "GET /volcanic-reports"}
 		e.SetPayload(br.Raw)
-		if err := t.dead.Record(ctx, e); err != nil {
+		if err := p.recordDeadLetter(ctx, e); err != nil {
 			p.log.Error("pesan rusak tidak dapat dicatat ke DLQ, cursor tidak maju", "err", err, "correlation_id", correlationID)
 			return
 		}
@@ -81,7 +81,7 @@ func (p *Poller) pollPVMBGTolerant(ctx context.Context, src BatchVolcanicSource)
 			return
 		}
 		if blocked {
-			if err := t.dead.Record(ctx, entry(dlq.StatusParked, "blocked_by_earlier: source_ref_id "+ref+" masih punya pesan parked")); err != nil {
+			if err := p.recordDeadLetter(ctx, entry(dlq.StatusParked, "blocked_by_earlier: source_ref_id "+ref+" masih punya pesan parked")); err != nil {
 				return
 			}
 			continue
@@ -90,7 +90,7 @@ func (p *Poller) pollPVMBGTolerant(ctx context.Context, src BatchVolcanicSource)
 		event, mapErr := mapper.MapVolcanicReport(t.rules.Apply(item.Report))
 		if mapErr != nil {
 			reason := mapper.SchemaReason(mapErr)
-			if err := t.dead.Record(ctx, entry(dlq.StatusParked, reason)); err != nil {
+			if err := p.recordDeadLetter(ctx, entry(dlq.StatusParked, reason)); err != nil {
 				p.log.Error("report gagal tidak dapat dicatat ke DLQ, cursor tidak maju", "err", err, "correlation_id", correlationID)
 				return
 			}
@@ -98,7 +98,10 @@ func (p *Poller) pollPVMBGTolerant(ctx context.Context, src BatchVolcanicSource)
 			continue
 		}
 		if err := p.persist(ctx, event, correlationID); err != nil {
-			if err := t.dead.Record(ctx, entry(dlq.StatusRetrying, "transient: "+err.Error())); err != nil {
+			if errors.Is(err, errLeadershipLost) {
+				return
+			}
+			if err := p.recordDeadLetter(ctx, entry(dlq.StatusRetrying, "transient: "+err.Error())); err != nil {
 				p.log.Error("report gagal disimpan dan DLQ tidak terjangkau, cursor tidak maju", "err", err, "correlation_id", correlationID)
 				return
 			}
@@ -107,11 +110,27 @@ func (p *Poller) pollPVMBGTolerant(ctx context.Context, src BatchVolcanicSource)
 
 	if batch.Truncated {
 		if !lastReported.IsZero() {
-			p.pvmbgSince = lastReported.UTC().Format(time.RFC3339)
+			next := lastReported.UTC().Format(time.RFC3339)
+			if err := p.savePollCursor(ctx, "pvmbg", next); err != nil {
+				p.log.Warn("pvmbg cursor save failed", "err", err, "correlation_id", correlationID)
+				return
+			}
+			p.pvmbgSince = next
 		}
 		return
 	}
+	if err := p.savePollCursor(ctx, "pvmbg", now); err != nil {
+		p.log.Warn("pvmbg cursor save failed", "err", err, "correlation_id", correlationID)
+		return
+	}
 	p.pvmbgSince = now
+}
+
+func (p *Poller) recordDeadLetter(ctx context.Context, entry dlq.Entry) error {
+	if err := p.requirePollLeadership(ctx); err != nil {
+		return err
+	}
+	return p.tolerant.dead.Record(ctx, entry)
 }
 
 func (p *Poller) ProcessPVMBGEntry(ctx context.Context, e dlq.Entry) error {

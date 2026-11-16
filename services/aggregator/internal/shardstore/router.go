@@ -93,6 +93,7 @@ type Router struct {
 	repairNeeded atomic.Bool
 	repairMu     sync.Mutex
 	coastalMu    sync.Mutex
+	pollMu       sync.Mutex
 
 	tombs Tombstones
 }

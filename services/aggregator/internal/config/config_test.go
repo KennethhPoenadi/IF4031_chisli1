@@ -32,6 +32,9 @@ func setValidEnv(t *testing.T) {
 		"AGGREGATOR_PANTAI_POLL_INTERVAL_MS", "AGGREGATOR_PANTAI_STALE_AFTER_SECONDS",
 		"AGGREGATOR_PANTAI_STATION_CACHE_TTL_SECONDS", "AGGREGATOR_PANTAI_CIRCUIT_FAILURES",
 		"AGGREGATOR_PANTAI_CIRCUIT_OPEN_SECONDS",
+		"AGGREGATOR_LEADER_ELECTION_ENABLED", "AGGREGATOR_LEADER_IDENTITY", "POD_NAME",
+		"AGGREGATOR_LEADER_LEASE_NAME", "AGGREGATOR_LEADER_LEASE_DURATION_SECONDS",
+		"AGGREGATOR_LEADER_RETRY_PERIOD_SECONDS",
 	} {
 		t.Setenv(key, "")
 	}
@@ -60,6 +63,10 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	if cfg.PVMBGTimeout <= 3*time.Second {
 		t.Fatal("the PVMBG timeout must exceed PVMBG's maximum 3s delay")
 	}
+	if cfg.LeaderElectionEnabled || cfg.LeaderIdentity != "" || cfg.LeaderLeaseName != "aggregator" ||
+		cfg.LeaderLeaseDuration != 15*time.Second || cfg.LeaderRetryPeriod != 5*time.Second {
+		t.Fatalf("unexpected leader election defaults: %#v", cfg)
+	}
 	if cfg.PantaiEnabled || cfg.PantaiBaseURL != "http://sensor-pantai:8080" || cfg.PantaiTimeout != 1500*time.Millisecond ||
 		cfg.PantaiPollInterval != time.Second || cfg.PantaiStaleAfter != 30*time.Second ||
 		cfg.PantaiStationCacheTTL != 5*time.Minute || cfg.PantaiCircuitFailures != 3 || cfg.PantaiCircuitOpen != 10*time.Second {
@@ -86,6 +93,11 @@ func TestLoadReadsOverrides(t *testing.T) {
 	t.Setenv("AGGREGATOR_PANTAI_STATION_CACHE_TTL_SECONDS", "120")
 	t.Setenv("AGGREGATOR_PANTAI_CIRCUIT_FAILURES", "5")
 	t.Setenv("AGGREGATOR_PANTAI_CIRCUIT_OPEN_SECONDS", "20")
+	t.Setenv("AGGREGATOR_LEADER_ELECTION_ENABLED", "true")
+	t.Setenv("AGGREGATOR_LEADER_IDENTITY", "aggregator-2")
+	t.Setenv("AGGREGATOR_LEADER_LEASE_NAME", "aggregator-upstream-poller")
+	t.Setenv("AGGREGATOR_LEADER_LEASE_DURATION_SECONDS", "30")
+	t.Setenv("AGGREGATOR_LEADER_RETRY_PERIOD_SECONDS", "7")
 
 	cfg, err := Load()
 	if err != nil {
@@ -103,6 +115,11 @@ func TestLoadReadsOverrides(t *testing.T) {
 		cfg.PantaiStaleAfter != 45*time.Second || cfg.PantaiStationCacheTTL != 2*time.Minute ||
 		cfg.PantaiCircuitFailures != 5 || cfg.PantaiCircuitOpen != 20*time.Second {
 		t.Fatalf("Sensor Pantai overrides not applied: %#v", cfg)
+	}
+	if !cfg.LeaderElectionEnabled || cfg.LeaderIdentity != "aggregator-2" ||
+		cfg.LeaderLeaseName != "aggregator-upstream-poller" || cfg.LeaderLeaseDuration != 30*time.Second ||
+		cfg.LeaderRetryPeriod != 7*time.Second {
+		t.Fatalf("leader election overrides not applied: %#v", cfg)
 	}
 }
 
@@ -137,6 +154,9 @@ func TestLoadRejectsInvalidNumbers(t *testing.T) {
 		{"AGGREGATOR_PANTAI_STATION_CACHE_TTL_SECONDS", "0"},
 		{"AGGREGATOR_PANTAI_CIRCUIT_FAILURES", "0"},
 		{"AGGREGATOR_PANTAI_CIRCUIT_OPEN_SECONDS", "0"},
+		{"AGGREGATOR_LEADER_ELECTION_ENABLED", "sometimes"},
+		{"AGGREGATOR_LEADER_LEASE_DURATION_SECONDS", "0"},
+		{"AGGREGATOR_LEADER_RETRY_PERIOD_SECONDS", "-1"},
 	}
 
 	for _, tt := range tests {
@@ -155,5 +175,44 @@ func TestLoadRequiresPantaiTokenWhenEnabled(t *testing.T) {
 	t.Setenv("AGGREGATOR_PANTAI_ENABLED", "true")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() accepted enabled Sensor Pantai without PANTAI_AUTH_TOKEN")
+	}
+}
+
+func TestLoadRequiresIdentityWhenLeaderElectionEnabled(t *testing.T) {
+	setValidEnv(t)
+	t.Setenv("AGGREGATOR_LEADER_ELECTION_ENABLED", "true")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() accepted leader election without AGGREGATOR_LEADER_IDENTITY or POD_NAME")
+	}
+}
+
+func TestLoadUsesPodNameAsLeaderIdentity(t *testing.T) {
+	setValidEnv(t)
+	t.Setenv("AGGREGATOR_LEADER_ELECTION_ENABLED", "true")
+	t.Setenv("POD_NAME", "aggregator-1")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.LeaderIdentity != "aggregator-1" {
+		t.Fatalf("LeaderIdentity = %q, want aggregator-1", cfg.LeaderIdentity)
+	}
+}
+
+func TestLoadRejectsInvalidLeaderTiming(t *testing.T) {
+	for _, tt := range []struct{ lease, retry string }{
+		{lease: "1", retry: "1"},
+		{lease: "10", retry: "10"},
+		{lease: "10", retry: "11"},
+	} {
+		setValidEnv(t)
+		t.Setenv("AGGREGATOR_LEADER_ELECTION_ENABLED", "true")
+		t.Setenv("POD_NAME", "aggregator-0")
+		t.Setenv("AGGREGATOR_LEADER_LEASE_DURATION_SECONDS", tt.lease)
+		t.Setenv("AGGREGATOR_LEADER_RETRY_PERIOD_SECONDS", tt.retry)
+		if _, err := Load(); err == nil {
+			t.Fatalf("Load() accepted lease=%ss retry=%ss", tt.lease, tt.retry)
+		}
 	}
 }

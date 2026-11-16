@@ -120,6 +120,57 @@ type fakePublisher struct {
 	err    error
 }
 
+type fakeLeadership struct {
+	leader bool
+	tokens []string
+	errs   []error
+	calls  int
+}
+
+type fakeCursorStore struct {
+	values  map[string]string
+	loads   map[string]int
+	saves   map[string]int
+	saveErr error
+}
+
+func newFakeCursorStore() *fakeCursorStore {
+	return &fakeCursorStore{values: map[string]string{}, loads: map[string]int{}, saves: map[string]int{}}
+}
+
+func (f *fakeCursorStore) LoadPollCursor(_ context.Context, source string) (string, error) {
+	f.loads[source]++
+	return f.values[source], nil
+}
+
+func (f *fakeCursorStore) SavePollCursor(_ context.Context, source, cursor string) error {
+	f.saves[source]++
+	if f.saveErr != nil {
+		return f.saveErr
+	}
+	f.values[source] = cursor
+	return nil
+}
+
+func (f *fakeLeadership) IsLeader() bool {
+	return f.leader
+}
+
+func (f *fakeLeadership) Confirm(context.Context) (string, error) {
+	index := f.calls
+	f.calls++
+	if index < len(f.errs) && f.errs[index] != nil {
+		return "", f.errs[index]
+	}
+	if len(f.tokens) == 0 {
+		return "", nil
+	}
+	if index >= len(f.tokens) {
+		index = len(f.tokens) - 1
+	}
+	return f.tokens[index], nil
+}
+
 func (f *fakePublisher) Publish(_ context.Context, event hazard.Event, correlationID string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -408,6 +459,111 @@ func TestPollWithoutPublisherStillStoresEvents(t *testing.T) {
 
 	if len(r.store.saved) != 1 || p.bmkgSince == "" {
 		t.Fatalf("saved=%v cursor=%q", r.store.ids(), p.bmkgSince)
+	}
+}
+
+func TestFollowerDoesNotPollUpstream(t *testing.T) {
+	r := newRig()
+	r.bmkg.events = staticEvents(seismicRaw("eq-1", 5.5))
+	r.poller.WithLeadership(&fakeLeadership{leader: false})
+
+	r.poller.pollBMKG(context.Background())
+	r.poller.pollPVMBG(context.Background())
+
+	if r.bmkg.eventCalls() != 0 || r.pvmbg.calls() != 0 {
+		t.Fatalf("follower called upstream: BMKG=%d PVMBG=%d", r.bmkg.eventCalls(), r.pvmbg.calls())
+	}
+	if len(r.store.saved) != 0 || len(r.pub.events) != 0 {
+		t.Fatal("follower must not save or publish upstream events")
+	}
+}
+
+func TestFormerLeaderCannotStoreAfterTokenChanges(t *testing.T) {
+	r := newRig()
+	r.bmkg.events = staticEvents(seismicRaw("eq-1", 5.5))
+	leadership := &fakeLeadership{leader: true, tokens: []string{"lease:1", "lease:1", "lease:2"}}
+	r.poller.WithLeadership(leadership)
+
+	r.poller.pollBMKG(context.Background())
+
+	if len(r.store.saved) != 0 || len(r.pub.events) != 0 {
+		t.Fatal("a cycle fenced by a newer token must not save or publish")
+	}
+	if r.poller.bmkgSince != "" {
+		t.Fatal("a fenced cycle must not advance its cursor")
+	}
+}
+
+func TestLeadershipIsReconfirmedBetweenStoreAndPublish(t *testing.T) {
+	r := newRig()
+	r.bmkg.events = staticEvents(seismicRaw("eq-1", 5.5))
+	leadership := &fakeLeadership{leader: true, tokens: []string{"lease:1", "lease:1", "lease:1", "lease:2"}}
+	r.poller.WithLeadership(leadership)
+
+	r.poller.pollBMKG(context.Background())
+
+	if got := r.store.ids(); !reflect.DeepEqual(got, []string{"hz-eq-1"}) {
+		t.Fatalf("saved = %v, want the event stored before leadership changed", got)
+	}
+	if len(r.pub.events) != 0 {
+		t.Fatal("the former leader must not publish after losing its fencing token")
+	}
+	if r.poller.bmkgSince != "" {
+		t.Fatal("a partially completed cycle must not advance its cursor")
+	}
+}
+
+func TestPollerLoadsSharedCursorAndSavesProgress(t *testing.T) {
+	r := newRig()
+	cursors := newFakeCursorStore()
+	cursors.values["bmkg"] = "2026-11-10T08:00:00Z"
+	r.poller.WithCursorStore(cursors)
+
+	r.poller.pollBMKG(context.Background())
+
+	if got := r.bmkg.eventSince[0]; got != "2026-11-10T08:00:00Z" {
+		t.Fatalf("BMKG since = %q, want shared cursor", got)
+	}
+	if cursors.loads["bmkg"] != 1 || cursors.saves["bmkg"] != 1 {
+		t.Fatalf("cursor calls: loads=%d saves=%d", cursors.loads["bmkg"], cursors.saves["bmkg"])
+	}
+	if cursors.values["bmkg"] == "2026-11-10T08:00:00Z" {
+		t.Fatal("successful poll did not persist its new cursor")
+	}
+}
+
+func TestPollerReloadsSharedCursorWhenFencingTokenChanges(t *testing.T) {
+	r := newRig()
+	cursors := newFakeCursorStore()
+	cursors.values["bmkg"] = "2026-11-10T08:00:00Z"
+	leadership := &fakeLeadership{leader: true, tokens: []string{"lease:1"}}
+	r.poller.WithCursorStore(cursors).WithLeadership(leadership)
+
+	r.poller.pollBMKG(context.Background())
+	cursors.values["bmkg"] = "2026-11-10T09:00:00Z"
+	leadership.tokens = []string{"lease:2"}
+	leadership.calls = 0
+	r.poller.pollBMKG(context.Background())
+
+	if cursors.loads["bmkg"] != 2 {
+		t.Fatalf("shared cursor loaded %d times, want once for each fencing token", cursors.loads["bmkg"])
+	}
+	if got := r.bmkg.eventSince[1]; got != "2026-11-10T09:00:00Z" {
+		t.Fatalf("BMKG since after failover = %q, want reloaded shared cursor", got)
+	}
+}
+
+func TestCursorSaveFailureDoesNotAdvanceLocalCursor(t *testing.T) {
+	r := newRig()
+	cursors := newFakeCursorStore()
+	cursors.values["bmkg"] = "2026-11-10T08:00:00Z"
+	cursors.saveErr = errors.New("cursor store unavailable")
+	r.poller.WithCursorStore(cursors)
+
+	r.poller.pollBMKG(context.Background())
+
+	if r.poller.bmkgSince != "2026-11-10T08:00:00Z" {
+		t.Fatalf("local cursor advanced to %q after shared save failed", r.poller.bmkgSince)
 	}
 }
 
