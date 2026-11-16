@@ -44,15 +44,15 @@ func NewKubeStore(cfg KubeStoreConfig) (*KubeStore, error) {
 	parsed, err := url.Parse(baseURL)
 	switch {
 	case err != nil || parsed.Scheme == "" || parsed.Host == "":
-		return nil, errors.New("Kubernetes API base URL is invalid")
+		return nil, errors.New("kubernetes API base URL is invalid")
 	case parsed.Scheme != "http" && parsed.Scheme != "https":
-		return nil, errors.New("Kubernetes API base URL must use HTTP or HTTPS")
+		return nil, errors.New("kubernetes API base URL must use HTTP or HTTPS")
 	case strings.TrimSpace(cfg.Namespace) == "":
 		return nil, errors.New("leader lease namespace must not be blank")
 	case strings.TrimSpace(cfg.Name) == "":
 		return nil, errors.New("leader lease name must not be blank")
 	case cfg.Token == nil:
-		return nil, errors.New("Kubernetes service account token source is required")
+		return nil, errors.New("kubernetes service account token source is required")
 	case cfg.Client == nil:
 		return nil, errors.New("Kubernetes HTTP client is required")
 	}
