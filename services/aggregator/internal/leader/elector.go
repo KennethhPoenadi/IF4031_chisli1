@@ -91,6 +91,10 @@ func (e *Elector) Snapshot() Snapshot {
 	return e.snapshot
 }
 
+func (e *Elector) IsLeader() bool {
+	return e.Snapshot().Leader
+}
+
 func (e *Elector) Run(ctx context.Context) {
 	e.step(ctx)
 	ticker := time.NewTicker(e.retryPeriod)

@@ -41,6 +41,10 @@ func (p *Poller) runCoastalWorker(ctx context.Context) {
 }
 
 func (p *Poller) pollCoastal(ctx context.Context, cursor string) string {
+	var allowed bool
+	if ctx, allowed = p.beginPoll(ctx); !allowed {
+		return cursor
+	}
 	permit, err := p.coastalBreaker.Allow()
 	if err != nil {
 		if errors.Is(err, resilience.ErrOpen) {
@@ -75,6 +79,9 @@ func (p *Poller) pollCoastalAllowed(ctx context.Context, cursor string) (next st
 
 	current := cursor
 	for pageNo := 0; pageNo < maxCoastalPagesPerCycle; pageNo++ {
+		if err := p.requirePollLeadership(ctx); err != nil {
+			return current, dependencyFailed
+		}
 		page, err := p.coastal.Fetch(ctx, current)
 		if err != nil {
 			p.log.Warn("Sensor Pantai observation fetch failed", "err", err, "correlation_id", correlationID)
@@ -102,6 +109,9 @@ func (p *Poller) pollCoastalAllowed(ctx context.Context, cursor string) (next st
 					Observation: raw, Reason: mapErr.Error(), CorrelationID: correlationID,
 					RejectedAt: p.coastalNow().UTC(),
 				}
+				if err := p.requirePollLeadership(ctx); err != nil {
+					return current, dependencyFailed
+				}
 				if err := p.coastalState.Quarantine(ctx, rejection); err != nil {
 					p.log.Error("failed to quarantine Sensor Pantai observation", "err", err,
 						"reason", mapErr, "correlation_id", correlationID)
@@ -115,6 +125,9 @@ func (p *Poller) pollCoastalAllowed(ctx context.Context, cursor string) (next st
 		}
 
 		if page.NextCursor == "" {
+			return current, dependencyFailed
+		}
+		if err := p.requirePollLeadership(ctx); err != nil {
 			return current, dependencyFailed
 		}
 		if err := p.coastalState.SaveCursor(ctx, page.NextCursor); err != nil {
@@ -136,6 +149,9 @@ func (p *Poller) coastalStationCatalog(ctx context.Context) (map[string]map[stri
 		return p.coastalStations, nil
 	}
 
+	if err := p.requirePollLeadership(ctx); err != nil {
+		return nil, err
+	}
 	page, err := p.coastal.Stations(ctx)
 	if err != nil {
 		if p.coastalStations != nil {

@@ -13,6 +13,7 @@ import (
 	"aggregator/internal/hazard"
 	"aggregator/internal/mapper"
 	"aggregator/internal/pantaiclient"
+	"aggregator/internal/pollstate"
 	"aggregator/internal/pvmbgclient"
 	"aggregator/internal/resilience"
 	"telemetry"
@@ -20,6 +21,11 @@ import (
 
 type Publisher interface {
 	Publish(ctx context.Context, event hazard.Event, correlationID string) error
+}
+
+type Leadership interface {
+	IsLeader() bool
+	Confirm(context.Context) (string, error)
 }
 
 type SeismicSource interface {
@@ -94,7 +100,22 @@ type Poller struct {
 	staleSince    time.Time
 
 	tolerant *tolerantIngest
+	leader   Leadership
+	cursors  pollstate.Store
+
+	bmkgCursorLoaded  bool
+	bmkgCursorToken   string
+	pvmbgCursorLoaded bool
+	pvmbgCursorToken  string
 }
+
+type pollLeadershipKey struct{}
+
+type pollLeadership struct {
+	token string
+}
+
+var errLeadershipLost = errors.New("poll leadership lost")
 
 func (p *Poller) ConfigureCoastal(cfg CoastalConfig) error {
 	if cfg.Source == nil {
@@ -139,6 +160,77 @@ func New(bmkg SeismicSource, pvmbg VolcanicSource, hazardStore EventStore, publi
 		log:          log,
 		sourceStatus: SourceHealthy,
 	}
+}
+
+func (p *Poller) WithLeadership(leadership Leadership) *Poller {
+	p.leader = leadership
+	return p
+}
+
+func (p *Poller) WithCursorStore(store pollstate.Store) *Poller {
+	p.cursors = store
+	return p
+}
+
+func (p *Poller) beginPoll(ctx context.Context) (context.Context, bool) {
+	if p.leader == nil {
+		return ctx, true
+	}
+	if !p.leader.IsLeader() {
+		return ctx, false
+	}
+	token, err := p.leader.Confirm(ctx)
+	if err != nil || token == "" {
+		p.log.Debug("poll skipped because leadership could not be confirmed", "err", err)
+		return ctx, false
+	}
+	return context.WithValue(ctx, pollLeadershipKey{}, pollLeadership{token: token}), true
+}
+
+func (p *Poller) requirePollLeadership(ctx context.Context) error {
+	permit, guarded := ctx.Value(pollLeadershipKey{}).(pollLeadership)
+	if !guarded {
+		return nil
+	}
+	if p.leader == nil {
+		return errLeadershipLost
+	}
+	token, err := p.leader.Confirm(ctx)
+	if err != nil || token == "" || token != permit.token {
+		return errLeadershipLost
+	}
+	return nil
+}
+
+func (p *Poller) loadPollCursor(ctx context.Context, source string, value *string, loaded *bool, loadedToken *string) error {
+	if p.cursors == nil {
+		return nil
+	}
+	permit, _ := ctx.Value(pollLeadershipKey{}).(pollLeadership)
+	if *loaded && *loadedToken == permit.token {
+		return nil
+	}
+	if err := p.requirePollLeadership(ctx); err != nil {
+		return err
+	}
+	cursor, err := p.cursors.LoadPollCursor(ctx, source)
+	if err != nil {
+		return err
+	}
+	*value = cursor
+	*loaded = true
+	*loadedToken = permit.token
+	return nil
+}
+
+func (p *Poller) savePollCursor(ctx context.Context, source, value string) error {
+	if p.cursors == nil {
+		return nil
+	}
+	if err := p.requirePollLeadership(ctx); err != nil {
+		return err
+	}
+	return p.cursors.SavePollCursor(ctx, source, value)
 }
 
 func (p *Poller) PVMBGStatus() PVMBGStatus {
@@ -216,6 +308,14 @@ func (p *Poller) runPVMBGWorker(ctx context.Context) {
 }
 
 func (p *Poller) pollBMKG(ctx context.Context) {
+	var allowed bool
+	if ctx, allowed = p.beginPoll(ctx); !allowed {
+		return
+	}
+	if err := p.loadPollCursor(ctx, "bmkg", &p.bmkgSince, &p.bmkgCursorLoaded, &p.bmkgCursorToken); err != nil {
+		p.log.Warn("bmkg cursor load failed", "err", err)
+		return
+	}
 	correlationID := newCorrelationID()
 	now := time.Now().UTC().Format(cursorFormat)
 
@@ -225,6 +325,9 @@ func (p *Poller) pollBMKG(ctx context.Context) {
 		return
 	}
 
+	if err := p.requirePollLeadership(ctx); err != nil {
+		return
+	}
 	warnings, err := p.bmkg.TsunamiWarnings(ctx, p.bmkgSince, correlationID)
 	if err != nil {
 		p.log.Warn("bmkg tsunami warnings poll failed, cycle skipped to avoid wrong severity", "err", err, "correlation_id", correlationID)
@@ -252,6 +355,9 @@ func (p *Poller) pollBMKG(ctx context.Context) {
 		}
 	}
 	if orphan {
+		if err := p.requirePollLeadership(ctx); err != nil {
+			return
+		}
 		all, err := p.bmkg.SeismicEvents(ctx, "", correlationID)
 		if err != nil {
 			p.log.Warn("bmkg refetch for late tsunami warning failed", "err", err, "correlation_id", correlationID)
@@ -283,10 +389,22 @@ func (p *Poller) pollBMKG(ctx context.Context) {
 	if failed {
 		return
 	}
+	if err := p.savePollCursor(ctx, "bmkg", now); err != nil {
+		p.log.Warn("bmkg cursor save failed", "err", err, "correlation_id", correlationID)
+		return
+	}
 	p.bmkgSince = now
 }
 
 func (p *Poller) pollPVMBG(ctx context.Context) {
+	var allowed bool
+	if ctx, allowed = p.beginPoll(ctx); !allowed {
+		return
+	}
+	if err := p.loadPollCursor(ctx, "pvmbg", &p.pvmbgSince, &p.pvmbgCursorLoaded, &p.pvmbgCursorToken); err != nil {
+		p.log.Warn("pvmbg cursor load failed", "err", err)
+		return
+	}
 	if src, ok := p.pvmbg.(BatchVolcanicSource); ok && p.tolerant != nil {
 		p.pollPVMBGTolerant(ctx, src)
 		return
@@ -322,6 +440,10 @@ func (p *Poller) pollPVMBG(ctx context.Context) {
 		return
 	}
 
+	if err := p.savePollCursor(ctx, "pvmbg", now); err != nil {
+		p.log.Warn("pvmbg cursor save failed", "err", err, "correlation_id", correlationID)
+		return
+	}
 	p.pvmbgSince = now
 }
 
@@ -357,6 +479,9 @@ func (p *Poller) persist(ctx context.Context, event hazard.Event, correlationID 
 		"hazard.source", string(event.Source), "correlation.id", correlationID)
 	defer func() { endSpan(err) }()
 	attrs := []any{"source", string(event.Source), "type", string(event.HazardType)}
+	if err := p.requirePollLeadership(ctx); err != nil {
+		return err
+	}
 
 	saveStart := time.Now()
 	var saveErr error
@@ -372,6 +497,9 @@ func (p *Poller) persist(ctx context.Context, event hazard.Event, correlationID 
 		return saveErr
 	}
 	if p.publisher != nil {
+		if err := p.requirePollLeadership(ctx); err != nil {
+			return err
+		}
 		publishStart := time.Now()
 		publishErr := p.publisher.Publish(ctx, event, correlationID)
 		p.logCall("rabbitmq", "publish", publishStart, publishErr, correlationID, event.HazardID)
