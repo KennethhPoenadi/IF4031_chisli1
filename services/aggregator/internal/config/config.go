@@ -18,6 +18,11 @@ type Config struct {
 	RabbitMQExchangeType  string
 	AggregatorPort        string
 	AggregatorAPIKey      string
+	LeaderElectionEnabled bool
+	LeaderIdentity        string
+	LeaderLeaseName       string
+	LeaderLeaseDuration   time.Duration
+	LeaderRetryPeriod     time.Duration
 
 	AuditToken          string
 	SituationAnalystURL string
@@ -106,6 +111,32 @@ func Load() (Config, error) {
 	pvmbgStaleAfter, err := getEnvSeconds("AGGREGATOR_PVMBG_STALE_AFTER_SECONDS", 30)
 	if err != nil {
 		return Config{}, err
+	}
+	leaderElectionEnabled, err := getEnvBool("AGGREGATOR_LEADER_ELECTION_ENABLED", false)
+	if err != nil {
+		return Config{}, err
+	}
+	leaderLeaseDuration, err := getEnvSeconds("AGGREGATOR_LEADER_LEASE_DURATION_SECONDS", 15)
+	if err != nil {
+		return Config{}, err
+	}
+	leaderRetryPeriod, err := getEnvSeconds("AGGREGATOR_LEADER_RETRY_PERIOD_SECONDS", 5)
+	if err != nil {
+		return Config{}, err
+	}
+	leaderIdentity := strings.TrimSpace(getEnv("AGGREGATOR_LEADER_IDENTITY", getEnv("POD_NAME", "")))
+	leaderLeaseName := strings.TrimSpace(getEnv("AGGREGATOR_LEADER_LEASE_NAME", "aggregator"))
+	if leaderElectionEnabled {
+		switch {
+		case leaderIdentity == "":
+			return Config{}, fmt.Errorf("AGGREGATOR_LEADER_IDENTITY or POD_NAME is required when leader election is enabled")
+		case leaderLeaseName == "":
+			return Config{}, fmt.Errorf("AGGREGATOR_LEADER_LEASE_NAME is required when leader election is enabled")
+		case leaderLeaseDuration < 2*time.Second:
+			return Config{}, fmt.Errorf("AGGREGATOR_LEADER_LEASE_DURATION_SECONDS must be at least 2")
+		case leaderRetryPeriod >= leaderLeaseDuration:
+			return Config{}, fmt.Errorf("AGGREGATOR_LEADER_RETRY_PERIOD_SECONDS must be shorter than the lease duration")
+		}
 	}
 	pantaiEnabled, err := getEnvBool("AGGREGATOR_PANTAI_ENABLED", false)
 	if err != nil {
@@ -202,6 +233,11 @@ func Load() (Config, error) {
 		RabbitMQExchangeType:   getEnv("RABBITMQ_EXCHANGE_TYPE", "topic"),
 		AggregatorPort:         strconv.Itoa(port),
 		AggregatorAPIKey:       aggregatorAPIKey,
+		LeaderElectionEnabled:  leaderElectionEnabled,
+		LeaderIdentity:         leaderIdentity,
+		LeaderLeaseName:        leaderLeaseName,
+		LeaderLeaseDuration:    leaderLeaseDuration,
+		LeaderRetryPeriod:      leaderRetryPeriod,
 
 		BMKGBaseURL: getEnv("BMKG_BASE_URL", "http://localhost:8081"),
 		BMKGAPIKey:  bmkgAPIKey,
