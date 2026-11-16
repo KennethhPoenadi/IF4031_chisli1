@@ -54,7 +54,7 @@ func NewKubeStore(cfg KubeStoreConfig) (*KubeStore, error) {
 	case cfg.Token == nil:
 		return nil, errors.New("kubernetes service account token source is required")
 	case cfg.Client == nil:
-		return nil, errors.New("Kubernetes HTTP client is required")
+		return nil, errors.New("kubernetes HTTP client is required")
 	}
 	return &KubeStore{
 		baseURL: baseURL, namespace: strings.TrimSpace(cfg.Namespace),
@@ -69,7 +69,7 @@ func NewInClusterStore(name string) (*KubeStore, error) {
 		port = strings.TrimSpace(os.Getenv("KUBERNETES_SERVICE_PORT"))
 	}
 	if host == "" || port == "" {
-		return nil, errors.New("Kubernetes in-cluster API environment is unavailable")
+		return nil, errors.New("kubernetes in-cluster API environment is unavailable")
 	}
 
 	namespace, err := os.ReadFile(serviceAccountDir + "/namespace")
@@ -82,7 +82,7 @@ func NewInClusterStore(name string) (*KubeStore, error) {
 	}
 	pool := x509.NewCertPool()
 	if !pool.AppendCertsFromPEM(ca) {
-		return nil, errors.New("Kubernetes CA bundle contains no certificates")
+		return nil, errors.New("kubernetes CA bundle contains no certificates")
 	}
 
 	return NewKubeStore(KubeStoreConfig{
@@ -180,14 +180,14 @@ func (k *KubeStore) request(ctx context.Context, method, endpoint string, body [
 	defer response.Body.Close()
 	serverNow, err := http.ParseTime(response.Header.Get("Date"))
 	if err != nil {
-		return nil, time.Time{}, fmt.Errorf("Kubernetes API Date header is invalid: %w", err)
+		return nil, time.Time{}, fmt.Errorf("kubernetes API Date header is invalid: %w", err)
 	}
 	responseBody, err := io.ReadAll(io.LimitReader(response.Body, maxLeaseResponse+1))
 	if err != nil {
 		return nil, serverNow, err
 	}
 	if len(responseBody) > maxLeaseResponse {
-		return nil, serverNow, errors.New("Kubernetes Lease response exceeds size limit")
+		return nil, serverNow, errors.New("kubernetes Lease response exceeds size limit")
 	}
 
 	switch response.StatusCode {
@@ -198,7 +198,7 @@ func (k *KubeStore) request(ctx context.Context, method, endpoint string, body [
 	case http.StatusConflict:
 		return nil, serverNow, ErrLeaseConflict
 	default:
-		return nil, serverNow, fmt.Errorf("Kubernetes Lease API returned HTTP %d", response.StatusCode)
+		return nil, serverNow, fmt.Errorf("kubernetes Lease API returned HTTP %d", response.StatusCode)
 	}
 }
 
@@ -271,7 +271,7 @@ func decodeLease(raw []byte, serverNow time.Time) (Lease, time.Time, error) {
 		Duration:        time.Duration(resource.Spec.LeaseDurationSeconds) * time.Second,
 	}
 	if lease.ResourceVersion == "" || lease.UID == "" || lease.Holder == "" || lease.Duration <= 0 {
-		return Lease{}, serverNow, errors.New("Kubernetes Lease response is incomplete")
+		return Lease{}, serverNow, errors.New("kubernetes Lease response is incomplete")
 	}
 	return lease, serverNow, nil
 }
