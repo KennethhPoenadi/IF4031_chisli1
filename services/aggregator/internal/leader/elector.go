@@ -20,6 +20,7 @@ type Lease struct {
 	UID             string
 	Holder          string
 	Transitions     int64
+	AcquiredAt      time.Time
 	RenewedAt       time.Time
 	Duration        time.Duration
 }
@@ -129,7 +130,7 @@ func (e *Elector) step(ctx context.Context) {
 	if errors.Is(err, ErrLeaseNotFound) {
 		desired := Lease{
 			Holder: e.identity, Transitions: 1,
-			RenewedAt: serverNow, Duration: e.leaseDuration,
+			AcquiredAt: serverNow, RenewedAt: serverNow, Duration: e.leaseDuration,
 		}
 		created, createdAt, createErr := e.store.Create(ctx, desired)
 		if createErr != nil {
@@ -155,6 +156,7 @@ func (e *Elector) step(ctx context.Context) {
 	desired.Duration = e.leaseDuration
 	if current.Expired(serverNow) {
 		desired.Transitions++
+		desired.AcquiredAt = serverNow
 		if desired.Transitions < 1 {
 			desired.Transitions = 1
 		}
