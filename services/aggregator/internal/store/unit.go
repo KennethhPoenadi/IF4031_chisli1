@@ -15,6 +15,7 @@ import (
 
 	"aggregator/internal/coastalstate"
 	"aggregator/internal/hazard"
+	"aggregator/internal/pollstate"
 	"aggregator/internal/shardstore"
 )
 
@@ -25,6 +26,7 @@ type MongoUnit struct {
 	docs              *mongo.Collection
 	coastalState      *mongo.Collection
 	coastalRejections *mongo.Collection
+	pollState         *mongo.Collection
 
 	indexMu    sync.Mutex
 	indexed    bool
@@ -45,6 +47,7 @@ func NewMongoUnit(name, uri, dbName, collectionName string) (*MongoUnit, error) 
 	return &MongoUnit{
 		name: name, client: client, collection: db.Collection(collectionName), docs: db.Collection(DocCollectionName),
 		coastalState: db.Collection("coastal_state"), coastalRejections: db.Collection("coastal_rejections"),
+		pollState: db.Collection("poll_state"),
 	}, nil
 }
 
@@ -204,6 +207,23 @@ func (u *MongoUnit) SaveCoastalCursor(ctx context.Context, cursor coastalstate.C
 	return err
 }
 
+func (u *MongoUnit) LoadPollCursor(ctx context.Context, source string) (pollstate.Cursor, error) {
+	var cursor pollstate.Cursor
+	err := u.pollState.FindOne(ctx, bson.M{"_id": source}).Decode(&cursor)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		return pollstate.Cursor{}, nil
+	}
+	return cursor, err
+}
+
+func (u *MongoUnit) SavePollCursor(ctx context.Context, source string, cursor pollstate.Cursor) error {
+	_, err := u.pollState.ReplaceOne(ctx, bson.M{"_id": source}, bson.M{
+		"_id": source, "value": cursor.Value,
+		"revision": cursor.Revision, "updated_at": cursor.UpdatedAt.UTC(),
+	}, options.Replace().SetUpsert(true))
+	return err
+}
+
 func (u *MongoUnit) QuarantineCoastal(ctx context.Context, rejection coastalstate.Rejection) error {
 	payload, err := json.Marshal(struct {
 		Observation map[string]any `json:"observation"`
@@ -223,6 +243,7 @@ func (u *MongoUnit) QuarantineCoastal(ctx context.Context, rejection coastalstat
 
 var _ shardstore.Unit = (*MongoUnit)(nil)
 var _ coastalstate.Unit = (*MongoUnit)(nil)
+var _ pollstate.Unit = (*MongoUnit)(nil)
 
 func (u *MongoUnit) Aggregate(ctx context.Context, q shardstore.AggregateQuery, down []string) (shardstore.AggregateResult, error) {
 	downArr := bson.A{}
