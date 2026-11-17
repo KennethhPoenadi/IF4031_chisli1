@@ -262,3 +262,98 @@ func TestRouterDeleteSurvivesRepairFromStaleReplica(t *testing.T) {
 		t.Fatalf("event yang dibuat ulang hilang: %+v", sum)
 	}
 }
+
+func wipeDocs(f *docFake) {
+	f.dmu.Lock()
+	f.docs = map[string]Doc{}
+	f.dmu.Unlock()
+}
+
+func totalCopies(fakes []*docFake) int {
+	n := 0
+	for _, f := range fakes {
+		f.dmu.Lock()
+		n += len(f.docs)
+		f.dmu.Unlock()
+	}
+	return n
+}
+
+func TestRepairRebuildsAWipedUnitAcrossManyBucketsWithBoundedMemory(t *testing.T) {
+	const n = 1200
+	_, ds, fakes := newDocCluster(t, "a", "b", "c")
+	ds.repairLimit = 100 // memaksa lintasan dibagi menjadi >= 12 bucket
+	ctx := context.Background()
+	for i := 0; i < n; i++ {
+		if err := ds.Put(ctx, Doc{Collection: "det", Key: fmt.Sprintf("k-%05d", i), SortKey: fmt.Sprintf("%05d", i), Data: []byte("x")}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := totalCopies(fakes); got != n*2 {
+		t.Fatalf("salinan awal = %d, want %d (RF 2)", got, n*2)
+	}
+
+	wipeDocs(fakes[0])
+	lost := n*2 - totalCopies(fakes)
+	if lost == 0 {
+		t.Fatal("unit a seharusnya memegang sebagian salinan")
+	}
+	if err := ds.RepairOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := totalCopies(fakes); got != n*2 {
+		t.Fatalf("setelah perbaikan salinan = %d, want %d (hilang %d)", got, n*2, lost)
+	}
+	for i := 0; i < n; i++ {
+		key := fmt.Sprintf("k-%05d", i)
+		for _, name := range ds.owners("det", key) {
+			d, _ := fakeByDocName(fakes, name).GetDoc(ctx, "det", key)
+			if d == nil {
+				t.Fatalf("%s kehilangan %s setelah perbaikan", name, key)
+			}
+		}
+	}
+}
+
+func TestRepairRemovesStaleCopiesAcrossBucketsButOnlyWhenAllUnitsAreUp(t *testing.T) {
+	_, ds, fakes := newDocCluster(t, "a", "b", "c")
+	ds.repairLimit = 50
+	ctx := context.Background()
+	for i := 0; i < 400; i++ {
+		_ = ds.Put(ctx, Doc{Collection: "det", Key: fmt.Sprintf("k-%04d", i), Data: []byte("x")})
+	}
+	// Salinan liar di unit yang bukan pemilik.
+	stray := 0
+	for i := 0; i < 400; i++ {
+		key := fmt.Sprintf("k-%04d", i)
+		owners := ds.owners("det", key)
+		for _, f := range fakes {
+			if !contains(owners, f.name) {
+				_ = f.PutDoc(ctx, Doc{Collection: "det", Key: key, Version: 1, Data: []byte("x"), Owners: owners})
+				stray++
+			}
+		}
+	}
+	fakes[2].set(true) // satu unit tak terjangkau: salinan usang tidak boleh dihapus
+	_ = ds.RepairOnce(ctx)
+	fakes[2].set(false)
+	if got := totalCopies(fakes); got < 400*2+stray {
+		t.Fatalf("salinan = %d, tidak boleh ada yang dihapus saat unit mati (>= %d)", got, 400*2+stray)
+	}
+	ds.r.markUp("c")
+	if err := ds.RepairOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := totalCopies(fakes); got != 400*2 {
+		t.Fatalf("salinan = %d, want %d: salinan liar harus dibersihkan setelah semua unit hidup", got, 400*2)
+	}
+}
+
+func fakeByDocName(fakes []*docFake, name string) *docFake {
+	for _, f := range fakes {
+		if f.name == name {
+			return f
+		}
+	}
+	return nil
+}

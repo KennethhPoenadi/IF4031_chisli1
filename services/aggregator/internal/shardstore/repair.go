@@ -27,39 +27,108 @@ type holder struct {
 	rec  KeyRecord
 }
 
-func (r *Router) RepairOnce(ctx context.Context) (RepairStats, error) {
-	r.repairMu.Lock()
-	defer r.repairMu.Unlock()
-
+// scanKeys memindai kunci setiap unit secara streaming dan hanya menampung bucket yang diminta.
+// Pada lintasan pertama (buckets == 1) yang melewati batas, penampungan dihentikan dan hanya jumlahnya
+// yang dihitung, sehingga jumlah lintasan dapat ditentukan tanpa memori berlebih.
+func (r *Router) scanKeys(ctx context.Context, bucket, buckets, limit int) (byID map[string][]holder, total int, overflow bool, failed []string) {
 	var mu sync.Mutex
-	byID := map[string][]holder{}
-	failed := r.each(ctx, "store.repair.scan", r.cfg.RepairTimeout, func(uctx context.Context, u Unit) error {
-		var local []KeyRecord
+	byID = map[string][]holder{}
+	failed = r.each(ctx, "store.repair.scan", r.cfg.RepairTimeout, func(uctx context.Context, u Unit) error {
+		local := map[string]KeyRecord{}
+		seen, over := 0, false
 		if err := u.Keys(uctx, func(k KeyRecord) error {
-			local = append(local, k)
+			seen++
+			if over {
+				return nil
+			}
+			if buckets > 1 && repairBucket(k.HazardID, buckets) != bucket {
+				return nil
+			}
+			local[k.HazardID] = k
+			if buckets == 1 && len(local) > limit {
+				over, local = true, nil
+			}
 			return nil
 		}); err != nil {
 			return err
 		}
 		mu.Lock()
 		defer mu.Unlock()
-		for _, k := range local {
-			byID[k.HazardID] = append(byID[k.HazardID], holder{unit: u.Name(), rec: k})
+		if seen > total {
+			total = seen
+		}
+		if over {
+			overflow = true
+			return nil
+		}
+		for id, k := range local {
+			byID[id] = append(byID[id], holder{unit: u.Name(), rec: k})
 		}
 		return nil
 	})
+	return byID, total, overflow, failed
+}
+
+// RepairOnce menyamakan penempatan HazardEvent dengan ring saat ini. Memori dibatasi: kunci dipindai
+// secara streaming dan diproses per bucket hash, sehingga puncak memori mengikuti repairEntriesPerPass,
+// bukan jumlah seluruh event.
+func (r *Router) RepairOnce(ctx context.Context) (RepairStats, error) {
+	r.repairMu.Lock()
+	defer r.repairMu.Unlock()
+
+	limit := r.repairLimit
+	if limit <= 0 {
+		limit = repairEntriesPerPass
+	}
+	first, total, overflow, failed := r.scanKeys(ctx, 0, 1, limit)
 	if len(failed) == len(r.units) {
 		return RepairStats{Unavailable: failed}, ErrUnavailable
 	}
+	buckets := 1
+	if overflow {
+		buckets = max(2, min((total+limit-1)/limit, maxRepairBuckets))
+	}
 
-	stats := RepairStats{Scanned: len(byID), Unavailable: failed}
-	allUp := len(failed) == 0
-	down := r.downSet()
+	stats := RepairStats{Unavailable: failed}
+	allUp := true
 	tombs := r.loadTombstones(ctx)
-
-	for id, holders := range byID {
+	for b := 0; b < buckets; b++ {
 		if ctx.Err() != nil {
 			return stats, ctx.Err()
+		}
+		byID, passFailed := first, failed
+		if buckets > 1 {
+			var passTotal int
+			var passOver bool
+			byID, passTotal, passOver, passFailed = r.scanKeys(ctx, b, buckets, limit)
+			_, _ = passTotal, passOver
+			if len(passFailed) == len(r.units) {
+				return stats, ErrUnavailable
+			}
+			stats.Unavailable = passFailed
+		}
+		if len(passFailed) != 0 {
+			allUp = false
+		}
+		stats.Scanned += len(byID)
+		if err := r.repairHazards(ctx, byID, len(passFailed) == 0, tombs, &stats); err != nil {
+			return stats, err
+		}
+	}
+
+	repairReplicated(ctx, int64(stats.Replicated))
+	repairRemoved(ctx, int64(stats.Removed))
+	if allUp {
+		r.repairNeeded.Store(false)
+	}
+	return stats, nil
+}
+
+func (r *Router) repairHazards(ctx context.Context, byID map[string][]holder, allUp bool, tombs map[string]time.Time, stats *RepairStats) error {
+	down := r.downSet()
+	for id, holders := range byID {
+		if ctx.Err() != nil {
+			return ctx.Err()
 		}
 		desired := r.ring.Owners(id, r.rf)
 
@@ -154,12 +223,7 @@ func (r *Router) RepairOnce(ctx context.Context) (RepairStats, error) {
 		}
 	}
 
-	repairReplicated(ctx, int64(stats.Replicated))
-	repairRemoved(ctx, int64(stats.Removed))
-	if allUp {
-		r.repairNeeded.Store(false)
-	}
-	return stats, nil
+	return nil
 }
 
 func (r *Router) getFrom(ctx context.Context, unit, id string) (*hazard.Event, error) {
@@ -190,7 +254,9 @@ func (r *Router) Run(ctx context.Context) {
 	repair := time.NewTicker(r.cfg.RepairInterval)
 	defer repair.Stop()
 
+	lastRun := time.Now()
 	runRepair := func() {
+		lastRun = time.Now()
 		rctx, cancel := context.WithTimeout(ctx, r.cfg.RepairTimeout)
 		defer cancel()
 		stats, err := r.RepairOnce(rctx)
@@ -213,7 +279,11 @@ func (r *Router) Run(ctx context.Context) {
 				runRepair()
 			}
 		case <-repair.C:
-			runRepair()
+			// Pemindaian penuh mahal. Tanpa pemicu (unit kembali, penulisan sebagian) cukup berkala sebagai
+			// jaring pengaman, bukan tiap RepairInterval.
+			if r.repairNeeded.Load() || time.Since(lastRun) >= repairIdleInterval {
+				runRepair()
+			}
 		}
 	}
 }

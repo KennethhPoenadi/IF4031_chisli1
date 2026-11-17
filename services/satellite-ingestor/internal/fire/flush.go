@@ -58,6 +58,10 @@ func (e *Engine) Flush() Changes {
 		}
 	}
 
+	if n := e.evictFrozen(w); n > 0 {
+		e.stats["frozen_evicted"] += int64(n)
+	}
+
 	for id := range e.emitted {
 		if !seen[id] {
 			ch.DeleteFires = append(ch.DeleteFires, id)

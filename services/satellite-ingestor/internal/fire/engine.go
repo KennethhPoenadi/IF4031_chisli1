@@ -60,7 +60,16 @@ type Engine struct {
 
 	frozen map[string]detection.Detection
 	groups map[string][]string
+
+	// retention membatasi memori: kelompok final yang deteksi terbarunya lebih tua dari watermark dikurangi
+	// retention dibuang dari memori dan dari penyimpanan. Deteksi sebelum watermark sudah dianggap terlambat
+	// dan tidak dapat bergabung lagi, jadi hasil pembentukan kebakaran tidak berubah.
+	retention   time.Duration
+	groupLatest map[string]time.Time
 }
+
+// DefaultRetention adalah lama (waktu virtual) kelompok final disimpan, di atas batas keterlambatan.
+const DefaultRetention = 24 * time.Hour
 
 func New(lateness time.Duration, provinces *province.Table) *Engine {
 	return &Engine{
@@ -74,8 +83,14 @@ func New(lateness time.Duration, provinces *province.Table) *Engine {
 		dirtyDel:  map[string]bool{},
 		frozen:    map[string]detection.Detection{},
 		groups:    map[string][]string{},
+
+		retention:   DefaultRetention,
+		groupLatest: map[string]time.Time{},
 	}
 }
+
+// SetRetention mengatur lama kelompok final disimpan. Nilai <= 0 mematikan pembuangan.
+func (e *Engine) SetRetention(d time.Duration) { e.retention = d }
 
 func (e *Engine) freeze(group string, members []detection.Detection) []detection.Detection {
 	out := make([]detection.Detection, 0, len(members))
@@ -89,7 +104,37 @@ func (e *Engine) freeze(group string, members []detection.Detection) []detection
 		out = append(out, m)
 	}
 	e.groups[group] = keys
+	latest := members[0].Time
+	for _, m := range members[1:] {
+		if m.Time.After(latest) {
+			latest = m.Time
+		}
+	}
+	e.groupLatest[group] = latest
 	return out
+}
+
+// evictFrozen membuang kelompok final yang melewati retensi dan mengembalikan kunci deteksinya, agar
+// juga dihapus dari penyimpanan. Memori dan penyimpanan tetap terbatas walau aliran sangat panjang.
+func (e *Engine) evictFrozen(watermark time.Time) int {
+	if e.retention <= 0 || watermark.IsZero() {
+		return 0
+	}
+	horizon := watermark.Add(-e.retention)
+	n := 0
+	for g, latest := range e.groupLatest {
+		if !latest.Before(horizon) {
+			continue
+		}
+		for _, k := range e.groups[g] {
+			delete(e.frozen, k)
+			e.dirtyDel[k] = true
+			n++
+		}
+		delete(e.groups, g)
+		delete(e.groupLatest, g)
+	}
+	return n
 }
 
 // mencairkan kelompok tempat key dibekukan. Kebakaran yang dicairkan dimasukkan
@@ -108,6 +153,7 @@ func (e *Engine) thaw(key string) bool {
 		e.dirtyPut[k] = m
 	}
 	delete(e.groups, d.Group)
+	delete(e.groupLatest, d.Group)
 	if len(d.Group) > 3 && d.Group[:3] == "hz-" {
 		e.emitted[d.Group] = ""
 	}
@@ -238,10 +284,14 @@ func (e *Engine) Restore(dets []detection.Detection, maxEvent, virtualNow time.T
 	e.active = map[string]detection.Detection{}
 	e.frozen = map[string]detection.Detection{}
 	e.groups = map[string][]string{}
+	e.groupLatest = map[string]time.Time{}
 	for _, d := range dets {
 		if d.Group != "" {
 			e.frozen[d.Key] = d
 			e.groups[d.Group] = append(e.groups[d.Group], d.Key)
+			if d.Time.After(e.groupLatest[d.Group]) {
+				e.groupLatest[d.Group] = d.Time
+			}
 			continue
 		}
 		e.active[d.Key] = d

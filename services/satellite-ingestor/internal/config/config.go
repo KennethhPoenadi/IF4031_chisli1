@@ -14,6 +14,7 @@ type Config struct {
 	AggregatorURL    string
 	AggregatorKey    string
 	Lateness         time.Duration
+	Retention        time.Duration
 	HeartbeatTimeout time.Duration
 	BatchMax         int
 	BatchWait        time.Duration
@@ -39,6 +40,11 @@ func Load() (Config, error) {
 	if c.Lateness, err = minutes("SATELLITE_LATENESS_MINUTES", 360); err != nil {
 		return Config{}, err
 	}
+	hours, err := integer("SATELLITE_RETENTION_HOURS", 24)
+	if err != nil {
+		return Config{}, err
+	}
+	c.Retention = time.Duration(hours) * time.Hour
 	if c.HeartbeatTimeout, err = seconds("SATELLITE_HEARTBEAT_TIMEOUT_SECONDS", 30); err != nil {
 		return Config{}, err
 	}

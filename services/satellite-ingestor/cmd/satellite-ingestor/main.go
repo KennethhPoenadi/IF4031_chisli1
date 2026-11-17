@@ -50,10 +50,12 @@ func main() {
 	if tel != nil {
 		store.WithTransport(tel.Transport(nil))
 	}
+	engine := fire.New(cfg.Lateness, provinces)
+	engine.SetRetention(cfg.Retention)
 	p := &pipeline.Pipeline{
 		Feed:      src,
 		Store:     store,
-		Engine:    fire.New(cfg.Lateness, provinces),
+		Engine:    engine,
 		BatchMax:  cfg.BatchMax,
 		BatchWait: cfg.BatchWait,
 		Log:       log,

@@ -94,7 +94,14 @@ func (u *MongoUnit) ScanDocs(ctx context.Context, q shardstore.DocQuery, fn func
 	if len(clauses) > 0 {
 		filter["$and"] = clauses
 	}
-	opts := options.Find().SetSort(bson.D{{Key: "s", Value: 1}, {Key: "k", Value: 1}})
+	// Pemindaian semua koleksi (repair) tidak memerlukan urutan tertentu. Mengurutkan menurut (s, k) tanpa
+	// filter koleksi tidak didukung indeks mana pun, sehingga Mongo mengurutkan seluruh isi di server (dan
+	// menulis ke disk). Urutan (c, k) mengikuti indeks unik yang ada: pemindaian murni berbasis indeks.
+	sortSpec := bson.D{{Key: "s", Value: 1}, {Key: "k", Value: 1}}
+	if q.AllCollections {
+		sortSpec = bson.D{{Key: "c", Value: 1}, {Key: "k", Value: 1}}
+	}
+	opts := options.Find().SetSort(sortSpec).SetBatchSize(1000)
 	if q.Limit > 0 {
 		opts.SetLimit(int64(q.Limit))
 	}

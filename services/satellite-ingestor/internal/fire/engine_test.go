@@ -348,3 +348,66 @@ func keys(m map[string]string) []string {
 	sort.Strings(out)
 	return out
 }
+
+func TestFinalGroupsAreEvictedAfterRetentionAndMemoryStaysBounded(t *testing.T) {
+	e := newEngine()
+	e.SetRetention(12 * time.Hour)
+	for i := 0; i < 50; i++ { // 50 kebakaran terpisah, masing-masing 2 deteksi
+		lat := -1.0 - float64(i)*0.5
+		e.Add(det(t, "N20", 0, lat, 112, "n", 1))
+		e.Add(det(t, "N20", 5, lat, 112.001, "n", 1))
+	}
+	e.Flush()
+	e.ObserveVirtualNow(base.Add(10 * time.Hour)) // semua kelompok final
+	ch := e.Flush()
+	if len(ch.FinalizedFires) != 50 || len(e.frozen) != 100 {
+		t.Fatalf("final = %d, frozen = %d, want 50 dan 100", len(ch.FinalizedFires), len(e.frozen))
+	}
+
+	e.ObserveVirtualNow(base.Add(40 * time.Hour)) // jauh melewati retensi
+	ch = e.Flush()
+	if len(e.frozen) != 0 || len(e.groups) != 0 || len(e.groupLatest) != 0 {
+		t.Fatalf("setelah retensi frozen=%d groups=%d latest=%d, want 0", len(e.frozen), len(e.groups), len(e.groupLatest))
+	}
+	if len(ch.DeleteDetections) != 100 {
+		t.Fatalf("DeleteDetections = %d, want 100 (penyimpanan ikut dibersihkan)", len(ch.DeleteDetections))
+	}
+	if e.Stats()["frozen_evicted"] != 100 {
+		t.Fatalf("frozen_evicted = %d, want 100", e.Stats()["frozen_evicted"])
+	}
+}
+
+func TestRetentionDoesNotEvictRecentGroupsAndUpdateForEvictedKeyIsReportedLate(t *testing.T) {
+	e := newEngine()
+	e.SetRetention(24 * time.Hour)
+	old1, old2 := det(t, "N20", 0, -1, 112, "n", 1), det(t, "N20", 5, -1, 112.001, "n", 1)
+	e.Add(old1)
+	e.Add(old2)
+	e.Flush()
+	e.ObserveVirtualNow(base.Add(10 * time.Hour))
+	e.Flush()
+	if len(e.frozen) != 2 {
+		t.Fatalf("frozen = %d, kelompok yang baru final tidak boleh dibuang", len(e.frozen))
+	}
+
+	e.ObserveVirtualNow(base.Add(60 * time.Hour))
+	e.Flush()
+	if len(e.frozen) != 0 {
+		t.Fatalf("frozen = %d setelah retensi, want 0", len(e.frozen))
+	}
+	if got := e.Update(old1); got != Late {
+		t.Fatalf("update untuk kunci yang sudah dibuang = %v, want %v (dilaporkan terlambat, tidak hilang diam-diam)", got, Late)
+	}
+}
+
+func TestRestoreRebuildsRetentionSoRecoveredGroupsAreStillEvicted(t *testing.T) {
+	e := newEngine()
+	e.SetRetention(2 * time.Hour)
+	d1, d2 := det(t, "N20", 0, -1, 112, "n", 1), det(t, "N20", 5, -1, 112.001, "n", 1)
+	d1.Group, d2.Group = "hz-x", "hz-x"
+	e.Restore([]detection.Detection{d1, d2}, base.Add(5*time.Minute), base.Add(40*time.Hour), map[string]string{}, Stats{})
+	e.Flush()
+	if len(e.frozen) != 0 {
+		t.Fatalf("frozen = %d, kelompok hasil pemulihan yang lewat retensi harus dibuang", len(e.frozen))
+	}
+}

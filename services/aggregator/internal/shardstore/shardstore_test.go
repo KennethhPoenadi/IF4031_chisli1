@@ -946,3 +946,40 @@ func TestAnalyticsDailyBucketsAndRangeFilter(t *testing.T) {
 	}
 	sameAggregate(t, got.AggregateResult, want)
 }
+
+func TestWipedNodeIsRebuiltAcrossManyRepairBucketsWithoutLosingAnyEvent(t *testing.T) {
+	r, fakes := newCluster(t, "store-0", "store-1", "store-2")
+	r.repairLimit = 40 // memaksa perbaikan dibagi menjadi >= 8 bucket
+	events := load(t, r, 300)
+
+	victim := fakes[1]
+	victim.set(true)
+	victim.wipe()
+	victim.set(false)
+	r.pingAll(context.Background())
+
+	stats, err := r.RepairOnce(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Scanned != len(events) {
+		t.Fatalf("Scanned = %d, want %d (semua event harus terperiksa lintas bucket, tanpa ganda)", stats.Scanned, len(events))
+	}
+	if stats.Replicated == 0 || victim.count() == 0 {
+		t.Fatalf("stats = %+v, node pengganti harus terisi kembali", stats)
+	}
+	for _, ev := range events {
+		for _, name := range r.Owners(ev.HazardID) {
+			if !fakeByName(fakes, name).has(ev.HazardID) {
+				t.Fatalf("%s kehilangan %s setelah perbaikan", name, ev.HazardID)
+			}
+		}
+	}
+	total := 0
+	for _, f := range fakes {
+		total += f.count()
+	}
+	if total != len(events)*r.ReplicationFactor() {
+		t.Fatalf("total salinan = %d, want %d", total, len(events)*r.ReplicationFactor())
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -52,6 +53,7 @@ type DocStore struct {
 	lastVersion  atomic.Int64
 	repairNeeded atomic.Bool
 	repairMu     sync.Mutex
+	repairLimit  int // 0 = repairEntriesPerPass; diubah hanya oleh tes
 }
 
 func NewDocStore(r *Router, units []DocUnit) (*DocStore, error) {
@@ -344,55 +346,166 @@ func (s *DocStore) ScanAll(ctx context.Context, q DocQuery) ([]Doc, bool, error)
 	}
 }
 
-type docHolder struct {
-	unit string
-	doc  Doc
+// repairEntriesPerPass membatasi jumlah dokumen yang ditampung di memori dalam satu lintasan perbaikan.
+// Tiap entri sekitar 200 byte, sehingga 100.000 entri sekitar 20 MB. Bila isi penyimpanan lebih besar,
+// perbaikan dibagi menjadi beberapa lintasan menurut hash kunci, bukan memuat semuanya sekaligus.
+const repairEntriesPerPass = 100_000
+
+const maxRepairBuckets = 256
+
+// repairIdleInterval adalah jeda pemindaian penuh bila tidak ada yang menandai perlunya perbaikan.
+// Perbaikan yang dipicu (unit kembali, penulisan sebagian) tetap berjalan cepat lewat jalur lain.
+const repairIdleInterval = 5 * time.Minute
+
+func splitRingKey(id string) (collection, key string) {
+	for i := 0; i < len(id); i++ {
+		if id[i] == 0 {
+			return id[:i], id[i+1:]
+		}
+	}
+	return id, ""
 }
 
-// menyamakan salinan dokumen dengan pemilik yang seharusnya, termasuk tombstone.
-func (s *DocStore) RepairOnce(ctx context.Context) error {
-	s.repairMu.Lock()
-	defer s.repairMu.Unlock()
+func repairBucket(id string, buckets int) int {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(id))
+	return int(h.Sum32() % uint32(buckets))
+}
 
+type repairScan struct {
+	versions map[string][]int64 // id -> versi per unit (urutan nama unit), -1 bila tidak memegang
+	total    int64              // dokumen terbanyak yang dilihat satu unit (untuk menentukan jumlah lintasan)
+	overflow bool
+	failed   []string
+}
+
+// scanForRepair memindai setiap unit secara streaming. Hanya dokumen pada bucket yang diminta yang
+// ditampung. Pada lintasan pertama (buckets == 1) yang melewati batas, penampungan dihentikan dan hanya
+// jumlahnya yang dihitung, supaya jumlah lintasan dapat ditentukan tanpa memori berlebih.
+func (s *DocStore) scanForRepair(ctx context.Context, names []string, idx map[string]int, bucket, buckets, limit int) repairScan {
+	out := repairScan{versions: map[string][]int64{}}
 	var mu sync.Mutex
-	byID := map[string][]docHolder{}
-	failed := s.r.each(ctx, "store.doc.repair.scan", s.r.cfg.RepairTimeout, func(uctx context.Context, u Unit) error {
-		var local []Doc
-		if err := s.units[u.Name()].ScanDocs(uctx, DocQuery{AllCollections: true, WithoutData: true}, func(d Doc) error {
-			local = append(local, d)
+	out.failed = s.r.each(ctx, "store.doc.repair.scan", s.r.cfg.RepairTimeout, func(uctx context.Context, u Unit) error {
+		ui := idx[u.Name()]
+		local := map[string]int64{}
+		var total int64
+		overflow := false
+		err := s.units[u.Name()].ScanDocs(uctx, DocQuery{AllCollections: true, WithoutData: true}, func(d Doc) error {
+			total++
+			if overflow {
+				return nil
+			}
+			id := docRingKey(d.Collection, d.Key)
+			if buckets > 1 && repairBucket(id, buckets) != bucket {
+				return nil
+			}
+			local[id] = d.Version
+			if buckets == 1 && len(local) > limit {
+				overflow = true
+				local = nil
+			}
 			return nil
-		}); err != nil {
+		})
+		if err != nil {
 			return err
 		}
 		mu.Lock()
 		defer mu.Unlock()
-		for _, d := range local {
-			id := docRingKey(d.Collection, d.Key)
-			byID[id] = append(byID[id], docHolder{unit: u.Name(), doc: d})
+		if total > out.total {
+			out.total = total
+		}
+		if overflow {
+			out.overflow = true
+			return nil
+		}
+		for id, v := range local {
+			vs, ok := out.versions[id]
+			if !ok {
+				vs = make([]int64, len(names))
+				for i := range vs {
+					vs[i] = -1
+				}
+				out.versions[id] = vs
+			}
+			vs[ui] = v
 		}
 		return nil
 	})
-	if len(failed) == len(s.r.units) {
+	return out
+}
+
+// menyamakan salinan dokumen dengan pemilik yang seharusnya, termasuk tombstone.
+//
+// Memori dibatasi: isi penyimpanan dipindai secara streaming dan diproses per bucket hash, sehingga
+// puncak memori mengikuti repairEntriesPerPass, bukan jumlah seluruh dokumen.
+func (s *DocStore) RepairOnce(ctx context.Context) error {
+	s.repairMu.Lock()
+	defer s.repairMu.Unlock()
+
+	limit := s.repairLimit
+	if limit <= 0 {
+		limit = repairEntriesPerPass
+	}
+	names := s.r.ring.Units()
+	idx := make(map[string]int, len(names))
+	for i, n := range names {
+		idx[n] = i
+	}
+
+	first := s.scanForRepair(ctx, names, idx, 0, 1, limit)
+	if len(first.failed) == len(s.r.units) {
 		return ErrUnavailable
 	}
-	allUp := len(failed) == 0
-	down := s.r.downSet()
+	buckets := 1
+	if first.overflow {
+		buckets = int((first.total + int64(limit) - 1) / int64(limit))
+		buckets = max(2, min(buckets, maxRepairBuckets))
+	}
 
-	for _, holders := range byID {
+	allUp := true
+	for b := 0; b < buckets; b++ {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		best := holders[0]
-		for _, h := range holders[1:] {
-			if h.doc.Version > best.doc.Version {
-				best = h
+		pass := first
+		if buckets > 1 {
+			pass = s.scanForRepair(ctx, names, idx, b, buckets, limit)
+			if len(pass.failed) == len(s.r.units) {
+				return ErrUnavailable
 			}
 		}
-		desired := s.owners(best.doc.Collection, best.doc.Key)
-		held := map[string]Doc{}
-		for _, h := range holders {
-			held[h.unit] = h.doc
+		if len(pass.failed) != 0 {
+			allUp = false
 		}
+		if err := s.repairPass(ctx, names, pass, len(pass.failed) == 0); err != nil {
+			return err
+		}
+	}
+	if allUp {
+		s.repairNeeded.Store(false)
+	}
+	return nil
+}
+
+// repairPass memperbaiki dokumen pada satu lintasan. allUp menyatakan seluruh unit terpindai pada lintasan
+// ini; salinan usang hanya dihapus bila benar-benar yakin tidak ada pemilik yang tak terjangkau.
+func (s *DocStore) repairPass(ctx context.Context, names []string, pass repairScan, allUp bool) error {
+	down := s.r.downSet()
+	for id, versions := range pass.versions {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		coll, key := splitRingKey(id)
+		bestUnit, bestVer := -1, int64(-1)
+		for i, v := range versions {
+			if v > bestVer {
+				bestUnit, bestVer = i, v
+			}
+		}
+		if bestUnit < 0 {
+			continue
+		}
+		desired := s.owners(coll, key)
 		var full *Doc
 		complete := true
 		for _, name := range desired {
@@ -400,12 +513,12 @@ func (s *DocStore) RepairOnce(ctx context.Context) error {
 				complete = false
 				continue
 			}
-			if d, ok := held[name]; ok && d.Version >= best.doc.Version {
+			if v := versions[indexOf(names, name)]; v >= bestVer && v >= 0 {
 				continue
 			}
 			if full == nil {
 				uctx, cancel := context.WithTimeout(ctx, s.r.cfg.UnitTimeout)
-				d, err := s.units[best.unit].GetDoc(uctx, best.doc.Collection, best.doc.Key)
+				d, err := s.units[names[bestUnit]].GetDoc(uctx, coll, key)
 				cancel()
 				if err != nil || d == nil {
 					complete = false
@@ -426,19 +539,25 @@ func (s *DocStore) RepairOnce(ctx context.Context) error {
 		if !allUp || !complete {
 			continue
 		}
-		for _, h := range holders {
-			if contains(desired, h.unit) {
+		for i, v := range versions {
+			if v < 0 || contains(desired, names[i]) {
 				continue
 			}
 			uctx, cancel := context.WithTimeout(ctx, s.r.cfg.UnitTimeout)
-			_ = s.units[h.unit].DeleteDocCopy(uctx, h.doc.Collection, h.doc.Key)
+			_ = s.units[names[i]].DeleteDocCopy(uctx, coll, key)
 			cancel()
 		}
 	}
-	if allUp {
-		s.repairNeeded.Store(false)
-	}
 	return nil
+}
+
+func indexOf(list []string, s string) int {
+	for i, v := range list {
+		if v == s {
+			return i
+		}
+	}
+	return -1
 }
 
 // menjalankan perbaikan dokumen secara berkala.
@@ -447,7 +566,9 @@ func (s *DocStore) Run(ctx context.Context) {
 	defer t.Stop()
 	fast := time.NewTicker(s.r.cfg.PingInterval * 5)
 	defer fast.Stop()
+	lastRun := time.Now()
 	run := func() {
+		lastRun = time.Now()
 		rctx, cancel := context.WithTimeout(ctx, s.r.cfg.RepairTimeout)
 		defer cancel()
 		if err := s.RepairOnce(rctx); err != nil && ctx.Err() == nil {
@@ -463,7 +584,9 @@ func (s *DocStore) Run(ctx context.Context) {
 				run()
 			}
 		case <-t.C:
-			run()
+			if s.repairNeeded.Load() || s.r.repairNeeded.Load() || time.Since(lastRun) >= repairIdleInterval {
+				run()
+			}
 		}
 	}
 }
