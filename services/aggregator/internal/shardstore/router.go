@@ -174,7 +174,10 @@ func (r *Router) each(ctx context.Context, op string, timeout time.Duration, fn 
 	var wg sync.WaitGroup
 	for name, u := range r.units {
 		if r.isDown(name) {
+			// Goroutine unit lain yang sudah berjalan menulis ke map yang sama, jadi sisi ini juga wajib mengunci.
+			mu.Lock()
 			failed[name] = true
+			mu.Unlock()
 			continue
 		}
 		wg.Add(1)
