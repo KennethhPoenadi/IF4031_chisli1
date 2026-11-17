@@ -27,6 +27,12 @@ type Store interface {
 	Location(ctx context.Context, hazardID string) (shardstore.LocationResult, error)
 }
 
+// DistributionStore bersifat opsional: penyimpanan yang tidak mendukungnya (misalnya satu unit biasa)
+// membuat /internal/audit/distribution menjawab 404 tanpa memengaruhi endpoint Lampiran A lainnya.
+type DistributionStore interface {
+	Distribution(ctx context.Context) (shardstore.Distribution, error)
+}
+
 type Message struct {
 	MessageID  string    `json:"message_id"`
 	Source     string    `json:"source"`
@@ -71,6 +77,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("GET /internal/audit/checksum", h.auth(http.HandlerFunc(h.checksum)))
 	mux.Handle("GET /internal/audit/location", h.auth(http.HandlerFunc(h.location)))
 	mux.Handle("GET /internal/audit/unprocessed", h.auth(http.HandlerFunc(h.listUnprocessed)))
+	// Tambahan di luar Lampiran A: sebaran data per unit dan per node (bukti P1 kriteria 1, 2, dan 5).
+	mux.Handle("GET /internal/audit/distribution", h.auth(http.HandlerFunc(h.distribution)))
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {
@@ -269,4 +277,40 @@ func (h *Handler) listUnprocessed(w http.ResponseWriter, r *http.Request) {
 		nextCursor = next
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "next_cursor": nextCursor})
+}
+
+func (h *Handler) distribution(w http.ResponseWriter, r *http.Request) {
+	ds, ok := h.store.(DistributionStore)
+	if !ok {
+		writeError(w, http.StatusNotFound, "not_found", "penyimpanan tidak mendukung laporan distribusi")
+		return
+	}
+	d, err := ds.Distribution(r.Context())
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	units := make([]map[string]any, 0, len(d.Units))
+	for _, u := range d.Units {
+		units = append(units, map[string]any{
+			"unit": u.Unit, "node": u.Node, "copies": u.Copies,
+			"primary": u.Primary, "replica": u.Replica, "by_source": u.BySource,
+		})
+	}
+	nodes := make([]map[string]any, 0, len(d.Nodes))
+	for _, n := range d.Nodes {
+		nodes = append(nodes, map[string]any{
+			"node": n.Node, "units": n.Units, "copies": n.Copies, "primary": n.Primary, "replica": n.Replica,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"total_events":       d.Total,
+		"replication_factor": d.Replication,
+		"units":              units,
+		"nodes":              nodes,
+		"max_min_ratio":      d.MaxMinRatio,
+		"as_of":              d.AsOf.UTC().Format(time.RFC3339),
+		"partial":            d.Partial,
+		"unavailable_units":  unavailable(d.Unavailable),
+	})
 }

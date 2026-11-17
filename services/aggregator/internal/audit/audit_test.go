@@ -263,3 +263,48 @@ func TestFailedAuthIsLoggedWithoutTheTokenAndJSONHasSecurityHeaders(t *testing.T
 		t.Fatalf("header respons audit kurang: %v", rec.Header())
 	}
 }
+
+type distStore struct {
+	fakeStore
+	dist shardstore.Distribution
+	err  error
+}
+
+func (d *distStore) Distribution(context.Context) (shardstore.Distribution, error) {
+	return d.dist, d.err
+}
+
+func TestDistributionReportsPerNodeAndRequiresToken(t *testing.T) {
+	st := &distStore{dist: shardstore.Distribution{
+		Total: 10, Replication: 2, MaxMinRatio: 1.5,
+		Units: []shardstore.UnitShare{{Unit: "store-0", Node: "node-a", Copies: 12, Primary: 6, Replica: 6, BySource: map[string]int{"BMKG": 12}}},
+		Nodes: []shardstore.NodeShare{{Node: "node-a", Units: []string{"store-0"}, Copies: 12, Primary: 6, Replica: 6}},
+	}}
+	h := routes(st, nil)
+
+	if rec := do(h, "/internal/audit/distribution", ""); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("tanpa token code = %d, want 401", rec.Code)
+	}
+	rec := do(h, "/internal/audit/distribution", "Bearer "+token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code = %d body=%s", rec.Code, rec.Body.String())
+	}
+	body := decode(t, rec)
+	if body["total_events"] != float64(10) || body["partial"] != false {
+		t.Fatalf("body = %v", body)
+	}
+	nodes := body["nodes"].([]any)
+	if len(nodes) != 1 || nodes[0].(map[string]any)["node"] != "node-a" {
+		t.Fatalf("nodes = %v", nodes)
+	}
+	if u := body["unavailable_units"].([]any); len(u) != 0 {
+		t.Fatalf("unavailable_units = %v, want []", u)
+	}
+}
+
+func TestDistributionIsNotFoundWhenStoreDoesNotSupportIt(t *testing.T) {
+	h := routes(&fakeStore{}, nil)
+	if rec := do(h, "/internal/audit/distribution", "Bearer "+token); rec.Code != http.StatusNotFound {
+		t.Fatalf("code = %d, want 404", rec.Code)
+	}
+}

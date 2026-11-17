@@ -19,6 +19,7 @@ import (
 	"aggregator/internal/audit"
 	"aggregator/internal/bmkgclient"
 	"aggregator/internal/broker"
+	"aggregator/internal/bulkload"
 	"aggregator/internal/config"
 	"aggregator/internal/dashboard"
 	"aggregator/internal/deadletter"
@@ -205,6 +206,7 @@ func main() {
 		WithDashboard(dash).
 		WithRoutes(func(mux *http.ServeMux) {
 			ingest.Register(mux, internalAuth)
+			(&bulkload.Handler{Store: hazardStore}).Register(mux, internalAuth)
 			satellite.Register(mux, internalAuth, statsAuth)
 		})
 	for _, w := range cfg.WeakTokens() {
