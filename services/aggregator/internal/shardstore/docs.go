@@ -683,6 +683,8 @@ func (s *DocStore) runPurge(ctx context.Context) {
 				s.r.cfg.Log.Warn("pembersihan tombstone gagal", "err", err, "dihapus", n)
 			} else if n > 0 {
 				s.r.cfg.Log.Info("tombstone lama dibersihkan", "dihapus", n)
+			} else {
+				s.r.cfg.Log.Info("pembersihan tombstone tidak menghapus apa pun", "tertahan_unit_mati_atau_rebuild", s.purgeBlocked(), "masa_tenggang", s.tombstoneGrace.String())
 			}
 			if n >= purgeMaxPerUnit || (n == 0 && s.tombstoneGrace > 0 && s.purgeBlocked()) {
 				// Masih ada pekerjaan, atau tertahan unit yang sedang putus: coba lagi segera, bukan menunggu satu interval penuh.
