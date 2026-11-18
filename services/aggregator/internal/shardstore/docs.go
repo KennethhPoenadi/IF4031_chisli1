@@ -90,6 +90,7 @@ const (
 	purgeInterval   = 10 * time.Minute
 	// Bila satu putaran mencapai batas, masih ada banyak tombstone: putaran berikutnya dipercepat.
 	purgeCatchUpInterval = time.Minute
+	purgeFirstDelay      = 30 * time.Second
 )
 
 // PurgeTombstones menghapus fisik tombstone yang lebih tua dari tombstoneGrace.
@@ -112,7 +113,11 @@ func (s *DocStore) PurgeTombstones(ctx context.Context) (int64, error) {
 			return 0, nil
 		}
 	}
-	if len(s.r.Rebuilding()) > 0 || s.repairNeeded.Load() || s.r.repairNeeded.Load() {
+	// Tanda "perbaikan tertunda" sengaja tidak dipakai sebagai syarat: pada cluster yang menerima data terus-menerus tanda itu hampir
+	// selalu menyala (dokumen baru yang belum sempat direplikasi), sehingga pembersihan tidak pernah berjalan dan koleksi membengkak
+	// sampai 2 juta dokumen. Yang dihapus hanya tombstone yang lebih tua dari masa tenggang; perbaikan berkala sudah menyebarkannya ke
+	// semua replika jauh sebelum itu. Syarat yang tersisa: tidak ada unit mati dan tidak ada unit yang sedang dibangun ulang.
+	if len(s.r.Rebuilding()) > 0 {
 		return 0, nil
 	}
 	cutoff := time.Now().Add(-s.tombstoneGrace).UnixNano()
@@ -665,6 +670,8 @@ func (s *DocStore) Run(ctx context.Context) {
 	defer fast.Stop()
 	purge := time.NewTicker(purgeInterval)
 	defer purge.Stop()
+	// Leader baru membersihkan tak lama setelah mulai, bukan menunggu satu interval penuh.
+	purge.Reset(purgeFirstDelay)
 	// Nol berarti belum pernah memperbaiki: instance yang baru menjadi leader menjalankan satu perbaikan penuh
 	// pada tick pertama. Status "perlu perbaikan" hanya ada di memori leader sebelumnya dan hilang saat leader
 	// berganti, sehingga tanpa ini sisa perbaikan menunggu jaring pengaman berkala.
