@@ -247,7 +247,15 @@ func (s *Service) Register(mux *http.ServeMux, auth func(http.Handler) http.Hand
 	mux.Handle("GET /internal/satellite/stats", statsAuth(http.HandlerFunc(s.handleStats)))
 }
 
+// extendWriteDeadline memberi jawaban endpoint satelit waktu tulis lebih panjang daripada WriteTimeout server (15 detik).
+// Menerapkan satu batch dan memulihkan deteksi aktif dapat memakan puluhan detik; tanpa ini server memutus koneksi di detik ke-15,
+// pengirim menerima EOF dan mengulang batch yang sama tanpa henti walau batch sudah tersimpan (offset tidak pernah maju).
+func extendWriteDeadline(w http.ResponseWriter, d time.Duration) {
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(d))
+}
+
 func (s *Service) handleBatch(w http.ResponseWriter, r *http.Request) {
+	extendWriteDeadline(w, 90*time.Second)
 	var b Batch
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBatchBytes))
 	if err := dec.Decode(&b); err != nil {
@@ -286,6 +294,7 @@ func (s *Service) handleCheckpoint(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) handleDetections(w http.ResponseWriter, r *http.Request) {
+	extendWriteDeadline(w, 90*time.Second)
 	maxOffset, err := strconv.ParseInt(r.URL.Query().Get("max_offset"), 10, 64)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "bad_request", "max_offset wajib bilangan bulat")
