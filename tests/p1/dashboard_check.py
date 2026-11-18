@@ -73,7 +73,10 @@ def main():
     cut = datetime.now(timezone.utc)
     time.sleep(1)
     start = (cut - timedelta(days=300)).replace(minute=0, second=0, microsecond=0)
-    end = cut + timedelta(days=1)
+    # Batas atas rentang dibuat 3 menit di belakang sekarang: event BMKG/PVMBG terus masuk (occurred_at sekitar
+    # sekarang) selama pembacaan Audit API yang memakan puluhan detik, dan akan terhitung di dashboard tetapi tidak
+    # di potret Audit API. Kedua sisi dibandingkan pada rentang yang sudah stabil.
+    end = (cut - timedelta(minutes=3)).replace(second=0, microsecond=0)
     events, audit_partial = read_all(c, cut)
     # Dashboard hanya menghitung event dengan occurred_at di dalam rentang; sisi Audit API memakai rentang sama.
     events = {k: e for k, e in events.items() if start <= parse(e["occurred_at"]) < end}
@@ -82,10 +85,19 @@ def main():
     mine_area = Counter(e["area_name"] for e in events.values())
 
     dash = dashboard(c, token, start.strftime("%Y-%m-%dT%H:%M:%SZ"), end.strftime("%Y-%m-%dT%H:%M:%SZ"))
-    # Dashboard dapat menghitung event yang masuk antara 'cut' dan pemanggilan; ukur selisih itu secara jujur.
-    after = {k: e for k, e in read_all(c, datetime.now(timezone.utc) + timedelta(seconds=5))[0].items()
-             if start <= parse(e["occurred_at"]) < end}
-    late = len(after) - len(events)
+    # Perubahan yang sah sesudah potret: event baru dan event yang diperbarui di tempat (laporan PVMBG berganti
+    # status dan ingested_at-nya maju). Audit API menyaring menurut ingested_at (>= since), jadi jumlahnya dapat
+    # dihitung. Selisih dashboard vs potret tidak boleh melebihi jumlah ini.
+    changed = 0
+    cursor = ""
+    while True:
+        q = f"/internal/audit/events?since={cut.strftime('%Y-%m-%dT%H:%M:%SZ')}&limit=1000" + (f"&cursor={cursor}" if cursor else "")
+        pg = c.audit_get(q)
+        changed += sum(1 for e in pg["items"] if start <= parse(e["occurred_at"]) < end)
+        cursor = pg.get("next_cursor")
+        if not cursor:
+            break
+    late = changed
     dash_types = {k: v for k, v in dash["totals"].items() if v}
     dash_sev = {r["key"]: r["count"] for r in dash["severity"] if r["count"]}
     dash_area = {r["area"]: r["count"] for r in dash["areas"]}
@@ -103,9 +115,10 @@ def main():
 
     # Toleransi hanya untuk event yang benar-benar masuk selama pengukuran (late).
     total_diff = sum(abs(v["audit"] - v["dashboard"]) for g in diffs.values() for v in g.values())
-    ok = total_diff <= max(late, 0) * 3 and not audit_partial and not dash["partial"]
+    # Satu event yang berubah dapat menggeser satu hitungan pada tiap dari tiga pengelompokan (jenis, severity, wilayah).
+    ok = total_diff <= late * 3 and not audit_partial and not dash["partial"]
     result = {
-        "total_audit": len(events), "total_dashboard": dash["total"], "event_masuk_selama_pengukuran": late,
+        "total_audit": len(events), "total_dashboard": dash["total"], "event_berubah_sesudah_potret": late, "selisih_total": total_diff,
         "partial_audit": audit_partial, "partial_dashboard": dash["partial"],
         "unavailable_units": dash["unavailable_units"], "rebalancing": dash["rebalancing"],
         "per_jenis": {"audit": dict(mine_types), "dashboard": dash_types},
@@ -113,8 +126,12 @@ def main():
         "jumlah_wilayah": {"audit": len(mine_area), "dashboard": len(dash_area)},
         "selisih": diffs, "lolos": ok,
     }
-    p1.save(d, "dashboard_check.json", result)
-    print(f"total  audit={len(events)}  dashboard={dash['total']}  (event masuk selama pengukuran: {late})")
+    if ok:
+        p1.save(d, "dashboard_check.json", result)
+    else:
+        os.makedirs(os.path.join(d, "gagal"), exist_ok=True)
+        p1.save(os.path.join(d, "gagal"), "dashboard_check.json", result)
+    print(f"total  audit={len(events)}  dashboard={dash['total']}  (event baru atau diperbarui sesudah potret: {late}, selisih total {total_diff})")
     print("jenis   :", dict(mine_types))
     print("severity:", dict(mine_sev))
     print(f"wilayah : {len(mine_area)} wilayah (audit) vs {len(dash_area)} (dashboard)")

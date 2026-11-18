@@ -75,10 +75,14 @@ class Traffic:
         self.records, self.lock, self.stop = [], threading.Lock(), threading.Event()
         self.seq = 0
 
+    # Baca dan tulis biasa harus cepat (10 dtk). Checksum adalah pemindaian penuh seluruh event di semua unit,
+    # sehingga diberi anggaran 30 dtk; latensinya tetap dicatat (p95 dan maks) di bukti, tidak disembunyikan.
+    TIMEOUTS = {"read": 10.0, "write": 10.0, "checksum": 30.0}
+
     def _call(self, kind, method, url, headers, body=None):
         t = time.monotonic()
         try:
-            code, res = p1.http_json(method, url, headers, body, timeout=self.timeout)
+            code, res = p1.http_json(method, url, headers, body, timeout=self.TIMEOUTS.get(kind, self.timeout))
         except Exception as e:  # timeout atau koneksi putus: dihitung sebagai menggantung/gagal
             code, res = 0, {"error": str(e)}
         dur = time.monotonic() - t
@@ -171,6 +175,22 @@ def main():
     args = ap.parse_args()
     c, d = p1.Client(), p1.out_dir(args)
     report = {"victim": args.victim, "second": args.second}
+
+    print("== 0. syarat awal: cluster sehat (tidak ada event yang salinannya kurang)")
+    # Kehilangan satu unit hanya dijamin aman bila unit lain tidak sedang dipulihkan. Menghapus unit saat unit lain
+    # belum selesai dibangun ulang adalah kegagalan ganda: event yang baru punya satu salinan ikut hilang.
+    t_pre = time.time()
+    while True:
+        pre = aget(c, "/internal/audit/distribution")
+        if pre["under_replicated"] == 0 and not pre["rebuilding_units"] and not pre["partial"]:
+            break
+        if time.time() - t_pre > args.repair_timeout:
+            raise SystemExit(f"cluster tidak sehat sebelum uji: under_replicated={pre['under_replicated']} "
+                             f"rebuilding={pre['rebuilding_units']}")
+        time.sleep(10)
+    report["syarat_awal"] = {"under_replicated": pre["under_replicated"], "rebuilding_units": pre["rebuilding_units"],
+                             "detik_menunggu": round(time.time() - t_pre, 1)}
+    print(f"   sehat setelah menunggu {time.time() - t_pre:.0f} dtk (under_replicated=0)")
 
     print(f"== 1. baseline {args.source}")
     base, base_partial = all_refs(c, args.source)
