@@ -357,3 +357,127 @@ func fakeByDocName(fakes []*docFake, name string) *docFake {
 	}
 	return nil
 }
+
+func (f *docFake) PurgeTombstones(_ context.Context, olderThan int64, limit int) (int64, error) {
+	if f.down() {
+		return 0, errDown
+	}
+	f.dmu.Lock()
+	defer f.dmu.Unlock()
+	var n int64
+	for k, d := range f.docs {
+		if n >= int64(limit) {
+			break
+		}
+		if d.Deleted && d.Version < olderThan {
+			delete(f.docs, k)
+			n++
+		}
+	}
+	return n, nil
+}
+
+// docCountAll menghitung semua dokumen (termasuk tombstone) pada fake.
+func (f *docFake) docCountAll() int {
+	f.dmu.Lock()
+	defer f.dmu.Unlock()
+	return len(f.docs)
+}
+
+// Tombstone yang lebih tua dari masa tenggang dihapus fisik; tombstone baru dan dokumen hidup tidak tersentuh.
+func TestPurgeTombstonesRemovesOnlyOldTombstones(t *testing.T) {
+	_, ds, fakes := newDocCluster(t, "a", "b", "c")
+	ctx := context.Background()
+	ds.SetTombstoneGrace(time.Hour)
+
+	old := time.Now().Add(-3 * time.Hour).UnixNano()
+	for i := 0; i < 20; i++ {
+		k := fmt.Sprintf("old%02d", i)
+		if err := ds.Put(ctx, Doc{Collection: "det", Key: k, Deleted: true, Version: old + int64(i)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 0; i < 5; i++ {
+		if err := ds.Delete(ctx, "det", fmt.Sprintf("fresh%d", i)); err != nil { // tombstone baru
+			t.Fatal(err)
+		}
+		if err := ds.Put(ctx, Doc{Collection: "det", Key: fmt.Sprintf("live%d", i)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := 0
+	for _, f := range fakes {
+		before += f.docCountAll()
+	}
+
+	n, err := ds.PurgeTombstones(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after := 0
+	for _, f := range fakes {
+		after += f.docCountAll()
+	}
+	if n == 0 || before-after != int(n) {
+		t.Fatalf("dihapus %d, tetapi jumlah dokumen berubah %d -> %d", n, before, after)
+	}
+	for i := 0; i < 20; i++ {
+		for _, f := range fakes {
+			if _, ok := f.docs["det/"+fmt.Sprintf("old%02d", i)]; ok {
+				t.Fatalf("tombstone lama old%02d masih ada pada %s", i, f.Name())
+			}
+		}
+	}
+	for i := 0; i < 5; i++ {
+		if d, err := ds.Get(ctx, "det", fmt.Sprintf("live%d", i)); err != nil || d == nil {
+			t.Fatalf("dokumen hidup live%d hilang: %v %v", i, d, err)
+		}
+	}
+	freshKept := 0
+	for _, f := range fakes {
+		for k, d := range f.docs {
+			if d.Deleted && len(k) > 8 && k[4:9] == "fresh" {
+				freshKept++
+			}
+		}
+	}
+	if freshKept == 0 {
+		t.Fatal("tombstone baru ikut terhapus")
+	}
+}
+
+// Pembersihan tidak berjalan sama sekali saat ada unit mati: salinan basi pada unit itu bisa hidup kembali.
+func TestPurgeTombstonesSkippedWhileAUnitIsDown(t *testing.T) {
+	_, ds, fakes := newDocCluster(t, "a", "b", "c")
+	ctx := context.Background()
+	ds.SetTombstoneGrace(time.Hour)
+	old := time.Now().Add(-3 * time.Hour).UnixNano()
+	if err := ds.Put(ctx, Doc{Collection: "det", Key: "k", Deleted: true, Version: old}); err != nil {
+		t.Fatal(err)
+	}
+	fakes[1].set(true)
+	ds.r.markDown("b", errDown)
+	if !ds.r.isDown("b") {
+		t.Fatal("unit b seharusnya sudah ditandai mati")
+	}
+
+	n, err := ds.PurgeTombstones(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("pembersihan menghapus %d dokumen padahal ada unit mati; seharusnya 0", n)
+	}
+}
+
+// Masa tenggang nol menonaktifkan pembersihan.
+func TestPurgeTombstonesDisabledWithZeroGrace(t *testing.T) {
+	_, ds, _ := newDocCluster(t, "a", "b", "c")
+	ctx := context.Background()
+	if err := ds.Put(ctx, Doc{Collection: "det", Key: "k", Deleted: true, Version: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := ds.PurgeTombstones(ctx); err != nil || n != 0 {
+		t.Fatalf("n=%d err=%v; seharusnya tidak menghapus apa pun", n, err)
+	}
+}

@@ -108,6 +108,8 @@ func main() {
 		hazardStore.SetRepairGate(election.IsLeader)
 	}
 	go hazardStore.Run(ctx)
+	// Tombstone lebih tua dari masa tenggang ini dihapus fisik oleh leader (lihat DocStore.PurgeTombstones). 0 menonaktifkan.
+	docStore.SetTombstoneGrace(cfg.DocTombstoneGrace)
 	go docStore.Run(ctx)
 
 	schemaRules, err := mapper.ParseRules(cfg.PVMBGFieldAliases, cfg.PVMBGFieldCoerce)

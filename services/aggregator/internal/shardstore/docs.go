@@ -41,6 +41,9 @@ type DocUnit interface {
 	GetDoc(ctx context.Context, collection, key string) (*Doc, error)
 	ScanDocs(ctx context.Context, q DocQuery, fn func(Doc) error) error
 	DeleteDocCopy(ctx context.Context, collection, key string) error
+	// PurgeTombstones menghapus fisik dokumen tombstone (Deleted) yang versinya lebih kecil dari olderThan.
+	// Mengembalikan jumlah yang dihapus; dipanggil berulang sampai kecil dari batas per panggilan.
+	PurgeTombstones(ctx context.Context, olderThan int64, limit int) (int64, error)
 }
 
 var docDegraded = telemetry.Counter("store_doc_writes_degraded", "dokumen ingest yang tersimpan kurang dari jumlah salinan yang seharusnya")
@@ -52,9 +55,12 @@ type DocStore struct {
 
 	lastVersion  atomic.Int64
 	repairNeeded atomic.Bool
-	repairMu     sync.Mutex
-	repairLimit  int // 0 = repairEntriesPerPass; diubah hanya oleh tes
-	repairRotor  atomic.Uint32
+
+	// tombstoneGrace adalah umur minimal tombstone sebelum dihapus fisik. Nol menonaktifkan pembersihan.
+	tombstoneGrace time.Duration
+	repairMu       sync.Mutex
+	repairLimit    int // 0 = repairEntriesPerPass; diubah hanya oleh tes
+	repairRotor    atomic.Uint32
 }
 
 func NewDocStore(r *Router, units []DocUnit) (*DocStore, error) {
@@ -74,6 +80,67 @@ func NewDocStore(r *Router, units []DocUnit) (*DocStore, error) {
 func docRingKey(collection, key string) string { return collection + "\x00" + key }
 
 // menghasilkan versi yang naik monoton di dalam satu proses.
+// SetTombstoneGrace mengatur umur minimal tombstone sebelum dihapus fisik (nol = tidak pernah dibersihkan).
+func (s *DocStore) SetTombstoneGrace(d time.Duration) { s.tombstoneGrace = d }
+
+// Batas penghapusan per panggilan unit dan per putaran pembersihan, agar satu putaran tidak membebani Mongo terlalu lama.
+const (
+	purgeBatch      = 5000
+	purgeMaxPerUnit = 200_000
+	purgeInterval   = 10 * time.Minute
+)
+
+// PurgeTombstones menghapus fisik tombstone yang lebih tua dari tombstoneGrace.
+//
+// Delete hanya menulis tombstone (dokumen Deleted) supaya salinan hidup yang basi pada replika lain tidak dihidupkan kembali oleh
+// perbaikan. Tanpa pembersihan, tombstone menumpuk tanpa batas: setiap deteksi satelit yang dievict meninggalkan satu dokumen, dan
+// pada uji panjang koleksi mencapai hampir 2 juta dokumen sehingga ScanAll untuk pemulihan checkpoint melewati 60 detik dan
+// satellite-ingestor tidak pernah pulih.
+//
+// Penghapusan hanya dilakukan saat aman: semua unit hidup, tidak ada unit yang dibangun ulang, dan tidak ada perbaikan tertunda.
+// Dengan begitu tombstone yang dihapus sudah dipropagasi ke seluruh replika. Risiko sisa: unit yang mati lebih lama dari masa tenggang
+// lalu kembali dengan salinan hidup basi dapat menghidupkan kembali dokumen yang sudah dihapus; untuk deteksi satelit dampaknya kecil
+// karena mesin kebakaran akan mengevict ulang.
+func (s *DocStore) PurgeTombstones(ctx context.Context) (int64, error) {
+	if s.tombstoneGrace <= 0 {
+		return 0, nil
+	}
+	for name := range s.units {
+		if s.r.isDown(name) {
+			return 0, nil
+		}
+	}
+	if len(s.r.Rebuilding()) > 0 || s.repairNeeded.Load() || s.r.repairNeeded.Load() {
+		return 0, nil
+	}
+	cutoff := time.Now().Add(-s.tombstoneGrace).UnixNano()
+	names := make([]string, 0, len(s.units))
+	for name := range s.units {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var total int64
+	var firstErr error
+	for _, name := range names {
+		var unitTotal int64
+		for unitTotal < purgeMaxPerUnit && ctx.Err() == nil {
+			n, err := s.units[name].PurgeTombstones(ctx, cutoff, purgeBatch)
+			unitTotal += n
+			if err != nil {
+				if firstErr == nil {
+					firstErr = fmt.Errorf("pembersihan tombstone pada %s: %w", name, err)
+				}
+				break
+			}
+			if n < purgeBatch {
+				break
+			}
+		}
+		total += unitTotal
+	}
+	return total, firstErr
+}
+
 func (s *DocStore) NextVersion() int64 {
 	for {
 		now := time.Now().UnixNano()
@@ -594,6 +661,8 @@ func (s *DocStore) Run(ctx context.Context) {
 	defer t.Stop()
 	fast := time.NewTicker(s.r.cfg.PingInterval * 5)
 	defer fast.Stop()
+	purge := time.NewTicker(purgeInterval)
+	defer purge.Stop()
 	// Nol berarti belum pernah memperbaiki: instance yang baru menjadi leader menjalankan satu perbaikan penuh
 	// pada tick pertama. Status "perlu perbaikan" hanya ada di memori leader sebelumnya dan hilang saat leader
 	// berganti, sehingga tanpa ini sisa perbaikan menunggu jaring pengaman berkala.
@@ -610,6 +679,18 @@ func (s *DocStore) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
+		case <-purge.C:
+			if !s.r.repairAllowed() {
+				continue
+			}
+			pctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+			n, err := s.PurgeTombstones(pctx)
+			cancel()
+			if err != nil && ctx.Err() == nil {
+				s.r.cfg.Log.Warn("pembersihan tombstone gagal", "err", err, "dihapus", n)
+			} else if n > 0 {
+				s.r.cfg.Log.Info("tombstone lama dibersihkan", "dihapus", n)
+			}
 		case <-fast.C:
 			if !s.r.repairAllowed() {
 				continue

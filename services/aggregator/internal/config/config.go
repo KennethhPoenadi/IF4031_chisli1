@@ -35,6 +35,8 @@ type Config struct {
 	StoreUnitTimeout       time.Duration
 	StorePingInterval      time.Duration
 	StoreRepairInterval    time.Duration
+	// DocTombstoneGrace adalah umur minimal tombstone dokumen ingest sebelum dihapus fisik (0 = tidak dibersihkan).
+	DocTombstoneGrace time.Duration
 	StoreNodeMap           string
 
 	BMKGBaseURL string
@@ -187,6 +189,10 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	tombstoneGrace, err := getEnvSeconds("DOC_TOMBSTONE_GRACE_SECONDS", 2*3600)
+	if err != nil {
+		return Config{}, err
+	}
 	storeRepair, err := getEnvSeconds("STORE_REPAIR_INTERVAL_SECONDS", 30)
 	if err != nil {
 		return Config{}, err
@@ -224,6 +230,7 @@ func Load() (Config, error) {
 		StoreUnitTimeout:       storeTimeout,
 		StorePingInterval:      storePing,
 		StoreRepairInterval:    storeRepair,
+		DocTombstoneGrace:      tombstoneGrace,
 		StoreNodeMap:           getEnv("STORE_NODE_MAP", ""),
 		MongoURI:               getEnv("MONGO_URI", "mongodb://localhost:27017"),
 		MongoDBName:            getEnv("MONGO_DB_NAME", "bnpb_canonical"),

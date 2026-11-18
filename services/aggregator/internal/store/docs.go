@@ -37,6 +37,9 @@ func (u *MongoUnit) ensureDocIndexes(ctx context.Context) error {
 			{Keys: bson.D{{Key: "c", Value: 1}, {Key: "k", Value: 1}}, Options: options.Index().SetUnique(true)},
 			{Keys: bson.D{{Key: "c", Value: 1}, {Key: "s", Value: 1}, {Key: "k", Value: 1}}},
 			{Keys: bson.D{{Key: "i.$**", Value: 1}}},
+			// Hanya tombstone yang diindeks: pembersihan mencari {d: true, v < cutoff} tanpa memindai seluruh koleksi.
+			{Keys: bson.D{{Key: "d", Value: 1}, {Key: "v", Value: 1}},
+				Options: options.Index().SetName("tombstone_v").SetPartialFilterExpression(bson.D{{Key: "d", Value: true}})},
 		})
 		return err
 	})
@@ -125,3 +128,40 @@ func (u *MongoUnit) DeleteDocCopy(ctx context.Context, collection, key string) e
 }
 
 var _ shardstore.DocUnit = (*MongoUnit)(nil)
+
+// PurgeTombstones menghapus fisik tombstone dengan versi lebih kecil dari olderThan, paling banyak limit dokumen.
+func (u *MongoUnit) PurgeTombstones(ctx context.Context, olderThan int64, limit int) (int64, error) {
+	if err := u.ensureDocIndexes(ctx); err != nil {
+		return 0, err
+	}
+	filter := bson.M{"d": true, "v": bson.M{"$lt": olderThan}}
+	cur, err := u.docs.Find(ctx, filter, options.Find().SetLimit(int64(limit)).SetProjection(bson.M{"_id": 1}))
+	if err != nil {
+		return 0, err
+	}
+	var ids []any
+	for cur.Next(ctx) {
+		var row struct {
+			ID any `bson:"_id"`
+		}
+		if err := cur.Decode(&row); err != nil {
+			_ = cur.Close(ctx)
+			return 0, err
+		}
+		ids = append(ids, row.ID)
+	}
+	if err := cur.Err(); err != nil {
+		_ = cur.Close(ctx)
+		return 0, err
+	}
+	_ = cur.Close(ctx)
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	// Syarat d dan v diulang pada penghapusan: dokumen yang diperbarui di antara Find dan Delete tidak ikut terhapus.
+	res, err := u.docs.DeleteMany(ctx, bson.M{"_id": bson.M{"$in": ids}, "d": true, "v": bson.M{"$lt": olderThan}})
+	if err != nil {
+		return 0, err
+	}
+	return res.DeletedCount, nil
+}
