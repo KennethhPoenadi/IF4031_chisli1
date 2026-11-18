@@ -1112,3 +1112,129 @@ func TestFollowerReleasesRebuildingEvenWhenLeaderNeverSawTheUnitDown(t *testing.
 		t.Fatalf("follower rebuilding = %v, harus dilepas oleh perbaikan bersih leader", got)
 	}
 }
+
+// batchFake menambahkan jalur batch ke fakeUnit dan menghitung perjalanan ke penyimpanan.
+type batchFake struct {
+	*fakeUnit
+	getBatches, putBatches int
+	failPut                bool
+}
+
+func (b *batchFake) GetMany(_ context.Context, ids []string) ([]hazard.Event, error) {
+	b.getBatches++
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.failing {
+		return nil, errDown
+	}
+	var out []hazard.Event
+	for _, id := range ids {
+		if ev, ok := b.data[id]; ok {
+			out = append(out, ev)
+		}
+	}
+	return out, nil
+}
+
+func (b *batchFake) UpsertMany(ctx context.Context, items []UpsertItem) error {
+	b.putBatches++
+	if b.failPut {
+		return errors.New("context deadline exceeded")
+	}
+	for _, it := range items {
+		if err := b.fakeUnit.Upsert(ctx, it.Event, it.Owners); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func newBatchCluster(t *testing.T) (*Router, []*batchFake) {
+	t.Helper()
+	fakes := []*batchFake{{fakeUnit: newFake("store-0")}, {fakeUnit: newFake("store-1")}, {fakeUnit: newFake("store-2")}}
+	r, err := New([]Unit{fakes[0], fakes[1], fakes[2]}, quietCfg())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r, fakes
+}
+
+func TestRepairCopiesInBatchesInsteadOfOneEventAtATime(t *testing.T) {
+	r, fakes := newBatchCluster(t)
+	events := load(t, r, 1200)
+	fakes[1].wipe()
+	r.pingAll(context.Background())
+
+	stats, err := r.RepairOnce(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Failed != 0 || stats.Replicated == 0 {
+		t.Fatalf("stats = %+v", stats)
+	}
+	for _, ev := range events {
+		for _, name := range r.Owners(ev.HazardID) {
+			if !fakeBatchByName(fakes, name).has(ev.HazardID) {
+				t.Fatalf("%s kehilangan %s", name, ev.HazardID)
+			}
+		}
+	}
+	trips := fakes[0].getBatches + fakes[1].getBatches + fakes[2].getBatches + fakes[0].putBatches + fakes[1].putBatches + fakes[2].putBatches
+	if trips == 0 || trips > stats.Replicated/20 {
+		t.Fatalf("%d perjalanan untuk %d salinan: harus berbatch (<= %d)", trips, stats.Replicated, stats.Replicated/20)
+	}
+}
+
+func fakeBatchByName(fakes []*batchFake, name string) *batchFake {
+	for _, f := range fakes {
+		if f.name == name {
+			return f
+		}
+	}
+	return nil
+}
+
+// Batch yang kena timeout karena unit sedang sibuk tidak boleh menandai unit mati: itu membuat perbaikan
+// membatalkan dirinya sendiri dan jawaban baca berubah menjadi tidak terjangkau.
+func TestRepairBatchTimeoutDoesNotMarkUnitDownAndIsRetriedNextTime(t *testing.T) {
+	r, fakes := newBatchCluster(t)
+	events := load(t, r, 300)
+	fakes[1].set(true)
+	fakes[1].wipe()
+	r.pingAll(context.Background())
+	fakes[1].set(false)
+	r.pingAll(context.Background())
+	if len(r.Rebuilding()) != 1 {
+		t.Fatalf("rebuilding = %v, want [store-1]", r.Rebuilding())
+	}
+
+	fakes[1].failPut = true
+	stats, err := r.RepairOnce(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Failed == 0 {
+		t.Fatal("kegagalan batch harus terhitung")
+	}
+	if r.isDown("store-1") {
+		t.Fatal("kegagalan batch akibat beban tidak boleh menandai unit mati")
+	}
+	if len(r.Rebuilding()) == 0 {
+		t.Fatal("unit tidak boleh dilepas dari status rebuilding sebelum perbaikan bersih")
+	}
+
+	fakes[1].failPut = false
+	if _, err := r.RepairOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, ev := range events {
+		for _, name := range r.Owners(ev.HazardID) {
+			if !fakeBatchByName(fakes, name).has(ev.HazardID) {
+				t.Fatalf("%s kehilangan %s setelah percobaan ulang", name, ev.HazardID)
+			}
+		}
+	}
+	if len(r.Rebuilding()) != 0 {
+		t.Fatalf("rebuilding = %v setelah perbaikan bersih", r.Rebuilding())
+	}
+}

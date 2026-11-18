@@ -180,6 +180,44 @@ func (u *MongoUnit) Keys(ctx context.Context, fn func(shardstore.KeyRecord) erro
 	return cur.Err()
 }
 
+// GetMany membaca banyak event dalam satu query.
+func (u *MongoUnit) GetMany(ctx context.Context, ids []string) ([]hazard.Event, error) {
+	cur, err := u.collection.Find(ctx, bson.M{"hazard_id": bson.M{"$in": ids}})
+	if err != nil {
+		return nil, err
+	}
+	defer cur.Close(ctx)
+	out := make([]hazard.Event, 0, len(ids))
+	for cur.Next(ctx) {
+		var doc stored
+		if err := cur.Decode(&doc); err != nil {
+			return nil, err
+		}
+		out = append(out, doc.Event)
+	}
+	return out, cur.Err()
+}
+
+// UpsertMany menulis banyak event dalam satu BulkWrite tak berurutan (semantik sama dengan Upsert).
+func (u *MongoUnit) UpsertMany(ctx context.Context, items []shardstore.UpsertItem) error {
+	if len(items) == 0 {
+		return nil
+	}
+	if err := u.ensureIndexes(ctx); err != nil {
+		return err
+	}
+	models := make([]mongo.WriteModel, 0, len(items))
+	for _, it := range items {
+		ev := it.Event
+		ev.IngestedAt = ev.IngestedAt.UTC()
+		ev.OccurredAt = ev.OccurredAt.UTC()
+		models = append(models, mongo.NewReplaceOneModel().SetFilter(bson.M{"hazard_id": ev.HazardID}).
+			SetReplacement(stored{Event: ev, Owners: it.Owners}).SetUpsert(true))
+	}
+	_, err := u.collection.BulkWrite(ctx, models, options.BulkWrite().SetOrdered(false))
+	return err
+}
+
 func (u *MongoUnit) SetOwners(ctx context.Context, hazardID string, owners []string) error {
 	_, err := u.collection.UpdateOne(ctx, bson.M{"hazard_id": hazardID}, bson.M{"$set": bson.M{"owners": owners}})
 	return err

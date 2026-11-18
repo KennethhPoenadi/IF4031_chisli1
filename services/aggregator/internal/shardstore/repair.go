@@ -3,6 +3,7 @@ package shardstore
 import (
 	"aggregator/internal/hazard"
 	"context"
+	"sort"
 	"sync"
 	"time"
 
@@ -129,110 +130,172 @@ func (r *Router) RepairOnce(ctx context.Context) (RepairStats, error) {
 	return stats, nil
 }
 
-// repairWorkers membatasi penyalinan paralel: cukup untuk mempercepat pengisian unit kosong tanpa
-// membanjiri penyimpanan yang juga melayani lalu lintas normal.
-const repairWorkers = 8
+// repairWorkers membatasi pekerjaan paralel pada tahap pembersihan per event.
+const repairWorkers = 4
 
+// repairBatchSize adalah jumlah event per perjalanan ke penyimpanan saat menyalin. 500 menjaga satu BulkWrite
+// tetap kecil (beberapa ratus KB) sehingga tidak melewati batas waktu unit yang juga melayani lalu lintas.
+const repairBatchSize = 500
+
+// repairBatchTimeout lebih longgar daripada UnitTimeout: satu batch memuat ratusan event. Kegagalan batch
+// akibat beban tidak menandai unit mati (pingAll yang menilai itu); event yang gagal dicoba lagi pada
+// perbaikan berikutnya.
+const repairBatchTimeout = 30 * time.Second
+
+type repairPlan struct {
+	id      string
+	holders []holder
+	desired []string
+	best    holder
+	heldBy  map[string]holder
+	targets []string
+}
+
+// repairHazards memperbaiki satu lintasan dalam tiga fase: (1) rencana per event tanpa I/O, (2) replikasi
+// berbatch dari unit sumber ke unit target, (3) pembersihan (pemilik dan salinan usang) per event.
 func (r *Router) repairHazards(ctx context.Context, byID map[string][]holder, allUp bool, tombs map[string]time.Time, stats *RepairStats) error {
 	down := r.downSet()
-	type item struct {
-		id      string
-		holders []holder
+	var plans []*repairPlan
+	for id, holders := range byID {
+		best := holders[0]
+		for _, h := range holders[1:] {
+			if h.rec.IngestedAt.After(best.rec.IngestedAt) {
+				best = h
+			}
+		}
+		if tombstoned(tombs, id, best.rec.IngestedAt) {
+			for _, h := range holders {
+				uctx, cancel := context.WithTimeout(ctx, r.cfg.UnitTimeout)
+				if err := r.units[h.unit].Delete(uctx, id); err == nil {
+					stats.Removed++
+				}
+				cancel()
+			}
+			continue
+		}
+		p := &repairPlan{id: id, holders: holders, best: best, desired: r.ring.Owners(id, r.rf), heldBy: map[string]holder{}}
+		for _, h := range holders {
+			p.heldBy[h.unit] = h
+		}
+		for _, name := range p.desired {
+			if down[name] {
+				continue
+			}
+			h, ok := p.heldBy[name]
+			if !ok || h.rec.IngestedAt.Before(best.rec.IngestedAt) {
+				p.targets = append(p.targets, name)
+			}
+		}
+		plans = append(plans, p)
 	}
-	items := make(chan item)
+
+	replicated := r.replicateBatches(ctx, plans, stats)
+
+	items := make(chan *repairPlan)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	for w := 0; w < repairWorkers; w++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for it := range items {
+			for p := range items {
 				var local RepairStats
-				r.repairOne(ctx, it.id, it.holders, allUp, down, tombs, &local)
+				r.cleanupOne(ctx, p, replicated[p.id], allUp, down, &local)
 				mu.Lock()
-				stats.Replicated += local.Replicated
 				stats.OwnersFixed += local.OwnersFixed
 				stats.Removed += local.Removed
-				stats.Failed += local.Failed
 				mu.Unlock()
 			}
 		}()
 	}
-	for id, holders := range byID {
+	for _, p := range plans {
 		if ctx.Err() != nil {
 			break
 		}
-		items <- item{id: id, holders: holders}
+		items <- p
 	}
 	close(items)
 	wg.Wait()
 	return ctx.Err()
 }
 
-func (r *Router) repairOne(ctx context.Context, id string, holders []holder, allUp bool, down map[string]bool, tombs map[string]time.Time, stats *RepairStats) {
-	desired := r.ring.Owners(id, r.rf)
-
-	best := holders[0]
-	for _, h := range holders[1:] {
-		if h.rec.IngestedAt.After(best.rec.IngestedAt) {
-			best = h
+// replicateBatches menyalin event ke unit target secara berbatch dan mengembalikan, per event, unit target
+// yang berhasil.
+func (r *Router) replicateBatches(ctx context.Context, plans []*repairPlan, stats *RepairStats) map[string]map[string]bool {
+	replicated := map[string]map[string]bool{}
+	bySource := map[string][]*repairPlan{}
+	for _, p := range plans {
+		if len(p.targets) > 0 {
+			bySource[p.best.unit] = append(bySource[p.best.unit], p)
 		}
 	}
-	if tombstoned(tombs, id, best.rec.IngestedAt) {
-		for _, h := range holders {
-			uctx, cancel := context.WithTimeout(ctx, r.cfg.UnitTimeout)
-			if err := r.units[h.unit].Delete(uctx, id); err == nil {
-				stats.Removed++
+	sources := make([]string, 0, len(bySource))
+	for s := range bySource {
+		sources = append(sources, s)
+	}
+	sort.Strings(sources)
+
+	for _, src := range sources {
+		list := bySource[src]
+		for start := 0; start < len(list); start += repairBatchSize {
+			if ctx.Err() != nil {
+				return replicated
 			}
+			chunk := list[start:min(start+repairBatchSize, len(list))]
+			ids := make([]string, len(chunk))
+			for i, p := range chunk {
+				ids[i] = p.id
+			}
+			gctx, cancel := context.WithTimeout(ctx, repairBatchTimeout)
+			events, err := getMany(gctx, r.units[src], ids)
 			cancel()
-		}
-		return
-	}
-	heldBy := map[string]holder{}
-	for _, h := range holders {
-		heldBy[h.unit] = h
-	}
-
-	var targets []string
-	for _, name := range desired {
-		if down[name] {
-			continue
-		}
-		h, ok := heldBy[name]
-		if !ok || h.rec.IngestedAt.Before(best.rec.IngestedAt) {
-			targets = append(targets, name)
-		}
-	}
-
-	replicated := map[string]bool{}
-	if len(targets) > 0 {
-		ev, err := r.getFrom(ctx, best.unit, id)
-		if err != nil || ev == nil {
-			stats.Failed++
-		}
-		if err == nil && ev != nil {
-			for _, name := range targets {
-				uctx, cancel := context.WithTimeout(ctx, r.cfg.UnitTimeout)
-				err := r.units[name].Upsert(uctx, *ev, desired)
-				cancel()
-				if err != nil {
-					r.markDown(name, err)
+			byID := make(map[string]hazard.Event, len(events))
+			for _, ev := range events {
+				byID[ev.HazardID] = ev
+			}
+			perTarget := map[string][]UpsertItem{}
+			owners := map[string][]string{}
+			for _, p := range chunk {
+				ev, ok := byID[p.id]
+				if !ok || err != nil {
 					stats.Failed++
 					continue
 				}
-				replicated[name] = true
-				stats.Replicated++
+				for _, t := range p.targets {
+					perTarget[t] = append(perTarget[t], UpsertItem{Event: ev, Owners: p.desired})
+				}
+				owners[p.id] = p.desired
+			}
+			for target, batch := range perTarget {
+				uctx, ucancel := context.WithTimeout(ctx, repairBatchTimeout)
+				uerr := upsertMany(uctx, r.units[target], batch)
+				ucancel()
+				if uerr != nil {
+					stats.Failed += len(batch)
+					r.cfg.Log.Warn("batch perbaikan gagal ditulis", "target", target, "event", len(batch), "err", uerr)
+					continue
+				}
+				for _, it := range batch {
+					if replicated[it.Event.HazardID] == nil {
+						replicated[it.Event.HazardID] = map[string]bool{}
+					}
+					replicated[it.Event.HazardID][target] = true
+					stats.Replicated++
+				}
 			}
 		}
 	}
+	return replicated
+}
 
-	for _, name := range desired {
-		h, ok := heldBy[name]
-		if !ok || replicated[name] || down[name] || sameOwners(h.rec.Owners, desired) {
+func (r *Router) cleanupOne(ctx context.Context, p *repairPlan, replicated map[string]bool, allUp bool, down map[string]bool, stats *RepairStats) {
+	for _, name := range p.desired {
+		h, ok := p.heldBy[name]
+		if !ok || replicated[name] || down[name] || sameOwners(h.rec.Owners, p.desired) {
 			continue
 		}
 		uctx, cancel := context.WithTimeout(ctx, r.cfg.UnitTimeout)
-		err := r.units[name].SetOwners(uctx, id, desired)
+		err := r.units[name].SetOwners(uctx, p.id, p.desired)
 		cancel()
 		if err == nil {
 			stats.OwnersFixed++
@@ -242,24 +305,19 @@ func (r *Router) repairOne(ctx context.Context, id string, holders []holder, all
 	if !allUp {
 		return
 	}
-	complete := true
-	for _, name := range desired {
-		h, ok := heldBy[name]
-		current := ok && !h.rec.IngestedAt.Before(best.rec.IngestedAt)
+	for _, name := range p.desired {
+		h, ok := p.heldBy[name]
+		current := ok && !h.rec.IngestedAt.Before(p.best.rec.IngestedAt)
 		if !current && !replicated[name] {
-			complete = false
-			break
+			return
 		}
 	}
-	if !complete {
-		return
-	}
-	for _, h := range holders {
-		if contains(desired, h.unit) {
+	for _, h := range p.holders {
+		if contains(p.desired, h.unit) {
 			continue
 		}
 		uctx, cancel := context.WithTimeout(ctx, r.cfg.UnitTimeout)
-		err := r.units[h.unit].Delete(uctx, id)
+		err := r.units[h.unit].Delete(uctx, p.id)
 		cancel()
 		if err == nil {
 			stats.Removed++
