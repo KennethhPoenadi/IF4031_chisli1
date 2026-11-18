@@ -102,10 +102,16 @@ func (r *Router) finishRebuild(ctx context.Context, started time.Time) {
 	sort.Strings(done)
 	for _, u := range done {
 		r.cfg.Log.Info("unit penyimpanan selesai dibangun ulang", "unit", u)
-		if r.marks != nil {
-			if err := r.marks.MarkRebuilt(ctx, u, started); err != nil {
-				r.cfg.Log.Warn("penanda rebuild gagal disimpan", "unit", u, "err", err)
-			}
+	}
+	if r.marks == nil {
+		return
+	}
+	// Penanda ditulis untuk semua unit, bukan hanya yang dilihat leader sedang dibangun ulang: perbaikan
+	// bersih ini memeriksa seluruh unit. Replika lain bisa saja melihat unit pulih yang tidak pernah dilihat
+	// leader (misalnya leader baru naik sesudahnya) dan tanpa penanda akan menandai partial selamanya.
+	for _, u := range r.UnitNames() {
+		if err := r.marks.MarkRebuilt(ctx, u, started); err != nil {
+			r.cfg.Log.Warn("penanda rebuild gagal disimpan", "unit", u, "err", err)
 		}
 	}
 }

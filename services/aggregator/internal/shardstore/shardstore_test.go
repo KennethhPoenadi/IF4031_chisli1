@@ -1083,3 +1083,32 @@ func TestFollowerReleasesRebuildingFromLeaderMark(t *testing.T) {
 		t.Fatalf("follower rebuilding = %v setelah leader mencatat rebuild selesai", got)
 	}
 }
+
+// Leader baru tidak pernah melihat unit pulih, tetapi replika lain melihatnya. Perbaikan bersih leader tetap
+// harus melepas status rebuilding di replika itu.
+func TestFollowerReleasesRebuildingEvenWhenLeaderNeverSawTheUnitDown(t *testing.T) {
+	leader, fakes := newCluster(t, "store-0", "store-1", "store-2")
+	load(t, leader, 100)
+	follower, err := New([]Unit{fakes[0], fakes[1], fakes[2]}, quietCfg())
+	if err != nil {
+		t.Fatal(err)
+	}
+	marks := &memMarks{at: map[string]time.Time{}}
+	leader.SetRebuildMarks(marks)
+	follower.SetRebuildMarks(marks)
+	follower.SetRepairGate(func() bool { return false })
+	ctx := context.Background()
+
+	follower.markDown("store-1", errDown)
+	follower.markUp("store-1")
+	if len(leader.Rebuilding()) != 0 || len(follower.Rebuilding()) != 1 {
+		t.Fatalf("leader=%v follower=%v", leader.Rebuilding(), follower.Rebuilding())
+	}
+	if _, err := leader.RepairOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	follower.syncRebuilt(ctx)
+	if got := follower.Rebuilding(); len(got) != 0 {
+		t.Fatalf("follower rebuilding = %v, harus dilepas oleh perbaikan bersih leader", got)
+	}
+}
