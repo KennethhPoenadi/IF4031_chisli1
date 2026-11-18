@@ -87,12 +87,6 @@ func (r *Router) Rebuilding() []string {
 	return out
 }
 
-func (r *Router) markRebuilding(name string) {
-	r.mu.Lock()
-	r.rebuilding[name] = time.Now()
-	r.mu.Unlock()
-}
-
 // finishRebuild melepas unit yang mulai dibangun ulang sebelum perbaikan bersih yang dimulai pada started,
 // lalu mencatat penandanya agar replika lain ikut melepas.
 func (r *Router) finishRebuild(ctx context.Context, started time.Time) {
