@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"sync"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -28,9 +27,8 @@ type MongoUnit struct {
 	coastalRejections *mongo.Collection
 	pollState         *mongo.Collection
 
-	indexMu    sync.Mutex
-	indexed    bool
-	docIndexed bool
+	hazardIndexes indexGuard
+	docIndexes    indexGuard
 }
 
 type stored struct {
@@ -56,29 +54,36 @@ func (u *MongoUnit) Name() string { return u.name }
 func (u *MongoUnit) Close(ctx context.Context) error { return u.client.Disconnect(ctx) }
 
 func (u *MongoUnit) ensureIndexes(ctx context.Context) error {
-	u.indexMu.Lock()
-	defer u.indexMu.Unlock()
-	if u.indexed {
-		return nil
-	}
-	_, err := u.collection.Indexes().CreateMany(ctx, []mongo.IndexModel{
-		{Keys: bson.D{{Key: "hazard_id", Value: 1}}, Options: options.Index().SetUnique(true)},
-		{Keys: bson.D{{Key: "ingested_at", Value: -1}, {Key: "hazard_id", Value: -1}}},
-		{Keys: bson.D{{Key: "hazard_type", Value: 1}, {Key: "ingested_at", Value: -1}}},
-		{Keys: bson.D{{Key: "severity", Value: 1}, {Key: "ingested_at", Value: -1}}},
-		{Keys: bson.D{{Key: "source", Value: 1}, {Key: "ingested_at", Value: -1}}},
+	return u.hazardIndexes.ensure(func() error {
+		models := []mongo.IndexModel{
+			{Keys: bson.D{{Key: "hazard_id", Value: 1}}, Options: options.Index().SetUnique(true)},
+			{Keys: bson.D{{Key: "ingested_at", Value: -1}, {Key: "hazard_id", Value: -1}}},
+			{Keys: bson.D{{Key: "hazard_type", Value: 1}, {Key: "ingested_at", Value: -1}}},
+			{Keys: bson.D{{Key: "severity", Value: 1}, {Key: "ingested_at", Value: -1}}},
+			{Keys: bson.D{{Key: "source", Value: 1}, {Key: "ingested_at", Value: -1}}},
+		}
+		_, err := u.collection.Indexes().CreateMany(ctx, models)
+		if err != nil && mongo.IsDuplicateKeyError(err) {
+			if _, derr := dedupeHazardIDs(ctx, u.collection); derr != nil {
+				return derr
+			}
+			_, err = u.collection.Indexes().CreateMany(ctx, models)
+		}
+		return err
 	})
-	if err == nil {
-		u.indexed = true
-	}
-	return err
 }
 
 func (u *MongoUnit) Ping(ctx context.Context) error {
 	if err := u.client.Ping(ctx, nil); err != nil {
+		// Unit mungkin kembali dengan disk kosong: indeks harus diperiksa ulang pada ping berikutnya yang berhasil.
+		u.hazardIndexes.invalidate()
+		u.docIndexes.invalidate()
 		return err
 	}
-	return u.ensureIndexes(ctx)
+	if err := u.ensureIndexes(ctx); err != nil {
+		return err
+	}
+	return u.ensureDocIndexes(ctx)
 }
 
 func (u *MongoUnit) Upsert(ctx context.Context, ev hazard.Event, owners []string) error {

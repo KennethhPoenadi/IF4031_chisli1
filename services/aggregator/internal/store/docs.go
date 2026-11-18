@@ -32,20 +32,14 @@ func toDoc(s storedDoc) shardstore.Doc {
 }
 
 func (u *MongoUnit) ensureDocIndexes(ctx context.Context) error {
-	u.indexMu.Lock()
-	defer u.indexMu.Unlock()
-	if u.docIndexed {
-		return nil
-	}
-	_, err := u.docs.Indexes().CreateMany(ctx, []mongo.IndexModel{
-		{Keys: bson.D{{Key: "c", Value: 1}, {Key: "k", Value: 1}}, Options: options.Index().SetUnique(true)},
-		{Keys: bson.D{{Key: "c", Value: 1}, {Key: "s", Value: 1}, {Key: "k", Value: 1}}},
-		{Keys: bson.D{{Key: "i.$**", Value: 1}}},
+	return u.docIndexes.ensure(func() error {
+		_, err := u.docs.Indexes().CreateMany(ctx, []mongo.IndexModel{
+			{Keys: bson.D{{Key: "c", Value: 1}, {Key: "k", Value: 1}}, Options: options.Index().SetUnique(true)},
+			{Keys: bson.D{{Key: "c", Value: 1}, {Key: "s", Value: 1}, {Key: "k", Value: 1}}},
+			{Keys: bson.D{{Key: "i.$**", Value: 1}}},
+		})
+		return err
 	})
-	if err == nil {
-		u.docIndexed = true
-	}
-	return err
 }
 
 func (u *MongoUnit) PutDoc(ctx context.Context, d shardstore.Doc) error {
