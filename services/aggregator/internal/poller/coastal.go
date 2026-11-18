@@ -171,14 +171,30 @@ func (p *Poller) coastalStationCatalog(ctx context.Context) (map[string]map[stri
 	return stations, nil
 }
 
+// rejectStaleCoastalPage menolak data basi berdasarkan kemajuan jam sensor itu sendiri, bukan jam lokal.
+// Sensor dapat berjalan pada jam virtual (bahkan dipercepat) yang tidak sama dengan jam Aggregator, sehingga
+// membandingkan generated_at dengan jam lokal salah menilai semua data sebagai basi. Yang menandakan data
+// basi adalah sensor yang tetap menjawab (mengaku sehat) tetapi jamnya berhenti maju lebih lama dari
+// coastalStaleAfter. Jam yang mundur (sensor dimulai ulang) diterima sebagai garis waktu baru.
 func (p *Poller) rejectStaleCoastalPage(generatedAt string) error {
 	timestamp, err := time.Parse(time.RFC3339, generatedAt)
 	if err != nil {
 		return fmt.Errorf("generated_at is invalid: %w", err)
 	}
-	age := p.coastalNow().Sub(timestamp)
-	if age > p.coastalStaleAfter {
-		return fmt.Errorf("data is stale by %s", age.Round(time.Second))
+	now := p.coastalNow()
+	switch {
+	case p.coastalLastGenerated.IsZero() || timestamp.After(p.coastalLastGenerated):
+		p.coastalLastGenerated, p.coastalLastAdvancedAt = timestamp, now
+		return nil
+	case timestamp.Before(p.coastalLastGenerated):
+		p.log.Warn("jam Sensor Pantai mundur, diterima sebagai garis waktu baru",
+			"previous", p.coastalLastGenerated, "generated_at", timestamp)
+		p.coastalLastGenerated, p.coastalLastAdvancedAt = timestamp, now
+		return nil
+	}
+	if frozen := now.Sub(p.coastalLastAdvancedAt); frozen > p.coastalStaleAfter {
+		return fmt.Errorf("data is stale: sensor clock has not advanced for %s (generated_at %s)",
+			frozen.Round(time.Second), generatedAt)
 	}
 	return nil
 }

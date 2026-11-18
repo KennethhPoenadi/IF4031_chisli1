@@ -3,6 +3,7 @@ package poller
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -201,5 +202,66 @@ func TestPollCoastalUsesCachedStationsDuringRefreshFailure(t *testing.T) {
 	}
 	if breaker.State() != resilience.Closed {
 		t.Fatalf("one failed refresh changed breaker state to %v", breaker.State())
+	}
+}
+
+func coastalRig(t *testing.T, now *time.Time, generated *time.Time) (*rig, *resilience.Breaker) {
+	t.Helper()
+	r := newRig()
+	source := &fakeCoastalSource{stations: pantaiclient.StationPage{Stations: []map[string]any{coastalStation()}}}
+	source.fetch = func(string) (pantaiclient.Page, error) {
+		return pantaiclient.Page{GeneratedAt: generated.Format(time.RFC3339),
+			Observations: []map[string]any{coastalObservation(fmt.Sprintf("obs-%d", generated.Unix()), false)}}, nil
+	}
+	breaker := resilience.New(resilience.Config{FailureThreshold: 1})
+	configureCoastalTest(t, r.poller, source, &fakeCoastalState{}, breaker, now)
+	return r, breaker
+}
+
+// Sensor berjalan pada jam virtual enam hari di belakang jam lokal dan dipercepat. Data tetap diterima
+// karena jamnya terus maju.
+func TestCoastalVirtualClockFarBehindWallClockIsNotStale(t *testing.T) {
+	now := time.Date(2026, 11, 18, 2, 20, 0, 0, time.UTC)
+	generated := time.Date(2026, 11, 12, 1, 0, 0, 0, time.UTC)
+	r, breaker := coastalRig(t, &now, &generated)
+	for i := 0; i < 5; i++ {
+		r.poller.pollCoastal(context.Background(), "")
+		now = now.Add(time.Second)
+		generated = generated.Add(time.Minute) // 60x lebih cepat dari jam lokal
+	}
+	if len(r.store.ids()) != 5 || breaker.State() != resilience.Closed {
+		t.Fatalf("tersimpan %d event, breaker %v; jam virtual yang maju tidak boleh dianggap basi", len(r.store.ids()), breaker.State())
+	}
+}
+
+// Sensor tetap menjawab tetapi jamnya berhenti: data basi ditolak dan breaker terbuka.
+func TestCoastalFrozenSensorClockIsRejectedAsStale(t *testing.T) {
+	now := time.Date(2026, 11, 18, 2, 20, 0, 0, time.UTC)
+	generated := time.Date(2026, 11, 12, 1, 0, 0, 0, time.UTC)
+	r, breaker := coastalRig(t, &now, &generated)
+	r.poller.pollCoastal(context.Background(), "")
+	now = now.Add(30 * time.Second)
+	r.poller.pollCoastal(context.Background(), "") // belum melewati batas satu menit
+	if breaker.State() != resilience.Closed {
+		t.Fatal("jam yang diam kurang dari batas belum boleh dianggap basi")
+	}
+	now = now.Add(2 * time.Minute)
+	r.poller.pollCoastal(context.Background(), "")
+	if breaker.State() == resilience.Closed {
+		t.Fatal("jam sensor yang diam lebih dari batas harus ditolak sebagai data basi")
+	}
+}
+
+// Sensor dimulai ulang sehingga jamnya mundur: garis waktu baru diterima, bukan ditolak selamanya.
+func TestCoastalSensorRestartWithEarlierClockIsAccepted(t *testing.T) {
+	now := time.Date(2026, 11, 18, 2, 20, 0, 0, time.UTC)
+	generated := time.Date(2026, 11, 12, 5, 0, 0, 0, time.UTC)
+	r, breaker := coastalRig(t, &now, &generated)
+	r.poller.pollCoastal(context.Background(), "")
+	generated = time.Date(2026, 11, 12, 0, 0, 0, 0, time.UTC)
+	now = now.Add(time.Second)
+	r.poller.pollCoastal(context.Background(), "")
+	if len(r.store.ids()) != 2 || breaker.State() != resilience.Closed {
+		t.Fatalf("tersimpan %d event, breaker %v; jam yang mundur harus diterima sebagai garis waktu baru", len(r.store.ids()), breaker.State())
 	}
 }

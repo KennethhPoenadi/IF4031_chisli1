@@ -88,6 +88,8 @@ type Poller struct {
 	coastalStaleAfter      time.Duration
 	coastalStationCacheTTL time.Duration
 	coastalNow             func() time.Time
+	coastalLastGenerated   time.Time // generated_at terbaru yang pernah dilihat (jam sensor)
+	coastalLastAdvancedAt  time.Time // waktu lokal saat generated_at terakhir maju
 	coastalStations        map[string]map[string]any
 	coastalStationsAt      time.Time
 
