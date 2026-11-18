@@ -117,7 +117,7 @@ func (s *DocStore) Put(ctx context.Context, d Doc) error {
 			err := s.units[name].PutDoc(uctx, d)
 			end(err)
 			if err != nil {
-				s.r.markDown(name, err)
+				s.r.markDownCtx(ctx, name, err)
 				return
 			}
 			ok.Add(1)
@@ -134,7 +134,7 @@ func (s *DocStore) Put(ctx context.Context, d Doc) error {
 			err := s.units[name].PutDoc(uctx, d)
 			cancel()
 			if err != nil {
-				s.r.markDown(name, err)
+				s.r.markDownCtx(ctx, name, err)
 				continue
 			}
 			docDegraded(ctx, 1)
@@ -169,7 +169,7 @@ func (s *DocStore) Get(ctx context.Context, collection, key string) (*Doc, error
 		d, err := s.units[name].GetDoc(uctx, collection, key)
 		cancel()
 		if err != nil {
-			s.r.markDown(name, err)
+			s.r.markDownCtx(ctx, name, err)
 			continue
 		}
 		reached++
@@ -557,7 +557,7 @@ func (s *DocStore) repairDoc(ctx context.Context, names []string, id string, ver
 		err := s.units[name].PutDoc(uctx, cp)
 		cancel()
 		if err != nil {
-			s.r.markDown(name, err)
+			s.r.markDownCtx(ctx, name, err)
 			complete = false
 		}
 	}

@@ -397,7 +397,7 @@ func (r *Router) pingAll(ctx context.Context) {
 			uctx, cancel := context.WithTimeout(ctx, r.cfg.UnitTimeout)
 			defer cancel()
 			if err := u.Ping(uctx); err != nil {
-				r.markDown(name, err)
+				r.markDownCtx(ctx, name, err)
 				return
 			}
 			if r.markUp(name) {

@@ -1238,3 +1238,48 @@ func TestRepairBatchTimeoutDoesNotMarkUnitDownAndIsRetriedNextTime(t *testing.T)
 		t.Fatalf("rebuilding = %v setelah perbaikan bersih", r.Rebuilding())
 	}
 }
+
+// Klien yang membatalkan permintaannya (putus atau tidak sabar) membatalkan operasi ke semua unit sekaligus.
+// Itu bukan kegagalan penyimpanan: unit tidak boleh ditandai mati, karena permintaan lain akan dijawab 503.
+func TestCallerCancellationDoesNotMarkAnyUnitDown(t *testing.T) {
+	r, fakes := newCluster(t, "store-0", "store-1", "store-2")
+	load(t, r, 60)
+	for _, f := range fakes {
+		f.mu.Lock()
+		f.blockQuery = true
+		f.mu.Unlock()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+	_, _ = r.ListEvents(ctx, ListQuery{Limit: 1000, Order: NewestFirst})
+	if down := r.downSet(); len(down) != 0 {
+		t.Fatalf("unit ditandai mati karena klien membatalkan permintaan: %v", sortedKeys(down))
+	}
+	for _, f := range fakes {
+		f.mu.Lock()
+		f.blockQuery = false
+		f.mu.Unlock()
+	}
+	page, err := r.ListEvents(context.Background(), ListQuery{Limit: 1000, Order: NewestFirst})
+	if err != nil || len(page.Events) != 60 || page.Partial {
+		t.Fatalf("permintaan berikutnya harus langsung lengkap: %d event partial=%v err=%v", len(page.Events), page.Partial, err)
+	}
+}
+
+// Timeout yang berasal dari unit itu sendiri (konteks induk masih hidup) tetap menandainya mati.
+func TestUnitOwnTimeoutStillMarksOnlyThatUnitDown(t *testing.T) {
+	r, fakes := newCluster(t, "store-0", "store-1", "store-2")
+	load(t, r, 60)
+	fakes[1].mu.Lock()
+	fakes[1].blockQuery = true
+	fakes[1].mu.Unlock()
+	if _, err := r.ListEvents(context.Background(), ListQuery{Limit: 1000, Order: NewestFirst}); err != nil {
+		t.Fatal(err)
+	}
+	if down := sortedKeys(r.downSet()); len(down) != 1 || down[0] != "store-1" {
+		t.Fatalf("down = %v, want hanya [store-1]", down)
+	}
+}

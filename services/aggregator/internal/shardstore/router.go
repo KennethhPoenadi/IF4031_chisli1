@@ -1,6 +1,7 @@
 package shardstore
 
 import (
+	"errors"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -146,6 +147,18 @@ func (r *Router) downSet() map[string]bool {
 	return out
 }
 
+// markDownCtx menandai unit mati hanya bila kegagalannya benar-benar berasal dari unit itu. Pembatalan oleh
+// pemanggil (klien putus, batas waktu permintaan yang lebih luas) membatalkan operasi ke semua unit sekaligus
+// dan tidak boleh membuat seluruh penyimpanan terlihat mati: satu klien yang tidak sabar akan membuat permintaan
+// lain dijawab 503 sampai ping berikutnya. Timeout per unit (DeadlineExceeded dari konteks unit sendiri) tetap
+// dihitung karena konteks induk masih hidup.
+func (r *Router) markDownCtx(ctx context.Context, name string, err error) {
+	if errors.Is(err, context.Canceled) || ctx.Err() != nil {
+		return
+	}
+	r.markDown(name, err)
+}
+
 func (r *Router) markDown(name string, err error) {
 	r.mu.Lock()
 	was := r.down[name]
@@ -199,7 +212,7 @@ func (r *Router) each(ctx context.Context, op string, timeout time.Duration, fn 
 			err := fn(uctx, u)
 			endSpan(err)
 			if err != nil {
-				r.markDown(name, err)
+				r.markDownCtx(ctx, name, err)
 				mu.Lock()
 				failed[name] = true
 				mu.Unlock()
@@ -234,7 +247,7 @@ func (r *Router) Save(ctx context.Context, ev hazard.Event) error {
 			err := r.units[name].Upsert(sctx, ev, owners)
 			endSpan(err)
 			if err != nil {
-				r.markDown(name, err)
+				r.markDownCtx(ctx, name, err)
 				return
 			}
 			okCount.Add(1)
@@ -251,7 +264,7 @@ func (r *Router) Save(ctx context.Context, ev hazard.Event) error {
 			err := r.units[name].Upsert(uctx, ev, owners)
 			cancel()
 			if err != nil {
-				r.markDown(name, err)
+				r.markDownCtx(ctx, name, err)
 				continue
 			}
 			degradedWrites(ctx, 1)

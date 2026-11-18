@@ -91,7 +91,7 @@ func (r *Router) loadPollCursors(ctx context.Context, source string) ([]pollCurs
 			defer cancel()
 			cursor, err := unit.LoadPollCursor(uctx, source)
 			if err != nil {
-				r.markDown(name, err)
+				r.markDownCtx(ctx, name, err)
 			}
 			results <- pollCursorResult{unit: name, cursor: cursor, err: err}
 		}(name, unit)
@@ -131,7 +131,7 @@ func (r *Router) writePollState(ctx context.Context, write func(context.Context,
 			uctx, cancel := context.WithTimeout(ctx, r.cfg.UnitTimeout)
 			defer cancel()
 			if err := write(uctx, unit); err != nil {
-				r.markDown(name, err)
+				r.markDownCtx(ctx, name, err)
 				mu.Lock()
 				failed = append(failed, name)
 				mu.Unlock()
