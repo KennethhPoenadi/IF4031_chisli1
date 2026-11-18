@@ -4,13 +4,18 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"client-facing-api/internal/httpx"
 )
 
 const testKey = "aggregator-key-for-tests"
@@ -183,5 +188,168 @@ func TestConnectionPoolMatchesTheRequestLimit(t *testing.T) {
 	}
 	if http.DefaultTransport.(*http.Transport).MaxConnsPerHost == 37 {
 		t.Fatal("the shared default transport must not be modified")
+	}
+}
+
+// Permintaan identik yang tiba bersamaan harus digabung menjadi satu panggilan ke Aggregator, dan semuanya mendapat hasil yang sama.
+func TestEventsCoalescesConcurrentIdenticalQueries(t *testing.T) {
+	var hits atomic.Int64
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		<-release // tahan panggilan pertama supaya yang lain sempat bergabung
+		_, _ = w.Write([]byte(`{"data":[{"hazard_id":"a"}],"meta":{}}`))
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "k", 5*time.Second, 10, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	const n = 50
+	var wg sync.WaitGroup
+	results := make([]Result, n)
+	errs := make([]error, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			results[i], errs[i] = c.Events(context.Background(), url.Values{"hazard_type": {"SEISMIC"}}, "c")
+		}(i)
+	}
+	// beri waktu semua goroutine masuk ke Events sebelum panggilan dilepas
+	time.Sleep(200 * time.Millisecond)
+	close(release)
+	wg.Wait()
+
+	if got := hits.Load(); got != 1 {
+		t.Fatalf("Aggregator dipanggil %d kali untuk %d permintaan identik; seharusnya 1", got, n)
+	}
+	for i := 0; i < n; i++ {
+		if errs[i] != nil || len(results[i].Events) != 1 {
+			t.Fatalf("permintaan %d: err=%v events=%d", i, errs[i], len(results[i].Events))
+		}
+	}
+}
+
+// Kueri berbeda tidak boleh digabung.
+func TestEventsDoesNotCoalesceDifferentQueries(t *testing.T) {
+	var hits atomic.Int64
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		<-release
+		_, _ = w.Write([]byte(`{"data":[],"meta":{}}`))
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "k", 5*time.Second, 10, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	var wg sync.WaitGroup
+	for _, typ := range []string{"SEISMIC", "VOLCANIC", "COASTAL"} {
+		wg.Add(1)
+		go func(typ string) {
+			defer wg.Done()
+			_, _ = c.Events(context.Background(), url.Values{"hazard_type": {typ}}, "c")
+		}(typ)
+	}
+	time.Sleep(200 * time.Millisecond)
+	close(release)
+	wg.Wait()
+	if got := hits.Load(); got != 3 {
+		t.Fatalf("tiga kueri berbeda memicu %d panggilan; seharusnya 3", got)
+	}
+}
+
+// Pemanggil yang batal berhenti menunggu, tetapi pemanggil lain yang bergabung tetap mendapat hasilnya.
+func TestEventsCallerCancellationDoesNotAffectOthers(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		<-release
+		_, _ = w.Write([]byte(`{"data":[{"hazard_id":"x"}],"meta":{}}`))
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "k", 5*time.Second, 10, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	q := url.Values{"hazard_type": {"SEISMIC"}}
+
+	first, cancel := context.WithCancel(context.Background())
+	firstDone := make(chan error, 1)
+	go func() { _, err := c.Events(first, q, "c"); firstDone <- err }()
+	time.Sleep(100 * time.Millisecond)
+
+	secondDone := make(chan error, 1)
+	var secondRes Result
+	go func() {
+		var err error
+		secondRes, err = c.Events(context.Background(), q, "c")
+		secondDone <- err
+	}()
+	time.Sleep(100 * time.Millisecond)
+
+	cancel() // pemanggil pertama (yang memulai panggilan) batal
+	if err := <-firstDone; !errors.Is(err, context.Canceled) {
+		t.Fatalf("pemanggil yang batal mendapat %v; seharusnya context.Canceled", err)
+	}
+	close(release)
+	if err := <-secondDone; err != nil || len(secondRes.Events) != 1 {
+		t.Fatalf("pemanggil kedua terdampak pembatalan: err=%v events=%d", err, len(secondRes.Events))
+	}
+}
+
+// Galat dibagi ke semua penunggu, dan panggilan berikutnya (sesudah selesai) memulai panggilan baru, bukan memakai hasil lama.
+func TestEventsSharesErrorsAndDoesNotCacheAfterCompletion(t *testing.T) {
+	var hits atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if hits.Add(1) == 1 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write([]byte(`{"data":[{"hazard_id":"ok"}],"meta":{}}`))
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "k", 5*time.Second, 10, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	q := url.Values{"hazard_type": {"SEISMIC"}}
+
+	if _, err := c.Events(context.Background(), q, "c"); err == nil {
+		t.Fatal("panggilan pertama seharusnya gagal (HTTP 500)")
+	}
+	res, err := c.Events(context.Background(), q, "c") // sesudah selesai: harus panggilan baru
+	if err != nil || len(res.Events) != 1 {
+		t.Fatalf("panggilan kedua memakai hasil lama atau gagal: err=%v events=%d", err, len(res.Events))
+	}
+	if hits.Load() != 2 {
+		t.Fatalf("Aggregator dipanggil %d kali; seharusnya 2 (tanpa cache berumur)", hits.Load())
+	}
+}
+
+// Permintaan prioritas tidak boleh bergabung ke panggilan milik permintaan biasa (yang bisa macet), dan sebaliknya.
+func TestEventsNeverCoalescesPriorityWithNonPriority(t *testing.T) {
+	var hits atomic.Int64
+	block := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if hits.Add(1) == 1 {
+			<-block // panggilan pertama (non-prioritas) macet
+		}
+		_, _ = w.Write([]byte(`{"data":[{"hazard_id":"p"}],"meta":{}}`))
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "k", 5*time.Second, 10, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	q := url.Values{"hazard_type": {"SEISMIC"}}
+
+	go func() { _, _ = c.Events(context.Background(), q, "c") }()
+	time.Sleep(100 * time.Millisecond)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := c.Events(httpx.WithPriority(context.Background(), true), q, "c")
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("permintaan prioritas gagal: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("permintaan prioritas tertahan di belakang panggilan non-prioritas yang macet")
+	}
+	close(block)
+	if hits.Load() != 2 {
+		t.Fatalf("Aggregator dipanggil %d kali; prioritas dan non-prioritas harus terpisah (2)", hits.Load())
 	}
 }

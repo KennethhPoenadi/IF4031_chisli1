@@ -17,10 +17,23 @@ type ctxKey int
 const (
 	keyCorr ctxKey = iota
 	keyInfo
+	keyPriority
 )
 
 type Info struct {
 	Client string
+}
+
+// WithPriority menandai apakah permintaan ini berkelas prioritas (klien lapangan). Dipakai agar permintaan prioritas tidak digabung
+// dengan permintaan biasa saat memanggil Aggregator (lihat upstream.Client.Events): isolasi prioritas harus tetap utuh.
+func WithPriority(ctx context.Context, priority bool) context.Context {
+	return context.WithValue(ctx, keyPriority, priority)
+}
+
+// IsPriority melaporkan kelas prioritas yang ditandai WithPriority; false bila tidak ditandai.
+func IsPriority(ctx context.Context) bool {
+	p, _ := ctx.Value(keyPriority).(bool)
+	return p
 }
 
 func CorrelationID(ctx context.Context) string {

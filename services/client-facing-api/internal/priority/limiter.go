@@ -62,11 +62,12 @@ func New(cfg Config) (*Limiter, error) {
 
 func (l *Limiter) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		release, result := l.acquire(r.Context(), l.isPriority(r))
+		isPriority := l.isPriority(r)
+		release, result := l.acquire(r.Context(), isPriority)
 		switch result {
 		case admitted:
 			defer release()
-			next.ServeHTTP(w, r)
+			next.ServeHTTP(w, r.WithContext(httpx.WithPriority(r.Context(), isPriority)))
 		case rejected:
 			w.Header().Set("Retry-After", "1")
 			httpx.WriteError(w, http.StatusTooManyRequests, "too_many_requests", "server is at capacity, retry shortly")

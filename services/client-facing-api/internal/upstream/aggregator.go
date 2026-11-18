@@ -9,7 +9,10 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
+
+	"client-facing-api/internal/httpx"
 )
 
 type Client struct {
@@ -17,6 +20,17 @@ type Client struct {
 	key  string
 	http *http.Client
 	log  *slog.Logger
+
+	// Panggilan Events yang sedang berjalan, dikelompokkan menurut kueri. Lihat Events.
+	mu       sync.Mutex
+	inflight map[string]*call
+}
+
+// call adalah satu panggilan ke Aggregator yang hasilnya dibagi ke semua penunggu kueri yang sama.
+type call struct {
+	done chan struct{}
+	res  Result
+	err  error
 }
 
 // new creates an Aggregator client whose connection pool matches the API request limit, reusing these connections avoids opening a new TCP connection for every request
@@ -81,7 +95,55 @@ func (c *Client) Forward(ctx context.Context, method, pathAndQuery, correlationI
 	return resp.StatusCode, body, nil
 }
 
+// Events mengembalikan kejadian dari Aggregator. Permintaan dengan kueri yang sama yang tiba selagi satu panggilan masih berjalan
+// digabung menjadi satu panggilan (request coalescing) dan membagi hasilnya. Pada beban tinggi ratusan klien meminta kueri yang
+// sama persis, dan tanpa penggabungan tiap permintaan memicu pemindaian penuh ke semua unit penyimpanan (sekitar 15 ms CPU Mongo
+// dan 8 ms CPU Aggregator per permintaan), sehingga CPU habis dan permintaan berujung timeout.
+//
+// Aman terhadap hak akses: kueri hanya berisi parameter filter (limit, hazard_type, severity, since) dan tidak memuat identitas
+// klien; pembatasan field per peran dilakukan pemanggil sesudah hasil kembali. Tidak ada cache berumur: hasil hanya dibagi ke
+// permintaan yang menunggu panggilan yang sedang berjalan, jadi data sesegar satu panggilan biasa. Hasil dibaca bersama dan tidak
+// boleh diubah oleh pemanggil. Pemanggil yang batal (context) berhenti menunggu tanpa membatalkan panggilan untuk yang lain.
 func (c *Client) Events(ctx context.Context, q url.Values, correlationID string) (Result, error) {
+	// Kelas prioritas ikut kunci: permintaan prioritas hanya digabung dengan sesama prioritas, jadi panggilan yang macet milik
+	// permintaan biasa tidak pernah menahan permintaan prioritas (isolasi prioritas P5).
+	key := q.Encode()
+	if httpx.IsPriority(ctx) {
+		key = "priority|" + key
+	}
+	c.mu.Lock()
+	if cl, ok := c.inflight[key]; ok {
+		c.mu.Unlock()
+		return cl.wait(ctx)
+	}
+	cl := &call{done: make(chan struct{})}
+	if c.inflight == nil {
+		c.inflight = make(map[string]*call)
+	}
+	c.inflight[key] = cl
+	c.mu.Unlock()
+
+	// Panggilan berjalan terpisah dari pembatalan pemanggil pertama; batas waktunya tetap dari http.Client.Timeout.
+	go func() {
+		cl.res, cl.err = c.fetchEvents(context.WithoutCancel(ctx), q, correlationID)
+		c.mu.Lock()
+		delete(c.inflight, key)
+		c.mu.Unlock()
+		close(cl.done)
+	}()
+	return cl.wait(ctx)
+}
+
+func (cl *call) wait(ctx context.Context) (Result, error) {
+	select {
+	case <-cl.done:
+		return cl.res, cl.err
+	case <-ctx.Done():
+		return Result{}, ctx.Err()
+	}
+}
+
+func (c *Client) fetchEvents(ctx context.Context, q url.Values, correlationID string) (Result, error) {
 	u := c.base + "/hazard-events"
 	if enc := q.Encode(); enc != "" {
 		u += "?" + enc
