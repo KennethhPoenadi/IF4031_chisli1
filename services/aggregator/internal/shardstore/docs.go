@@ -662,16 +662,44 @@ func indexOf(list []string, s string) int {
 	return -1
 }
 
+// runPurge membersihkan tombstone lama secara berkala dan hanya pada instance yang boleh memperbaiki (leader).
+func (s *DocStore) runPurge(ctx context.Context) {
+	timer := time.NewTimer(purgeFirstDelay)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+		}
+		next := purgeInterval
+		if s.r.repairAllowed() {
+			pctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+			n, err := s.PurgeTombstones(pctx)
+			cancel()
+			if err != nil && ctx.Err() == nil {
+				s.r.cfg.Log.Warn("pembersihan tombstone gagal", "err", err, "dihapus", n)
+			} else if n > 0 {
+				s.r.cfg.Log.Info("tombstone lama dibersihkan", "dihapus", n)
+			}
+			if n >= purgeMaxPerUnit || (n == 0 && s.tombstoneGrace > 0 && s.purgeBlocked()) {
+				// Masih ada pekerjaan, atau tertahan unit yang sedang putus: coba lagi segera, bukan menunggu satu interval penuh.
+				next = purgeCatchUpInterval
+			}
+		}
+		timer.Reset(next)
+	}
+}
+
 // menjalankan perbaikan dokumen secara berkala.
 func (s *DocStore) Run(ctx context.Context) {
 	t := time.NewTicker(s.r.cfg.RepairInterval)
 	defer t.Stop()
 	fast := time.NewTicker(s.r.cfg.PingInterval * 5)
 	defer fast.Stop()
-	purge := time.NewTicker(purgeInterval)
-	defer purge.Stop()
-	// Leader baru membersihkan tak lama setelah mulai, bukan menunggu satu interval penuh.
-	purge.Reset(purgeFirstDelay)
+	// Pembersihan tombstone berjalan di goroutine sendiri: perbaikan memindai seluruh koleksi dan dapat berlangsung berkepanjangan,
+	// sehingga bila berbagi satu loop dengannya pembersihan tidak pernah sempat dijalankan.
+	go s.runPurge(ctx)
 	// Nol berarti belum pernah memperbaiki: instance yang baru menjadi leader menjalankan satu perbaikan penuh
 	// pada tick pertama. Status "perlu perbaikan" hanya ada di memori leader sebelumnya dan hilang saat leader
 	// berganti, sehingga tanpa ini sisa perbaikan menunggu jaring pengaman berkala.
@@ -688,24 +716,6 @@ func (s *DocStore) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-purge.C:
-			if !s.r.repairAllowed() {
-				continue
-			}
-			pctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
-			n, err := s.PurgeTombstones(pctx)
-			cancel()
-			if err != nil && ctx.Err() == nil {
-				s.r.cfg.Log.Warn("pembersihan tombstone gagal", "err", err, "dihapus", n)
-			} else if n > 0 {
-				s.r.cfg.Log.Info("tombstone lama dibersihkan", "dihapus", n)
-			}
-			if n >= purgeMaxPerUnit || (n == 0 && s.tombstoneGrace > 0 && s.purgeBlocked()) {
-				// Masih ada pekerjaan, atau tertahan unit yang sedang putus: coba lagi segera, bukan menunggu satu interval penuh.
-				purge.Reset(purgeCatchUpInterval)
-			} else {
-				purge.Reset(purgeInterval)
-			}
 		case <-fast.C:
 			if !s.r.repairAllowed() {
 				continue
