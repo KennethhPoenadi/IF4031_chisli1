@@ -346,10 +346,12 @@ func (s *DocStore) ScanAll(ctx context.Context, q DocQuery) ([]Doc, bool, error)
 	}
 }
 
-// repairEntriesPerPass membatasi jumlah dokumen yang ditampung di memori dalam satu lintasan perbaikan.
-// Tiap entri sekitar 200 byte, sehingga 100.000 entri sekitar 20 MB. Bila isi penyimpanan lebih besar,
-// perbaikan dibagi menjadi beberapa lintasan menurut hash kunci, bukan memuat semuanya sekaligus.
-const repairEntriesPerPass = 100_000
+// repairEntriesPerPass membatasi jumlah entri yang ditampung di memori dalam satu lintasan perbaikan.
+// Entri HazardEvent (KeyRecord beserta daftar pemilik, dua sampai tiga salinan) sekitar 1 KB, sehingga
+// 20.000 entri sekitar 20 MB dan puncaknya (map lokal per unit ditambah map gabungan) sekitar 40 MB. Nilai
+// 100.000 pernah membuat Aggregator (batas memori 512Mi dari Lampiran B) di-OOMKill saat memperbaiki unit.
+// Bila isi penyimpanan lebih besar, perbaikan dibagi menjadi beberapa lintasan menurut hash kunci.
+const repairEntriesPerPass = 20_000
 
 const maxRepairBuckets = 256
 
@@ -587,7 +589,10 @@ func (s *DocStore) Run(ctx context.Context) {
 	defer t.Stop()
 	fast := time.NewTicker(s.r.cfg.PingInterval * 5)
 	defer fast.Stop()
-	lastRun := time.Now()
+	// Nol berarti belum pernah memperbaiki: instance yang baru menjadi leader menjalankan satu perbaikan penuh
+	// pada tick pertama. Status "perlu perbaikan" hanya ada di memori leader sebelumnya dan hilang saat leader
+	// berganti, sehingga tanpa ini sisa perbaikan menunggu jaring pengaman berkala.
+	var lastRun time.Time
 	run := func() {
 		lastRun = time.Now()
 		rctx, cancel := context.WithTimeout(ctx, s.r.cfg.RepairTimeout)

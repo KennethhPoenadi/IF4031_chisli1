@@ -343,7 +343,10 @@ func (r *Router) Run(ctx context.Context) {
 	repair := time.NewTicker(r.cfg.RepairInterval)
 	defer repair.Stop()
 
-	lastRun := time.Now()
+	// Nol berarti belum pernah memperbaiki: instance yang baru menjadi leader menjalankan satu perbaikan penuh
+	// pada tick pertama. Status "perlu perbaikan" hanya ada di memori leader sebelumnya dan hilang saat leader
+	// berganti, sehingga tanpa ini sisa perbaikan menunggu jaring pengaman berkala.
+	var lastRun time.Time
 	runRepair := func() {
 		lastRun = time.Now()
 		rctx, cancel := context.WithTimeout(ctx, r.cfg.RepairTimeout)
