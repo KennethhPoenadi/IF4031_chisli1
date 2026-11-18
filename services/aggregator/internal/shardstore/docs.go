@@ -91,6 +91,8 @@ const (
 	// Bila satu putaran mencapai batas, masih ada banyak tombstone: putaran berikutnya dipercepat.
 	purgeCatchUpInterval = time.Minute
 	purgeFirstDelay      = 30 * time.Second
+	purgeParallel        = 2
+	purgeUnitTimeout     = 4 * time.Minute
 )
 
 // purgeBlocked: pembersihan ditunda selama ada unit mati atau sedang dibangun ulang.
@@ -126,25 +128,45 @@ func (s *DocStore) PurgeTombstones(ctx context.Context) (int64, error) {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	var total int64
-	var firstErr error
+	// Tiap unit dibersihkan di goroutine sendiri dengan batas waktu sendiri, paling banyak purgeParallel sekaligus. Unit yang lambat
+	// (mis. node lain di jaringan yang padat) tidak lagi menahan unit lain, dan beban penghapusan di satu node tetap terbatas.
+	var (
+		mu       sync.Mutex
+		total    int64
+		firstErr error
+		wg       sync.WaitGroup
+	)
+	sem := make(chan struct{}, purgeParallel)
 	for _, name := range names {
-		var unitTotal int64
-		for unitTotal < purgeMaxPerUnit && ctx.Err() == nil {
-			n, err := s.units[name].PurgeTombstones(ctx, cutoff, purgeBatch)
-			unitTotal += n
-			if err != nil {
-				if firstErr == nil {
-					firstErr = fmt.Errorf("pembersihan tombstone pada %s: %w", name, err)
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(name string) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			uctx, cancel := context.WithTimeout(ctx, purgeUnitTimeout)
+			defer cancel()
+			var unitTotal int64
+			var unitErr error
+			for unitTotal < purgeMaxPerUnit && uctx.Err() == nil {
+				n, err := s.units[name].PurgeTombstones(uctx, cutoff, purgeBatch)
+				unitTotal += n
+				if err != nil {
+					unitErr = fmt.Errorf("pembersihan tombstone pada %s: %w", name, err)
+					break
 				}
-				break
+				if n < purgeBatch {
+					break
+				}
 			}
-			if n < purgeBatch {
-				break
+			mu.Lock()
+			total += unitTotal
+			if unitErr != nil && firstErr == nil {
+				firstErr = unitErr
 			}
-		}
-		total += unitTotal
+			mu.Unlock()
+		}(name)
 	}
+	wg.Wait()
 	return total, firstErr
 }
 
