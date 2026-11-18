@@ -312,5 +312,7 @@ func (h *Handler) distribution(w http.ResponseWriter, r *http.Request) {
 		"as_of":              d.AsOf.UTC().Format(time.RFC3339),
 		"partial":            d.Partial,
 		"unavailable_units":  unavailable(d.Unavailable),
+		"under_replicated":   d.UnderReplicated,
+		"rebuilding_units":   unavailable(d.Rebuilding),
 	})
 }

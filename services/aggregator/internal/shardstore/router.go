@@ -1,12 +1,12 @@
 package shardstore
 
 import (
-	"errors"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -69,7 +69,9 @@ func (c *Config) defaults() {
 		c.UnitTimeout = 2 * time.Second
 	}
 	if c.RepairTimeout <= 0 {
-		c.RepairTimeout = 5 * time.Minute
+		// Perbaikan idempoten dan dapat dilanjutkan, tetapi membangun ulang unit kosong atas puluhan ribu event
+		// lewat batas lima menit terpotong di tengah jalan. Ini hanya batas atas; perbaikan normal jauh lebih singkat.
+		c.RepairTimeout = 30 * time.Minute
 	}
 	if c.PingInterval <= 0 {
 		c.PingInterval = 2 * time.Second
@@ -84,10 +86,10 @@ func (c *Config) defaults() {
 
 type Router struct {
 	repairLimit int // 0 = repairEntriesPerPass; diubah hanya oleh tes
-	cfg   Config
-	units map[string]Unit
-	ring  *Ring
-	rf    int
+	cfg         Config
+	units       map[string]Unit
+	ring        *Ring
+	rf          int
 
 	mu         sync.Mutex
 	down       map[string]bool

@@ -99,3 +99,40 @@ func TestDistributionIsPartialAndStillAnswersWhenNodesAreDown(t *testing.T) {
 }
 
 func idx(name string) int { return int(name[len(name)-1] - '0') }
+
+// Sinyal kelengkapan: sesudah unit kembali kosong, ada event yang salinannya kurang (belum tahan kehilangan
+// unit berikutnya). Sesudah perbaikan bersih, tidak ada lagi dan status rebuilding kosong.
+func TestDistributionReportsUnderReplicationUntilRepairCompletes(t *testing.T) {
+	r, fakes := distCluster(t)
+	load(t, r, 300)
+	ctx := context.Background()
+
+	d, err := r.Distribution(ctx)
+	if err != nil || d.UnderReplicated != 0 || len(d.Rebuilding) != 0 {
+		t.Fatalf("awal: %+v err=%v", d, err)
+	}
+
+	fakes[1].set(true)
+	fakes[1].wipe()
+	r.pingAll(ctx)
+	fakes[1].set(false)
+	r.pingAll(ctx)
+	d, err = r.Distribution(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.UnderReplicated == 0 {
+		t.Fatal("unit kosong: harus ada event yang salinannya kurang")
+	}
+	if len(d.Rebuilding) != 1 || d.Rebuilding[0] != "store-1" {
+		t.Fatalf("rebuilding = %v, want [store-1]", d.Rebuilding)
+	}
+
+	if _, err := r.RepairOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	d, err = r.Distribution(ctx)
+	if err != nil || d.UnderReplicated != 0 || len(d.Rebuilding) != 0 || d.Partial {
+		t.Fatalf("sesudah perbaikan: %+v err=%v", d, err)
+	}
+}

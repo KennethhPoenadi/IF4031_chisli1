@@ -39,6 +39,11 @@ type Distribution struct {
 	AsOf        time.Time
 	Partial     bool
 	Unavailable []string
+	// UnderReplicated adalah jumlah event yang salinannya kurang dari faktor replikasi. Nol berarti sistem
+	// kembali mampu bertahan dari kehilangan satu unit berikutnya tanpa ada event yang tidak terbaca.
+	UnderReplicated int
+	// Rebuilding adalah unit yang sudah hidup kembali tetapi belum selesai dibangun ulang.
+	Rebuilding []string
 }
 
 // Distribution melaporkan sebaran data per unit dan per node. Primary dan replica dinilai dari ring saat
@@ -47,7 +52,7 @@ type Distribution struct {
 func (r *Router) Distribution(ctx context.Context) (Distribution, error) {
 	var mu sync.Mutex
 	shares := map[string]*UnitShare{}
-	unique := map[string]struct{}{}
+	copiesOf := map[string]uint8{}
 	tombs := r.loadTombstones(ctx)
 
 	failed := r.each(ctx, "store.distribution", r.cfg.RepairTimeout, func(uctx context.Context, u Unit) error {
@@ -74,7 +79,9 @@ func (r *Router) Distribution(ctx context.Context) (Distribution, error) {
 		defer mu.Unlock()
 		shares[share.Unit] = share
 		for _, id := range ids {
-			unique[id] = struct{}{}
+			if copiesOf[id] < 255 {
+				copiesOf[id]++
+			}
 		}
 		return nil
 	})
@@ -83,11 +90,17 @@ func (r *Router) Distribution(ctx context.Context) (Distribution, error) {
 	}
 
 	out := Distribution{
-		Total:       len(unique),
+		Total:       len(copiesOf),
 		Replication: r.rf,
 		AsOf:        time.Now().UTC(),
 		Partial:     !r.ring.Covered(r.coverageDown(), r.rf),
 		Unavailable: failed,
+		Rebuilding:  r.Rebuilding(),
+	}
+	for _, n := range copiesOf {
+		if int(n) < r.rf {
+			out.UnderReplicated++
+		}
 	}
 	byNode := map[string]*NodeShare{}
 	for _, name := range r.UnitNames() {

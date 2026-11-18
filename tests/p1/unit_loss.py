@@ -38,12 +38,27 @@ def kubectl(*args, check=True):
     return r.stdout.strip()
 
 
+def aget(c, path, tries=40):
+    """Pembacaan verifikasi (bukan lalu lintas yang diukur): mengulang saat 503/putus sesaat selama pemulihan."""
+    last = None
+    for _ in range(tries):
+        try:
+            code, res = p1.http_json("GET", c.audit + path, {"Authorization": "Bearer " + c.token}, timeout=60)
+        except Exception as e:  # noqa: BLE001
+            code, res = 0, {"error": str(e)}
+        if code == 200:
+            return res
+        last = (code, res)
+        time.sleep(3)
+    raise SystemExit(f"audit {path} gagal setelah {tries} percobaan: {last}")
+
+
 def all_refs(c, source):
     """Seluruh source_ref_id satu sumber lewat Audit API (berhalaman)."""
     refs, cursor, partial = set(), "", False
     while True:
         q = f"/internal/audit/events?source={source}&limit=1000" + (f"&cursor={cursor}" if cursor else "")
-        page = c.audit_get(q)
+        page = aget(c, q)
         refs.update(ev["source_ref_id"] for ev in page["items"])
         partial = partial or page["partial"]
         cursor = page.get("next_cursor")
@@ -129,7 +144,7 @@ def bad(summary):
 
 
 def unit_copies(c, unit):
-    d = c.audit_get("/internal/audit/distribution")
+    d = aget(c, "/internal/audit/distribution")
     return next((u["copies"] for u in d["units"] if u["unit"] == unit), 0), d
 
 
@@ -151,7 +166,7 @@ def main():
     ap.add_argument("--victim", default="store-1", help="unit yang dihapus beserta volumenya")
     ap.add_argument("--second", default="store-2", help="unit yang dimatikan sesudah pemulihan (kriteria 6)")
     ap.add_argument("--source", default="BMKG")
-    ap.add_argument("--repair-timeout", type=int, default=600)
+    ap.add_argument("--repair-timeout", type=int, default=1200)
     ap.add_argument("--out")
     args = ap.parse_args()
     c, d = p1.Client(), p1.out_dir(args)
@@ -178,16 +193,23 @@ def main():
         print(f"   {args.victim} hidup lagi setelah {t_up - t_loss:.0f} dtk dengan {fresh} salinan (disk kosong)")
         report["pemulihan"] = {"siap": up, "detik_sampai_hidup": round(t_up - t_loss, 1), "salinan_awal": fresh}
 
-        print("== 3. tunggu perbaikan mengisi unit kosong")
-        end, copies = time.time() + args.repair_timeout, fresh
+        print("== 3. tunggu sistem melaporkan dirinya kembali tahan kehilangan satu unit")
+        # Sinyal resmi dari Audit API: tidak ada event yang salinannya kurang dan tidak ada unit yang masih
+        # dibangun ulang. Bukan ambang jumlah salinan: data baru terus masuk selama uji.
+        end, dist = time.time() + args.repair_timeout, {}
         while time.time() < end:
-            copies, dist = unit_copies(c, args.victim)
-            if copies >= before_copies * 0.95 and not dist["partial"]:
+            dist = aget(c, "/internal/audit/distribution")
+            if dist["under_replicated"] == 0 and not dist["rebuilding_units"] and not dist["partial"]:
                 break
             time.sleep(10)
         t_repaired = time.time()
-        print(f"   {args.victim}: {copies} salinan setelah {t_repaired - t_loss:.0f} dtk (sebelum uji {before_copies})")
-        report["pemulihan"].update({"salinan_akhir": copies, "detik_sampai_terisi": round(t_repaired - t_loss, 1)})
+        copies = next((u["copies"] for u in dist["units"] if u["unit"] == args.victim), 0)
+        complete = dist.get("under_replicated", 1) == 0 and not dist.get("rebuilding_units") and not dist.get("partial")
+        print(f"   {args.victim}: {copies} salinan; setelah {t_repaired - t_loss:.0f} dtk "
+              f"under_replicated={dist.get('under_replicated')} rebuilding={dist.get('rebuilding_units')} lengkap={complete}")
+        report["pemulihan"].update({"salinan_akhir": copies, "detik_sampai_lengkap": round(t_repaired - t_loss, 1),
+                                    "under_replicated": dist.get("under_replicated"),
+                                    "rebuilding_units": dist.get("rebuilding_units"), "lengkap": complete})
         report["lalu_lintas_kehilangan_unit"] = tr.summary(since=t_loss)
 
         print(f"== 4. periksa tidak ada event {args.source} yang hilang")
@@ -211,10 +233,14 @@ def main():
 
     violations = bad(report["lalu_lintas_total"])
     ok = (up and not missing and not missing2 and violations == 0
-          and report["pemulihan"]["salinan_akhir"] >= before_copies * 0.95)
+          and report["pemulihan"]["lengkap"])
     report["lolos"] = ok
     report["pelanggaran_lalu_lintas"] = violations
-    p1.save(d, "unit_loss.json", report)
+    if ok:
+        p1.save(d, "unit_loss.json", report)
+    else:
+        os.makedirs(os.path.join(d, "gagal"), exist_ok=True)
+        p1.save(os.path.join(d, "gagal"), "unit_loss.json", report)
     print("\n== lalu lintas selama uji:")
     for k, v in report["lalu_lintas_total"].items():
         print(f"   {k:<9} {v['jumlah']:>4} permintaan, kode {v['kode']}, partial {v['partial']}, "

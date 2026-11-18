@@ -348,10 +348,12 @@ func (s *DocStore) ScanAll(ctx context.Context, q DocQuery) ([]Doc, bool, error)
 
 // repairEntriesPerPass membatasi jumlah entri yang ditampung di memori dalam satu lintasan perbaikan.
 // Entri HazardEvent (KeyRecord beserta daftar pemilik, dua sampai tiga salinan) sekitar 1 KB, sehingga
-// 20.000 entri sekitar 20 MB dan puncaknya (map lokal per unit ditambah map gabungan) sekitar 40 MB. Nilai
+// 40.000 entri sekitar 40 MB dan puncaknya (map lokal per unit ditambah map gabungan) sekitar 80 MB. Nilai
 // 100.000 pernah membuat Aggregator (batas memori 512Mi dari Lampiran B) di-OOMKill saat memperbaiki unit.
-// Bila isi penyimpanan lebih besar, perbaikan dibagi menjadi beberapa lintasan menurut hash kunci.
-const repairEntriesPerPass = 20_000
+// Tiap lintasan memindai ulang seluruh unit, jadi nilai yang terlalu kecil memperlambat perbaikan (20.000
+// membagi 140.000 event menjadi tujuh lintasan dan melewati batas waktu). Bila isi penyimpanan lebih besar,
+// perbaikan dibagi menjadi beberapa lintasan menurut hash kunci.
+const repairEntriesPerPass = 40_000
 
 const maxRepairBuckets = 256
 
