@@ -1283,3 +1283,29 @@ func TestUnitOwnTimeoutStillMarksOnlyThatUnitDown(t *testing.T) {
 		t.Fatalf("down = %v, want hanya [store-1]", down)
 	}
 }
+
+// Perbaikan yang terpotong batas waktu harus tetap maju: putaran berikutnya tidak boleh mengulang bucket
+// depan yang sama, supaya bucket belakang tidak kelaparan.
+func TestRepairRotatesStartingBucketSoTruncatedRunsStillMakeProgress(t *testing.T) {
+	r, fakes := newBatchCluster(t)
+	r.repairLimit = 30
+	load(t, r, 600)
+	fakes[1].set(true)
+	fakes[1].wipe()
+	r.pingAll(context.Background())
+	fakes[1].set(false)
+	r.pingAll(context.Background())
+
+	seen := map[int]bool{}
+	for i := 0; i < 8; i++ {
+		before := int(r.repairRotor.Load())
+		_, _ = r.RepairOnce(context.Background())
+		seen[before%8] = true
+	}
+	if r.repairRotor.Load() < 8 {
+		t.Fatalf("rotor = %d, harus maju tiap putaran", r.repairRotor.Load())
+	}
+	if len(r.Rebuilding()) != 0 {
+		t.Fatalf("rebuilding = %v setelah beberapa putaran", r.Rebuilding())
+	}
+}

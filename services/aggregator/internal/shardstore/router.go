@@ -86,6 +86,7 @@ func (c *Config) defaults() {
 
 type Router struct {
 	repairLimit int // 0 = repairEntriesPerPass; diubah hanya oleh tes
+	repairRotor atomic.Uint32
 	cfg         Config
 	units       map[string]Unit
 	ring        *Ring

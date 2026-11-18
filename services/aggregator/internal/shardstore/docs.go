@@ -26,12 +26,12 @@ type Doc struct {
 }
 
 type DocQuery struct {
-	Collection string
-	Eq map[string]string
-	AfterSort string
-	AfterKey  string
-	Limit     int
-	WithoutData bool
+	Collection     string
+	Eq             map[string]string
+	AfterSort      string
+	AfterKey       string
+	Limit          int
+	WithoutData    bool
 	AllCollections bool
 }
 
@@ -54,6 +54,7 @@ type DocStore struct {
 	repairNeeded atomic.Bool
 	repairMu     sync.Mutex
 	repairLimit  int // 0 = repairEntriesPerPass; diubah hanya oleh tes
+	repairRotor  atomic.Uint32
 }
 
 func NewDocStore(r *Router, units []DocUnit) (*DocStore, error) {
@@ -467,7 +468,9 @@ func (s *DocStore) RepairOnce(ctx context.Context) error {
 	}
 
 	allUp := true
-	for b := 0; b < buckets; b++ {
+	start := int(s.repairRotor.Add(1)) % buckets
+	for i := 0; i < buckets; i++ {
+		b := (i + start) % buckets
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}

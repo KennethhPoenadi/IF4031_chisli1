@@ -95,7 +95,11 @@ func (r *Router) RepairOnce(ctx context.Context) (RepairStats, error) {
 	stats := RepairStats{Unavailable: failed}
 	allUp := true
 	tombs := r.loadTombstones(ctx)
-	for b := 0; b < buckets; b++ {
+	// Tiap putaran mulai dari bucket berbeda. Bila putaran terpotong batas waktu, bucket di belakang tidak
+	// boleh kelaparan sementara putaran berikutnya mengulang bucket depan yang sudah beres.
+	start := int(r.repairRotor.Add(1)) % buckets
+	for i := 0; i < buckets; i++ {
+		b := (i + start) % buckets
 		if ctx.Err() != nil {
 			return stats, ctx.Err()
 		}
