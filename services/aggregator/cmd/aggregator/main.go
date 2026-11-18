@@ -101,6 +101,12 @@ func main() {
 	defer closeStore()
 	hazardStore.RegisterMetrics()
 	hazardStore.SetTombstones(docStore)
+	hazardStore.SetRebuildMarks(docStore)
+	if election != nil {
+		// Perbaikan (memindai dan menyalin data) cukup dijalankan satu instance; replika lain hanya
+		// mengikuti status rebuilding lewat penanda yang dicatat leader.
+		hazardStore.SetRepairGate(election.IsLeader)
+	}
 	go hazardStore.Run(ctx)
 	go docStore.Run(ctx)
 

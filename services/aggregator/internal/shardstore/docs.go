@@ -307,7 +307,7 @@ func (s *DocStore) Scan(ctx context.Context, q DocQuery) (DocPage, error) {
 	}
 	sort.Slice(live, func(i, j int) bool { return posLess(live[i].SortKey, live[i].Key, live[j].SortKey, live[j].Key) })
 
-	page := DocPage{Unavailable: failed, Partial: !s.r.ring.Covered(s.r.downSet(), s.r.rf)}
+	page := DocPage{Unavailable: failed, Partial: !s.r.ring.Covered(s.r.coverageDown(), s.r.rf)}
 	switch {
 	case len(live) > q.Limit:
 		live = live[:q.Limit]
@@ -491,64 +491,85 @@ func (s *DocStore) RepairOnce(ctx context.Context) error {
 // ini; salinan usang hanya dihapus bila benar-benar yakin tidak ada pemilik yang tak terjangkau.
 func (s *DocStore) repairPass(ctx context.Context, names []string, pass repairScan, allUp bool) error {
 	down := s.r.downSet()
+	type item struct {
+		id       string
+		versions []int64
+	}
+	items := make(chan item)
+	var wg sync.WaitGroup
+	for w := 0; w < repairWorkers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for it := range items {
+				s.repairDoc(ctx, names, it.id, it.versions, allUp, down)
+			}
+		}()
+	}
 	for id, versions := range pass.versions {
 		if ctx.Err() != nil {
-			return ctx.Err()
+			break
 		}
-		coll, key := splitRingKey(id)
-		bestUnit, bestVer := -1, int64(-1)
-		for i, v := range versions {
-			if v > bestVer {
-				bestUnit, bestVer = i, v
-			}
-		}
-		if bestUnit < 0 {
-			continue
-		}
-		desired := s.owners(coll, key)
-		var full *Doc
-		complete := true
-		for _, name := range desired {
-			if down[name] {
-				complete = false
-				continue
-			}
-			if v := versions[indexOf(names, name)]; v >= bestVer && v >= 0 {
-				continue
-			}
-			if full == nil {
-				uctx, cancel := context.WithTimeout(ctx, s.r.cfg.UnitTimeout)
-				d, err := s.units[names[bestUnit]].GetDoc(uctx, coll, key)
-				cancel()
-				if err != nil || d == nil {
-					complete = false
-					break
-				}
-				full = d
-			}
-			cp := *full
-			cp.Owners = desired
-			uctx, cancel := context.WithTimeout(ctx, s.r.cfg.UnitTimeout)
-			err := s.units[name].PutDoc(uctx, cp)
-			cancel()
-			if err != nil {
-				s.r.markDown(name, err)
-				complete = false
-			}
-		}
-		if !allUp || !complete {
-			continue
-		}
-		for i, v := range versions {
-			if v < 0 || contains(desired, names[i]) {
-				continue
-			}
-			uctx, cancel := context.WithTimeout(ctx, s.r.cfg.UnitTimeout)
-			_ = s.units[names[i]].DeleteDocCopy(uctx, coll, key)
-			cancel()
+		items <- item{id: id, versions: versions}
+	}
+	close(items)
+	wg.Wait()
+	return ctx.Err()
+}
+
+func (s *DocStore) repairDoc(ctx context.Context, names []string, id string, versions []int64, allUp bool, down map[string]bool) {
+	coll, key := splitRingKey(id)
+	bestUnit, bestVer := -1, int64(-1)
+	for i, v := range versions {
+		if v > bestVer {
+			bestUnit, bestVer = i, v
 		}
 	}
-	return nil
+	if bestUnit < 0 {
+		return
+	}
+	desired := s.owners(coll, key)
+	var full *Doc
+	complete := true
+	for _, name := range desired {
+		if down[name] {
+			complete = false
+			continue
+		}
+		if v := versions[indexOf(names, name)]; v >= bestVer && v >= 0 {
+			continue
+		}
+		if full == nil {
+			uctx, cancel := context.WithTimeout(ctx, s.r.cfg.UnitTimeout)
+			d, err := s.units[names[bestUnit]].GetDoc(uctx, coll, key)
+			cancel()
+			if err != nil || d == nil {
+				complete = false
+				break
+			}
+			full = d
+		}
+		cp := *full
+		cp.Owners = desired
+		uctx, cancel := context.WithTimeout(ctx, s.r.cfg.UnitTimeout)
+		err := s.units[name].PutDoc(uctx, cp)
+		cancel()
+		if err != nil {
+			s.r.markDown(name, err)
+			complete = false
+		}
+	}
+	if !allUp || !complete {
+		return
+	}
+	for i, v := range versions {
+		if v < 0 || contains(desired, names[i]) {
+			continue
+		}
+		uctx, cancel := context.WithTimeout(ctx, s.r.cfg.UnitTimeout)
+		_ = s.units[names[i]].DeleteDocCopy(uctx, coll, key)
+		cancel()
+	}
 }
 
 func indexOf(list []string, s string) int {
@@ -580,10 +601,16 @@ func (s *DocStore) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-fast.C:
+			if !s.r.repairAllowed() {
+				continue
+			}
 			if s.repairNeeded.Load() || s.r.repairNeeded.Load() {
 				run()
 			}
 		case <-t.C:
+			if !s.r.repairAllowed() {
+				continue
+			}
 			if s.repairNeeded.Load() || s.r.repairNeeded.Load() || time.Since(lastRun) >= repairIdleInterval {
 				run()
 			}

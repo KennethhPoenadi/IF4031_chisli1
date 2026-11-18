@@ -88,8 +88,12 @@ type Router struct {
 	ring  *Ring
 	rf    int
 
-	mu   sync.Mutex
-	down map[string]bool
+	mu         sync.Mutex
+	down       map[string]bool
+	rebuilding map[string]time.Time // unit yang pulih tetapi belum selesai dibangun ulang, sejak kapan
+
+	marks      RebuildMarks
+	repairGate func() bool
 
 	repairNeeded atomic.Bool
 	repairMu     sync.Mutex
@@ -104,7 +108,7 @@ func New(units []Unit, cfg Config) (*Router, error) {
 		return nil, fmt.Errorf("shardstore: minimal satu unit penyimpanan")
 	}
 	cfg.defaults()
-	r := &Router{cfg: cfg, units: make(map[string]Unit, len(units)), down: map[string]bool{}}
+	r := &Router{cfg: cfg, units: make(map[string]Unit, len(units)), down: map[string]bool{}, rebuilding: map[string]time.Time{}}
 	names := make([]string, 0, len(units))
 	for _, u := range units {
 		if _, dup := r.units[u.Name()]; dup {
@@ -152,10 +156,15 @@ func (r *Router) markDown(name string, err error) {
 	}
 }
 
+// markUp menandai unit terjangkau. Unit yang sebelumnya tidak terjangkau masuk status rebuilding karena
+// mungkin kembali dengan disk kosong; status itu dilepas setelah perbaikan bersih (lihat rebuild.go).
 func (r *Router) markUp(name string) bool {
 	r.mu.Lock()
 	was := r.down[name]
 	delete(r.down, name)
+	if was {
+		r.rebuilding[name] = time.Now()
+	}
 	r.mu.Unlock()
 	return was
 }
@@ -354,7 +363,7 @@ func (r *Router) ListEvents(ctx context.Context, q ListQuery) (Page, error) {
 		page.NextCursor = encodeCursor(Position{IngestedAt: last.IngestedAt, HazardID: last.HazardID})
 	}
 	page.Events = events
-	page.Partial = !r.ring.Covered(r.downSet(), r.rf)
+	page.Partial = !r.ring.Covered(r.coverageDown(), r.rf)
 	return page, nil
 }
 
@@ -461,7 +470,7 @@ func (r *Router) Checksum(ctx context.Context, source string) (ChecksumResult, e
 		Count:       len(list),
 		Checksum:    hex.EncodeToString(sum[:]),
 		AsOf:        time.Now().UTC(),
-		Partial:     !r.ring.Covered(r.downSet(), r.rf),
+		Partial:     !r.ring.Covered(r.coverageDown(), r.rf),
 		Unavailable: failed,
 	}, nil
 }
@@ -519,7 +528,7 @@ func (r *Router) Analytics(ctx context.Context, q AggregateQuery) (Analytics, er
 	return Analytics{
 		AggregateResult: result,
 		AsOf:            time.Now().UTC(),
-		Partial:         !r.ring.Covered(r.downSet(), r.rf),
+		Partial:         !r.ring.Covered(r.coverageDown(), r.rf),
 		Unavailable:     failed,
 		Rebalancing:     r.repairNeeded.Load(),
 	}, nil

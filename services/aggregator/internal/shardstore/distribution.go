@@ -86,7 +86,7 @@ func (r *Router) Distribution(ctx context.Context) (Distribution, error) {
 		Total:       len(unique),
 		Replication: r.rf,
 		AsOf:        time.Now().UTC(),
-		Partial:     !r.ring.Covered(r.downSet(), r.rf),
+		Partial:     !r.ring.Covered(r.coverageDown(), r.rf),
 		Unavailable: failed,
 	}
 	byNode := map[string]*NodeShare{}

@@ -7,6 +7,8 @@ Subperintah:
   load    memuat katalog gempa (CSV/JSON/JSONL) atau data sintetis berpola miring ke Aggregator
   surge   mensimulasikan lonjakan gempa di satu wilayah dan mengukur dampaknya per node
   report  mencetak sebaran data per unit dan per node dari Audit API, membandingkannya dengan checksum
+  paginate membaca event terbaru lintas seluruh unit per halaman (mis. 50) dan memeriksa urutan,
+          duplikat, serta tanda partial (kriteria 3)
 
 Lingkungan:
   AGG_URL           alamat Aggregator untuk endpoint internal (bawaan http://localhost:8090)
@@ -356,21 +358,71 @@ def cmd_surge(args):
 
 def cmd_report(args):
     c, d = Client(), out_dir(args)
-    dist = c.audit_get("/internal/audit/distribution")
+    # Data terus masuk selama pengukuran, jadi distribusi diambil sebelum dan sesudah checksum. Konsisten
+    # berarti jumlah checksum berada di antara keduanya (tidak ada event yang hilang atau ganda).
+    before = c.audit_get("/internal/audit/distribution")
     check = c.audit_get("/internal/audit/checksum")
+    dist = c.audit_get("/internal/audit/distribution")
     print(table(dist))
     print(f"\nchecksum  : {check['checksum']}\njumlah    : {check['count']}   partial: {check['partial']}")
-    consistent = dist["total_events"] == check["count"]
-    print("konsisten dengan checksum:", "YA" if consistent else "TIDAK")
-    save(d, "report.json", {"distribusi": dist, "checksum": check, "konsisten": consistent})
+    lo, hi = before["total_events"], dist["total_events"]
+    consistent = lo <= check["count"] <= hi and not check["partial"] and not dist["partial"]
+    print(f"konsisten dengan checksum: {'YA' if consistent else 'TIDAK'} "
+          f"(distribusi {lo} -> {hi}, checksum {check['count']})")
+    save(d, "report.json", {"distribusi_sebelum": before, "distribusi": dist, "checksum": check, "konsisten": consistent})
     print("bukti disimpan di", d)
     return 0 if consistent else 1
+
+
+def cmd_paginate(args):
+    c, d = Client(), out_dir(args)
+    cursor, seen, prev, pages, lat, partial_pages, violations = "", set(), None, 0, [], 0, []
+    while pages < args.pages:
+        url = f"{c.agg}/hazard-events?limit={args.limit}" + (f"&cursor={cursor}" if cursor else "")
+        t = time.monotonic()
+        code, body = http_json("GET", url, {"X-Internal-Key": c.key})
+        lat.append(time.monotonic() - t)
+        if code != 200:
+            violations.append(f"halaman {pages + 1}: HTTP {code}")
+            break
+        pages += 1
+        meta = body.get("meta", {})
+        if meta.get("partial"):
+            partial_pages += 1
+        for ev in body.get("data", []):
+            # Bandingkan sebagai waktu, bukan string: JSON memangkas nol pecahan detik (".94Z" vs ".948Z").
+            key = (datetime.fromisoformat(ev["ingested_at"].replace("Z", "+00:00")), ev["hazard_id"])
+            if ev["hazard_id"] in seen:
+                violations.append(f"duplikat {ev['hazard_id']}")
+            seen.add(ev["hazard_id"])
+            # Urutan terbaru lebih dulu: (ingested_at, hazard_id) harus menurun tegas.
+            if prev is not None and not (key[0] < prev[0] or (key[0] == prev[0] and key[1] < prev[1])):
+                violations.append(f"urutan salah: {prev} lalu {key}")
+            prev = key
+        cursor = meta.get("next_cursor") or ""
+        if not cursor:
+            break
+    result = {
+        "halaman": pages, "ukuran_halaman": args.limit, "event": len(seen),
+        "halaman_partial": partial_pages,
+        "latensi_halaman_detik": {"p50": round(statistics.median(lat), 3) if lat else None,
+                                  "p95": round(sorted(lat)[int(0.95 * (len(lat) - 1))], 3) if lat else None},
+        "pelanggaran": violations[:20], "jumlah_pelanggaran": len(violations),
+    }
+    save(d, "paginate.json", result)
+    print(f"{pages} halaman x {args.limit}, {len(seen)} event unik, {partial_pages} halaman partial, "
+          f"latensi p50 {result['latensi_halaman_detik']['p50']} dtk, p95 {result['latensi_halaman_detik']['p95']} dtk")
+    print("urutan benar dan tanpa duplikat:", "YA" if not violations else f"TIDAK ({len(violations)} pelanggaran)")
+    for v in violations[:5]:
+        print("  -", v)
+    print("bukti disimpan di", d)
+    return 0 if not violations else 1
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("load", "surge", "report"):
+    for name in ("load", "surge", "report", "paginate"):
         p = sub.add_parser(name)
         p.add_argument("--out", help="folder bukti")
         if name == "load":
@@ -384,8 +436,11 @@ def main():
             p.add_argument("--region", default="Kepulauan Mentawai")
             p.add_argument("--count", type=int, default=5000)
             p.add_argument("--workers", type=int, default=4)
+        if name == "paginate":
+            p.add_argument("--limit", type=int, default=50)
+            p.add_argument("--pages", type=int, default=40)
     args = ap.parse_args()
-    sys.exit({"load": cmd_load, "surge": cmd_surge, "report": cmd_report}[args.cmd](args) or 0)
+    sys.exit({"load": cmd_load, "surge": cmd_surge, "report": cmd_report, "paginate": cmd_paginate}[args.cmd](args) or 0)
 
 
 if __name__ == "__main__":

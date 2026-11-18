@@ -869,6 +869,10 @@ func TestAnalyticsStaysExactWhenOneNodeIsDown(t *testing.T) {
 		}
 		f.set(false)
 		r.markUp(f.name)
+		// Unit yang pulih baru dihitung penuh setelah perbaikan bersih (ia bisa saja kembali kosong).
+		if _, err := r.RepairOnce(context.Background()); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -981,5 +985,101 @@ func TestWipedNodeIsRebuiltAcrossManyRepairBucketsWithoutLosingAnyEvent(t *testi
 	}
 	if total != len(events)*r.ReplicationFactor() {
 		t.Fatalf("total salinan = %d, want %d", total, len(events)*r.ReplicationFactor())
+	}
+}
+
+// Unit kembali dengan disk kosong. Sebelum perbaikan selesai, kehilangan unit kedua membuat sebagian event
+// tidak terbaca: jawaban wajib ditandai partial, bukan mengaku lengkap.
+func TestWipedUnitIsNotCountedAsCoverageUntilRebuiltSoSecondLossIsMarkedPartial(t *testing.T) {
+	r, fakes := newCluster(t, "store-0", "store-1", "store-2")
+	events := load(t, r, 300)
+	ctx := context.Background()
+
+	fakes[1].set(true)
+	fakes[1].wipe()
+	r.pingAll(ctx)
+	fakes[1].set(false)
+	r.pingAll(ctx)
+	if got := r.Rebuilding(); len(got) != 1 || got[0] != "store-1" {
+		t.Fatalf("rebuilding = %v, want [store-1]", got)
+	}
+
+	fakes[2].set(true)
+	r.markDown("store-2", errDown)
+	page, err := r.ListEvents(ctx, ListQuery{Limit: 1000, Order: NewestFirst})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Events) == len(events) {
+		t.Fatal("skenario uji keliru: sebagian event seharusnya tidak terbaca")
+	}
+	if !page.Partial {
+		t.Fatalf("hanya %d dari %d event terbaca, jawaban wajib ditandai partial", len(page.Events), len(events))
+	}
+
+	// Setelah unit kedua kembali dan perbaikan bersih, store-1 terisi dan status rebuilding dilepas.
+	fakes[2].set(false)
+	r.pingAll(ctx)
+	if _, err := r.RepairOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.Rebuilding(); len(got) != 0 {
+		t.Fatalf("setelah perbaikan bersih rebuilding = %v, want kosong", got)
+	}
+	// Kini kehilangan unit mana pun tidak menghilangkan data (kriteria 6).
+	for _, f := range fakes {
+		f.set(true)
+		r.markDown(f.name, errDown)
+		page, err := r.ListEvents(ctx, ListQuery{Limit: 1000, Order: NewestFirst})
+		if err != nil || len(page.Events) != len(events) || page.Partial {
+			t.Fatalf("%s mati: %d dari %d event, partial=%v err=%v", f.name, len(page.Events), len(events), page.Partial, err)
+		}
+		f.set(false)
+		r.markUp(f.name)
+		if _, err := r.RepairOnce(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+type memMarks struct{ at map[string]time.Time }
+
+func (m *memMarks) MarkRebuilt(_ context.Context, unit string, t time.Time) error {
+	m.at[unit] = t
+	return nil
+}
+func (m *memMarks) RebuiltAt(_ context.Context, unit string) (time.Time, error) {
+	return m.at[unit], nil
+}
+
+// Hanya leader yang memperbaiki. Replika lain melepas status rebuilding dari penanda yang dicatat leader.
+func TestFollowerReleasesRebuildingFromLeaderMark(t *testing.T) {
+	leader, fakes := newCluster(t, "store-0", "store-1", "store-2")
+	load(t, leader, 100)
+	units := []Unit{fakes[0], fakes[1], fakes[2]}
+	follower, err := New(units, quietCfg())
+	if err != nil {
+		t.Fatal(err)
+	}
+	marks := &memMarks{at: map[string]time.Time{}}
+	leader.SetRebuildMarks(marks)
+	follower.SetRebuildMarks(marks)
+	follower.SetRepairGate(func() bool { return false })
+	ctx := context.Background()
+
+	for _, r := range []*Router{leader, follower} {
+		r.markDown("store-1", errDown)
+		r.markUp("store-1")
+	}
+	follower.syncRebuilt(ctx)
+	if len(follower.Rebuilding()) != 1 {
+		t.Fatal("tanpa penanda dari leader, follower harus tetap menganggap store-1 sedang dibangun ulang")
+	}
+	if _, err := leader.RepairOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	follower.syncRebuilt(ctx)
+	if got := follower.Rebuilding(); len(got) != 0 {
+		t.Fatalf("follower rebuilding = %v setelah leader mencatat rebuild selesai", got)
 	}
 }
