@@ -93,6 +93,16 @@ const (
 	purgeFirstDelay      = 30 * time.Second
 )
 
+// purgeBlocked: pembersihan ditunda selama ada unit mati atau sedang dibangun ulang.
+func (s *DocStore) purgeBlocked() bool {
+	for name := range s.units {
+		if s.r.isDown(name) {
+			return true
+		}
+	}
+	return len(s.r.Rebuilding()) > 0
+}
+
 // PurgeTombstones menghapus fisik tombstone yang lebih tua dari tombstoneGrace.
 //
 // Delete hanya menulis tombstone (dokumen Deleted) supaya salinan hidup yang basi pada replika lain tidak dihidupkan kembali oleh
@@ -100,24 +110,14 @@ const (
 // pada uji panjang koleksi mencapai hampir 2 juta dokumen sehingga ScanAll untuk pemulihan checkpoint melewati 60 detik dan
 // satellite-ingestor tidak pernah pulih.
 //
-// Penghapusan hanya dilakukan saat aman: semua unit hidup, tidak ada unit yang dibangun ulang, dan tidak ada perbaikan tertunda.
-// Dengan begitu tombstone yang dihapus sudah dipropagasi ke seluruh replika. Risiko sisa: unit yang mati lebih lama dari masa tenggang
+// Penghapusan hanya dilakukan saat aman: semua unit hidup dan tidak ada unit yang dibangun ulang. Tanda "perbaikan tertunda" sengaja
+// tidak dipakai sebagai syarat: pada cluster yang menerima data terus-menerus tanda itu hampir selalu menyala sehingga pembersihan
+// tidak pernah berjalan. Yang dihapus hanya tombstone yang lebih tua dari masa tenggang, dan perbaikan berkala sudah menyebarkannya
+// ke seluruh replika jauh sebelum itu. Risiko sisa: unit yang mati lebih lama dari masa tenggang
 // lalu kembali dengan salinan hidup basi dapat menghidupkan kembali dokumen yang sudah dihapus; untuk deteksi satelit dampaknya kecil
 // karena mesin kebakaran akan mengevict ulang.
 func (s *DocStore) PurgeTombstones(ctx context.Context) (int64, error) {
-	if s.tombstoneGrace <= 0 {
-		return 0, nil
-	}
-	for name := range s.units {
-		if s.r.isDown(name) {
-			return 0, nil
-		}
-	}
-	// Tanda "perbaikan tertunda" sengaja tidak dipakai sebagai syarat: pada cluster yang menerima data terus-menerus tanda itu hampir
-	// selalu menyala (dokumen baru yang belum sempat direplikasi), sehingga pembersihan tidak pernah berjalan dan koleksi membengkak
-	// sampai 2 juta dokumen. Yang dihapus hanya tombstone yang lebih tua dari masa tenggang; perbaikan berkala sudah menyebarkannya ke
-	// semua replika jauh sebelum itu. Syarat yang tersisa: tidak ada unit mati dan tidak ada unit yang sedang dibangun ulang.
-	if len(s.r.Rebuilding()) > 0 {
+	if s.tombstoneGrace <= 0 || s.purgeBlocked() {
 		return 0, nil
 	}
 	cutoff := time.Now().Add(-s.tombstoneGrace).UnixNano()
@@ -700,7 +700,8 @@ func (s *DocStore) Run(ctx context.Context) {
 			} else if n > 0 {
 				s.r.cfg.Log.Info("tombstone lama dibersihkan", "dihapus", n)
 			}
-			if n >= purgeMaxPerUnit {
+			if n >= purgeMaxPerUnit || (n == 0 && s.tombstoneGrace > 0 && s.purgeBlocked()) {
+				// Masih ada pekerjaan, atau tertahan unit yang sedang putus: coba lagi segera, bukan menunggu satu interval penuh.
 				purge.Reset(purgeCatchUpInterval)
 			} else {
 				purge.Reset(purgeInterval)
