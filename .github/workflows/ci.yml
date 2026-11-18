@@ -206,6 +206,8 @@ jobs:
           - situation-analyst
     env:
       KO_VERSION: v0.17.1
+      # Checksum resmi dari checksums.txt rilis ko v0.17.1, supaya binary yang diunduh terverifikasi.
+      KO_SHA256: 4f0b979b59880b3232f47d79c940f2279165aaad15a11d7614e8a2c9e5c78c29
       KO_BASE_IMAGE: gcr.io/distroless/static-debian12:nonroot
       REGISTRY_USER: ${{ github.actor }}
       REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -215,21 +217,31 @@ jobs:
         with:
           key: go-mod-${{ matrix.service }}-${{ hashFiles(format('services/{0}/go.mod', matrix.service), format('services/{0}/go.sum', matrix.service)) }}
           restore-keys: go-mod-${{ matrix.service }}-
-          path: /go/pkg/mod
+          # Cache kompilasi ikut disimpan: tanpa ini setiap build mengompilasi ulang semua dependensi.
+          path: |
+            /go/pkg/mod
+            /root/.cache/go-build
+      # Binary ko dari rilis resmi (terverifikasi checksum), bukan `go install` yang mengunduh dan
+      # mengompilasi ~150 dependensi ko di setiap job.
+      - name: Install ko
+        run: |
+          curl -fsSLo /tmp/ko.tgz "https://github.com/ko-build/ko/releases/download/${KO_VERSION}/ko_${KO_VERSION#v}_Linux_x86_64.tar.gz"
+          echo "${KO_SHA256}  /tmp/ko.tgz" | sha256sum -c -
+          tar -xzf /tmp/ko.tgz -C /usr/local/bin ko
+          ko version
       - name: Build and push (amd64 + arm64)
         env:
           SERVICE: ${{ matrix.service }}
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          go install github.com/google/ko@$KO_VERSION
-          echo "$REGISTRY_TOKEN" | $GOPATH/bin/ko login ghcr.io -u "$REGISTRY_USER" --password-stdin
+          echo "$REGISTRY_TOKEN" | ko login ghcr.io -u "$REGISTRY_USER" --password-stdin
           cd "services/$SERVICE"
           PKG=./cmd/$SERVICE; [ -d "$PKG" ] || PKG=./cmd/server
           SHORT_SHA="${GITHUB_SHA::8}"
           TAGS="$SERVICE-$SHORT_SHA,$SERVICE-latest"
           export KO_DOCKER_REPO="ghcr.io/$(printf '%s' "$GITHUB_REPOSITORY_OWNER/$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')"
           export KO_DEFAULTBASEIMAGE="$KO_BASE_IMAGE"
-          $GOPATH/bin/ko build "$PKG" \
+          ko build "$PKG" \
             --bare \
             --platform=linux/amd64,linux/arm64 \
             --sbom=none \
