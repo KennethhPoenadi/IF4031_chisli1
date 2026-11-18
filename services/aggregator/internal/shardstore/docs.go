@@ -86,8 +86,10 @@ func (s *DocStore) SetTombstoneGrace(d time.Duration) { s.tombstoneGrace = d }
 // Batas penghapusan per panggilan unit dan per putaran pembersihan, agar satu putaran tidak membebani Mongo terlalu lama.
 const (
 	purgeBatch      = 5000
-	purgeMaxPerUnit = 200_000
+	purgeMaxPerUnit = 500_000
 	purgeInterval   = 10 * time.Minute
+	// Bila satu putaran mencapai batas, masih ada banyak tombstone: putaran berikutnya dipercepat.
+	purgeCatchUpInterval = time.Minute
 )
 
 // PurgeTombstones menghapus fisik tombstone yang lebih tua dari tombstoneGrace.
@@ -690,6 +692,11 @@ func (s *DocStore) Run(ctx context.Context) {
 				s.r.cfg.Log.Warn("pembersihan tombstone gagal", "err", err, "dihapus", n)
 			} else if n > 0 {
 				s.r.cfg.Log.Info("tombstone lama dibersihkan", "dihapus", n)
+			}
+			if n >= purgeMaxPerUnit {
+				purge.Reset(purgeCatchUpInterval)
+			} else {
+				purge.Reset(purgeInterval)
 			}
 		case <-fast.C:
 			if !s.r.repairAllowed() {
