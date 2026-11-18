@@ -1142,7 +1142,7 @@ func (b *batchFake) UpsertMany(ctx context.Context, items []UpsertItem) error {
 		return errors.New("context deadline exceeded")
 	}
 	for _, it := range items {
-		if err := b.fakeUnit.Upsert(ctx, it.Event, it.Owners); err != nil {
+		if err := b.Upsert(ctx, it.Event, it.Owners); err != nil {
 			return err
 		}
 	}

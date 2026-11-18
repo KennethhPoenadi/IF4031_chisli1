@@ -325,16 +325,6 @@ func (r *Router) cleanupOne(ctx context.Context, p *repairPlan, replicated map[s
 	}
 }
 
-func (r *Router) getFrom(ctx context.Context, unit, id string) (*hazard.Event, error) {
-	uctx, cancel := context.WithTimeout(ctx, r.cfg.UnitTimeout)
-	defer cancel()
-	ev, err := r.units[unit].Get(uctx, id)
-	if err != nil {
-		r.markDown(unit, err)
-	}
-	return ev, err
-}
-
 func sameOwners(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
