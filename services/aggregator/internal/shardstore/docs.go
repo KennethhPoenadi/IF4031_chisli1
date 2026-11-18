@@ -672,8 +672,10 @@ func (s *DocStore) runPurge(ctx context.Context) {
 			return
 		case <-timer.C:
 		}
-		next := purgeInterval
+		// Instance yang bukan leader hanya menunggu: cek lagi sebentar, supaya leader baru tidak menunggu satu interval penuh.
+		next := purgeFirstDelay
 		if s.r.repairAllowed() {
+			next = purgeInterval
 			pctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 			n, err := s.PurgeTombstones(pctx)
 			cancel()
