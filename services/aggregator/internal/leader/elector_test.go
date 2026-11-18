@@ -195,3 +195,22 @@ func TestUpdateConflictNeverPublishesLeadership(t *testing.T) {
 		t.Fatal("conflicting takeover published leadership")
 	}
 }
+
+func TestFailedCreateIsReportedInSnapshotAndNeverGrantsLeadership(t *testing.T) {
+	store := &fakeStore{now: time.Date(2026, 11, 18, 1, 56, 4, 0, time.UTC), notFound: true,
+		createErr: errors.New("kubernetes Lease API returned HTTP 400")}
+	e := newElector(t, store, "pod-a")
+	e.step(context.Background())
+	snap := e.Snapshot()
+	if snap.Leader || snap.Token != "" {
+		t.Fatalf("snapshot = %+v, kegagalan tidak boleh memberi kepemimpinan", snap)
+	}
+	if snap.LastError == "" {
+		t.Fatal("kegagalan membuat Lease harus tercatat agar terlihat di log")
+	}
+	store.createErr = nil
+	e.step(context.Background())
+	if snap = e.Snapshot(); !snap.Leader || snap.LastError != "" {
+		t.Fatalf("setelah pulih snapshot = %+v, want leader tanpa error", snap)
+	}
+}

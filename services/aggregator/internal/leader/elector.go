@@ -54,6 +54,9 @@ type Snapshot struct {
 	Holder    string
 	Token     string
 	ExpiresAt time.Time
+	// LastError adalah kegagalan terakhir saat membaca atau menulis Lease. Tanpa ini, kegagalan
+	// (misalnya API menolak format Lease) hanya terlihat sebagai "tidak pernah menjadi leader".
+	LastError string
 }
 
 type Elector struct {
@@ -138,14 +141,14 @@ func (e *Elector) step(ctx context.Context) {
 		}
 		created, createdAt, createErr := e.store.Create(ctx, desired)
 		if createErr != nil {
-			e.clear()
+			e.fail(createErr)
 			return
 		}
 		e.observe(created, createdAt, true)
 		return
 	}
 	if err != nil {
-		e.clear()
+		e.fail(err)
 		return
 	}
 
@@ -166,6 +169,10 @@ func (e *Elector) step(ctx context.Context) {
 		}
 	}
 	updated, updatedAt, updateErr := e.store.Update(ctx, current, desired)
+	if updateErr != nil && !errors.Is(updateErr, ErrLeaseConflict) {
+		e.fail(updateErr)
+		return
+	}
 	if updateErr != nil {
 		e.clear()
 		return
@@ -181,6 +188,14 @@ func (e *Elector) observe(lease Lease, serverNow time.Time, leader bool) {
 		Leader: leader, Holder: lease.Holder,
 		Token: token, ExpiresAt: lease.RenewedAt.Add(lease.Duration),
 	}
+	e.mu.Unlock()
+}
+
+// fail melepas kepemimpinan (aman: tanpa Lease yang terkonfirmasi tidak boleh ada penulisan) dan mencatat
+// penyebabnya agar dapat dilihat di log.
+func (e *Elector) fail(err error) {
+	e.mu.Lock()
+	e.snapshot = Snapshot{LastError: err.Error()}
 	e.mu.Unlock()
 }
 

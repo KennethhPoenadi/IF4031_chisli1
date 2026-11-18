@@ -176,3 +176,21 @@ func TestKubeStoreRejectsInvalidServerTime(t *testing.T) {
 		t.Fatalf("Get() error = %v, want invalid Date error", err)
 	}
 }
+
+// API server hanya menerima metav1.MicroTime dengan tepat enam digit pecahan detik. Waktu dari header Date
+// berpresisi detik, sehingga format yang membuang nol (RFC3339Nano) ditolak dengan 400.
+func TestMicroTimeAlwaysHasSixFractionalDigits(t *testing.T) {
+	cases := map[time.Time]string{
+		time.Date(2026, 11, 18, 1, 56, 4, 0, time.UTC):                              "2026-11-18T01:56:04.000000Z",
+		time.Date(2026, 11, 18, 1, 56, 4, 120000000, time.UTC):                      "2026-11-18T01:56:04.120000Z",
+		time.Date(2026, 11, 18, 8, 56, 4, 123456789, time.FixedZone("WIB", 7*3600)): "2026-11-18T01:56:04.123456Z",
+	}
+	for in, want := range cases {
+		if got := formatMicroTime(in); got != want {
+			t.Fatalf("formatMicroTime(%s) = %q, want %q", in, got, want)
+		}
+		if _, err := time.Parse("2006-01-02T15:04:05.000000Z07:00", formatMicroTime(in)); err != nil {
+			t.Fatalf("API server akan menolak %q: %v", formatMicroTime(in), err)
+		}
+	}
+}

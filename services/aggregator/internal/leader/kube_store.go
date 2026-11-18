@@ -276,9 +276,13 @@ func decodeLease(raw []byte, serverNow time.Time) (Lease, time.Time, error) {
 	return lease, serverNow, nil
 }
 
+// microTimeLayout adalah format metav1.MicroTime. API server menolak waktu tanpa tepat enam digit pecahan
+// detik; RFC3339Nano membuang nol di belakang sehingga waktu dari header Date (presisi detik) ditolak.
+const microTimeLayout = "2006-01-02T15:04:05.000000Z07:00"
+
 func formatMicroTime(value time.Time) string {
 	if value.IsZero() {
 		return ""
 	}
-	return value.UTC().Format(time.RFC3339Nano)
+	return value.UTC().Format(microTimeLayout)
 }

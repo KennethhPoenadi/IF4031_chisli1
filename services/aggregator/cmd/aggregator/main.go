@@ -259,7 +259,11 @@ func logLeaderChanges(ctx context.Context, election *leader.Elector, interval ti
 			return
 		case <-ticker.C:
 			current := election.Snapshot()
+			if current.LastError != "" && current.LastError != previous.LastError {
+				log.Warn("pemilihan leader gagal", "err", current.LastError)
+			}
 			if current.Leader == previous.Leader && current.Holder == previous.Holder && current.Token == previous.Token {
+				previous.LastError = current.LastError
 				continue
 			}
 			switch {
