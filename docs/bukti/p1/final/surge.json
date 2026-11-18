@@ -1,0 +1,87 @@
+{
+  "fase": "surge",
+  "durasi_detik": 1.91,
+  "throughput_event_per_detik": 1570.5,
+  "latensi_batch_detik": {
+    "p50": 1.566,
+    "p95": 1.239
+  },
+  "received": 3000,
+  "stored": 3000,
+  "rejected": 0,
+  "failed": 0,
+  "contoh_penolakan": [],
+  "tambahan_salinan_per_node": {
+    "xops-control-plane": 6035
+  },
+  "beban_node_kubectl_top": {
+    "xops-control-plane": {
+      "cpu_m_avg": 2257,
+      "cpu_m_max": 2257,
+      "mem_mi_max": 5516,
+      "samples": 1
+    }
+  },
+  "distribusi_sesudah": {
+    "as_of": "2026-11-18T03:45:57Z",
+    "max_min_ratio": 0,
+    "nodes": [
+      {
+        "copies": 240861,
+        "node": "xops-control-plane",
+        "primary": 120436,
+        "replica": 120425,
+        "units": [
+          "store-0",
+          "store-1",
+          "store-2"
+        ]
+      }
+    ],
+    "partial": false,
+    "replication_factor": 2,
+    "total_events": 120525,
+    "unavailable_units": [],
+    "units": [
+      {
+        "by_source": {
+          "BMKG": 55464,
+          "PVMBG": 212,
+          "SATELIT": 15638,
+          "SENSOR_PANTAI": 14789
+        },
+        "copies": 86103,
+        "node": "xops-control-plane",
+        "primary": 43218,
+        "replica": 42885,
+        "unit": "store-0"
+      },
+      {
+        "by_source": {
+          "BMKG": 49233,
+          "PVMBG": 180,
+          "SATELIT": 14048,
+          "SENSOR_PANTAI": 12887
+        },
+        "copies": 76348,
+        "node": "xops-control-plane",
+        "primary": 36007,
+        "replica": 40341,
+        "unit": "store-1"
+      },
+      {
+        "by_source": {
+          "BMKG": 50481,
+          "PVMBG": 200,
+          "SATELIT": 14274,
+          "SENSOR_PANTAI": 13455
+        },
+        "copies": 78410,
+        "node": "xops-control-plane",
+        "primary": 41211,
+        "replica": 37199,
+        "unit": "store-2"
+      }
+    ]
+  }
+}

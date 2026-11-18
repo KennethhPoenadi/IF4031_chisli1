@@ -54,6 +54,18 @@ def restarts():
     return out
 
 
+def bmkg_polls(seconds):
+    """Jumlah poll BMKG yang sukses (HTTP 200) di log semua pod aggregator dalam N detik terakhir.
+    Hitungan event BMKG di Audit API tidak dipakai sebagai bukti 'sumber lain tetap jalan': ID mock dimulai dari 1 lagi sesudah
+    mock di-restart dan bertabrakan dengan event lama yang sudah tersimpan, sehingga event baru dianggap duplikat (idempoten)."""
+    pods = json.loads(kubectl("get", "pods", "-l", "app.kubernetes.io/name=aggregator", "-o", "json"))["items"]
+    total = 0
+    for pod in pods:
+        out = kubectl("logs", pod["metadata"]["name"], f"--since={int(seconds) + 2}s", check=False) or ""
+        total += sum(1 for ln in out.splitlines() if '"msg":"bmkg call"' in ln and '"status":200' in ln)
+    return total
+
+
 def pvmbg_admin(body):
     code, res = p1.http_json("POST", PVMBG + "/admin/schema-version",
                              {"Authorization": "Bearer " + os.environ["PVMBG_TOKEN"]}, body)
@@ -100,13 +112,14 @@ def cmd_schema(args):
     results = {}
     for change in args.changes:
         print(f"== mode tidak kompatibel: {change}")
+        t_mode = time.time()
         pvmbg_admin({"mode": "incompatible", "change": change})
         time.sleep(args.wait)
         parked = unprocessed(c, "parked")
-        mid = {"parked": len(parked), "BMKG": source_count(c, "BMKG")}
+        mid = {"parked": len(parked), "BMKG": source_count(c, "BMKG"), "polls": bmkg_polls(time.time() - t_mode)}
         sample = parked[-1] if parked else None
-        results[change] = {"parked_total": len(parked), "bmkg_count": mid["BMKG"], "contoh": sample}
-        print(f"   parked={len(parked)}  BMKG tetap bertambah ke {mid['BMKG']}")
+        results[change] = {"parked_total": len(parked), "bmkg_count": mid["BMKG"], "bmkg_poll_sukses": mid["polls"], "contoh": sample}
+        print(f"   parked={len(parked)}  poll BMKG sukses selama mode ini: {mid['polls']} (hitungan event BMKG {mid['BMKG']})")
         if sample:
             print(f"   contoh: sumber={sample['source']} retryable={sample['retryable']} alasan={sample['reason'][:90]}")
         pvmbg_admin({"mode": "incompatible", "enabled": False})
@@ -126,7 +139,7 @@ def cmd_schema(args):
     fields_ok = all(i.get("reason") and i.get("received_at") and i.get("source") for i in parked_all)
     distinguishes = bool({i["status"] for i in parked_all + retrying_all}) and \
         all(i["retryable"] == (i["status"] == "retrying") for i in parked_all + retrying_all)
-    bmkg_grew = all(v["bmkg_count"] > before["BMKG"] for v in results.values())
+    bmkg_grew = all(v["bmkg_poll_sukses"] > 0 and v["bmkg_count"] >= before["BMKG"] for v in results.values())
     ok = (len(parked_all) > before["parked"] and fields_ok and distinguishes and bmkg_grew and not crashed
           and cont["duplikat"] == 0)
     print(f"parked setelah mode rusak: {len(parked_all)} (sebelum {before['parked']}), retrying: {len(retrying_all)}")
@@ -138,6 +151,101 @@ def cmd_schema(args):
                              "parked_setelah_reprocess": len(parked_after), "pvmbg": [pv_before, pv_after],
                              "kesinambungan_pvmbg": cont, "pod_restart": crashed,
                              "field_lengkap": fields_ok, "membedakan_retryable": distinguishes}, ok)
+
+
+def cmd_recover(args):
+    """Kriteria 4: setelah sistem disesuaikan (alias dan konversi tipe di konfigurasi Aggregator), pesan yang dulu gagal diproses
+    ulang. Yang bisa pulih harus pulih seluruhnya, tanpa duplikat dan dengan urutan per source_ref_id terjaga; pesan yang
+    kehilangan field wajib (volcano_id) memang tidak akan pernah berhasil dan harus tetap tersimpan beserta alasannya."""
+    c = p1.Client()
+    cm = json.loads(kubectl("get", "configmap", "-o", "json"))["items"]
+    rules = {}
+    for item in cm:
+        d = item.get("data") or {}
+        if "PVMBG_FIELD_ALIASES" in d:
+            rules = {"PVMBG_FIELD_ALIASES": d["PVMBG_FIELD_ALIASES"], "PVMBG_FIELD_COERCE": d.get("PVMBG_FIELD_COERCE", "")}
+    print("aturan penyesuaian di konfigurasi Aggregator:", rules)
+    if not rules.get("PVMBG_FIELD_ALIASES") and not rules.get("PVMBG_FIELD_COERCE"):
+        raise SystemExit("aturan belum diterapkan di cluster (PVMBG_FIELD_ALIASES/COERCE kosong)")
+    r0 = restarts()
+    parked = unprocessed(c, "parked")
+    by_ref = {}
+    for e in parked:
+        by_ref.setdefault(e.get("source_ref_id", ""), []).append(e)
+    print(f"pesan parked sebelum pemrosesan ulang: {len(parked)} ({len(by_ref)} source_ref_id)")
+    pv_before = source_count(c, "PVMBG")
+    res = {}
+    for _ in range(4):  # satu putaran dapat membuka pesan yang tadinya terblokir oleh pesan sebelumnya pada source_ref_id sama
+        res = reprocess(c)
+        print("reprocess:", {k: res.get(k) for k in ("considered", "recovered", "still_parked", "blocked", "skipped_unsupported")})
+        if not res.get("recovered"):
+            break
+        time.sleep(3)
+    time.sleep(10)
+    after = unprocessed(c, "parked")
+    pv_after = source_count(c, "PVMBG")
+    refs = p1_refs(c, "PVMBG")
+    cont = continuity_ids(refs)
+    left_reasons = sorted({(e["reason"] or "")[:80] for e in after})
+    # Yang tersisa harus pesan yang memang tidak akan pernah berhasil: field wajib hilang, atau isi rusak (terpotong, UTF-8 tidak valid,
+    # bersarang terlalu dalam, terlalu besar). Pesan karena perubahan nama/tipe sudah tertangani aturan dan tidak boleh tersisa.
+    permanent = ("volcano_id", "malformed:")
+    only_missing = all(any(m in (e["reason"] or "") for m in permanent) and not e["retryable"] for e in after)
+    r1 = restarts()
+    crashed = {p: r1[p] - r0.get(p, 0) for p in r1 if r1[p] > r0.get(p, 0)}
+    recovered = len(parked) - len(after)
+    print(f"parked sesudah: {len(after)}; pulih: {recovered}; event PVMBG {pv_before} -> {pv_after}; duplikat ID: {cont['duplikat']}")
+    print("alasan yang tersisa:", left_reasons)
+    print(f"pod restart: {crashed or 'tidak ada'}")
+    ok = bool(recovered > 0 and pv_after - pv_before >= 0 and cont["duplikat"] == 0 and only_missing and not crashed)
+    return report("recover", {"aturan": rules, "parked_sebelum": len(parked), "parked_sesudah": len(after), "pulih": recovered,
+                              "pvmbg": [pv_before, pv_after], "kesinambungan_pvmbg": cont, "alasan_tersisa": left_reasons,
+                              "hanya_field_wajib_hilang_tersisa": only_missing, "pod_restart": crashed}, ok)
+
+
+def cmd_retry(args):
+    """Kriteria 2 (sisi dicoba lagi): bila broker macet, pesan PVMBG yang valid gagal dipublikasikan. Itu kegagalan sementara, jadi
+    pesan harus berstatus retrying (retryable) dan dicoba lagi otomatis sampai tersimpan, berbeda dari pesan parked yang menunggu
+    perubahan sistem. Broker dibekukan (SIGSTOP) lalu dilepas; tidak ada intervensi lain."""
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "p2"))
+    import p2  # noqa: E402
+    c = p1.Client()
+    parked0 = {i["message_id"] for i in unprocessed(c, "parked")}
+    retry0 = unprocessed(c, "retrying")
+    pod = "rabbitmq-0"
+    cid = p2.container_id(pod, "rabbitmq")
+    p2.ctr("pause", cid)
+    t0 = time.time()
+    print(f"broker {pod} dibekukan; menunggu pesan PVMBG yang valid masuk status retrying...")
+    seen = []
+    try:
+        while time.time() - t0 < args.timeout:
+            seen = [i for i in unprocessed(c, "retrying") if i["source"] == "PVMBG"]
+            if len(seen) >= args.min:
+                break
+            time.sleep(5)
+    finally:
+        p2.ctr("resume", cid)
+    t_resume = time.time()
+    contoh = seen[-1] if seen else None
+    if contoh:
+        print(f"retrying={len(seen)}; contoh: retryable={contoh['retryable']} percobaan={contoh['attempts']} alasan={contoh['reason'][:100]}")
+    print("broker dilepas; menunggu percobaan ulang otomatis...")
+    left = len(seen)
+    while time.time() - t_resume < args.timeout:
+        left = len([i for i in unprocessed(c, "retrying") if i["source"] == "PVMBG"])
+        if left == 0:
+            break
+        time.sleep(5)
+    parked1 = {i["message_id"] for i in unprocessed(c, "parked")}
+    pv = p1_refs(c, "PVMBG")
+    cont = continuity_ids(pv)
+    print(f"retrying tersisa: {left}; detik sampai pulih: {time.time() - t_resume:.0f}; parked baru: {len(parked1 - parked0)}; duplikat ID: {cont['duplikat']}")
+    ok = bool(contoh and contoh["retryable"] and contoh["status"] == "retrying" and left == 0 and not (parked1 - parked0)
+              and cont["duplikat"] == 0)
+    return report("retry", {"retrying_terlihat": len(seen), "contoh": contoh, "retrying_tersisa": left,
+                            "detik_pulih": round(time.time() - t_resume), "parked_baru": len(parked1 - parked0),
+                            "kesinambungan_pvmbg": cont}, ok)
 
 
 def p1_refs(c, source):
@@ -161,6 +269,7 @@ def cmd_corrupt(args):
     c = p1.Client()
     r0 = restarts()
     bm0 = source_count(c, "BMKG")
+    t_start = time.time()
     parked0 = len(unprocessed(c))
     kinds = ["truncated", "deep", "invalid_utf8", "oversize"]
     for k in kinds:
@@ -172,9 +281,10 @@ def cmd_corrupt(args):
     crashed = {p: r1[p] - r0.get(p, 0) for p in r1 if r1[p] > r0.get(p, 0)}
     bm1 = source_count(c, "BMKG")
     parked1 = unprocessed(c)
-    ok = not crashed and bm1 > bm0
-    print(f"pod restart: {crashed or 'tidak ada'}; BMKG {bm0} -> {bm1}; pesan tak terproses {parked0} -> {len(parked1)}")
-    return report("corrupt", {"pod_restart": crashed, "bmkg": [bm0, bm1], "tak_terproses": [parked0, len(parked1)],
+    polls = bmkg_polls(time.time() - t_start)
+    ok = not crashed and polls > 0 and bm1 >= bm0
+    print(f"pod restart: {crashed or 'tidak ada'}; poll BMKG sukses selama uji: {polls}; BMKG {bm0} -> {bm1}; pesan tak terproses {parked0} -> {len(parked1)}")
+    return report("corrupt", {"pod_restart": crashed, "bmkg": [bm0, bm1], "bmkg_poll_sukses": polls, "tak_terproses": [parked0, len(parked1)],
                               "kinds": kinds, "per_kind": args.count}, ok)
 
 
@@ -250,7 +360,12 @@ def cmd_reports(args):
     missing = list(accepted)
     stats = {}
     while time.time() < deadline:
-        code, body = p1.http_json("GET", c.agg + "/internal/field-reports/stats?ids=true", {"X-Internal-Key": c.key})
+        try:
+            code, body = p1.http_json("GET", c.agg + "/internal/field-reports/stats?ids=true", {"X-Internal-Key": c.key})
+        except OSError:
+            # Pod Aggregator baru saja dimatikan paksa oleh uji ini; sambungan ke pod yang diganti putus sesaat.
+            time.sleep(2)
+            continue
         if code == 200:
             ids = set(body.get("report_ids", []))
             stats = body.get("stats", {})
@@ -258,9 +373,13 @@ def cmd_reports(args):
             if not missing:
                 break
         time.sleep(5)
-    ok = not missing and stats.get("ProcessedMoreThanOne", stats.get("processed_more_than_one", 0)) == 0
+    # Nama kunci statistik berbeda antar versi; kunci yang tidak ditemukan harus dianggap gagal, bukan 0.
+    more_than_once = next((stats[k] for k in ("processed_more_than_once", "ProcessedMoreThanOnce", "processed_more_than_one",
+                                              "ProcessedMoreThanOne") if k in stats), None)
+    ok = (not missing and more_than_once == 0 and stats.get("duplicate_deliveries", 0) == 0
+          and stats.get("max_process_count", 1) <= 1)
     print(f"laporan 202 yang hilang: {len(missing)} dari {len(accepted)}; diproses lebih dari sekali: "
-          f"{stats.get('ProcessedMoreThanOne', stats.get('processed_more_than_one', '?'))}; stats {stats}")
+          f"{more_than_once}; stats {stats}")
     return report("reports", {"dikirim": args.count, "berbalas_202": len(accepted), "ditolak_awal": len(rejected),
                               "hilang": len(missing), "contoh_hilang": missing[:10], "p95_detik": p95, "stats": stats}, ok)
 
@@ -287,11 +406,13 @@ def main():
     s = sub.add_parser("schema"); s.add_argument("--wait", type=int, default=45)
     s.add_argument("--changes", nargs="+", default=["rename", "type", "missing"])
     k = sub.add_parser("corrupt"); k.add_argument("--count", type=int, default=3); k.add_argument("--wait", type=int, default=30)
+    sub.add_parser("recover")
+    q = sub.add_parser("retry"); q.add_argument("--timeout", type=int, default=240); q.add_argument("--min", type=int, default=3)
     r = sub.add_parser("reports"); r.add_argument("--count", type=int, default=300); r.add_argument("--workers", type=int, default=8)
     r.add_argument("--kill-after", type=float, default=3.0); r.add_argument("--settle", type=int, default=20)
     sub.add_parser("access")
     args = ap.parse_args()
-    sys.exit({"schema": cmd_schema, "corrupt": cmd_corrupt, "reports": cmd_reports, "access": cmd_access}[args.cmd](args))
+    sys.exit({"schema": cmd_schema, "corrupt": cmd_corrupt, "reports": cmd_reports, "access": cmd_access, "recover": cmd_recover, "retry": cmd_retry}[args.cmd](args))
 
 
 if __name__ == "__main__":

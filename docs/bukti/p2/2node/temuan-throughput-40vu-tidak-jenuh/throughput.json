@@ -1,0 +1,8 @@
+{
+  "vus": 40,
+  "throughput_1_instance_rps": 40.4,
+  "throughput_3_instance_rps": 57.4,
+  "rasio": 1.42,
+  "batas": 2.0,
+  "lolos": false
+}

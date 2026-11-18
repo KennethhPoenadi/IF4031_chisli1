@@ -1,0 +1,5 @@
+# 2026-11-18 17:05:59 WIB
+$ kubectl top nodes
+NAME              CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)   
+chisli-control    1628m        20%      5677Mi          57%         
+chisli-worker-1   1344m        44%      1836Mi          37%         

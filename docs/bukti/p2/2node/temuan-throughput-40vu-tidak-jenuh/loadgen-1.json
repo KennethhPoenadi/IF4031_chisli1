@@ -1,0 +1,20 @@
+{
+  "vus": 40,
+  "durasi_detik": 45,
+  "permintaan": 1643,
+  "rps": 37,
+  "status_2xx": 1617,
+  "status_429_ditolak_terkontrol": 0,
+  "status_401": 0,
+  "status_5xx": 26,
+  "status_lain": 0,
+  "galat_jaringan": 0,
+  "gagal_bukan_429_persen": 1.58,
+  "p50_ms": 861.0779292198037,
+  "p95_ms": 2896.3093757400984,
+  "p99_ms": 5792.618751480197,
+  "token_diminta": 40,
+  "token_gagal": 0,
+  "memori_heap_mb": 17.94361114501953,
+  "lolos": false
+}

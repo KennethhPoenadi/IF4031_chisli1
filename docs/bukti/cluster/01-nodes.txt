@@ -1,0 +1,5 @@
+# 2026-11-18 17:05:58 WIB
+$ kubectl get nodes -o wide
+NAME              STATUS   ROLES           AGE   VERSION        INTERNAL-IP      EXTERNAL-IP   OS-IMAGE             KERNEL-VERSION                              CONTAINER-RUNTIME
+chisli-control    Ready    control-plane   70m   v1.37.2+k3s1   100.66.57.46     <none>        Ubuntu 26.04.1 LTS   6.18.58.1-microsoft-standard-WSL2 (amd64)   containerd://2.3.7-k3s1
+chisli-worker-1   Ready    <none>          67m   v1.37.2+k3s1   100.109.151.22   <none>        Ubuntu 24.04.4 LTS   6.8.0-117-generic (arm64)                   containerd://2.3.7-k3s1

@@ -1,0 +1,11 @@
+
+== surge: 3000 tersimpan, 0 ditolak, 0 gagal, 1224.2 event/detik
+tambahan salinan per node: {'chisli-control': 4145, 'chisli-worker-1': 1933}
+beban node (kubectl top): {"chisli-control": {"cpu_m_avg": 1865, "cpu_m_max": 1865, "mem_mi_max": 5716, "samples": 1}, "chisli-worker-1": {"cpu_m_avg": 1070, "cpu_m_max": 1070, "mem_mi_max": 1618, "samples": 1}}
+node                  unit                      salinan  primary  replica  persen
+chisli-control        store-0,store-2             33895    17492    16403   68.2%
+chisli-worker-1       store-1                     15837     7374     8463   31.8%
+event unik: 24866   RF: 2   max/min: 2.14   partial: False   tak terjangkau: []
+
+rasio beban tulis terbesar/terkecil per node: 2.14 (sharding memakai hazard_id, bukan wilayah, sehingga lonjakan satu wilayah menyebar merata)
+bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p1/2node

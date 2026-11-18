@@ -1,0 +1,16 @@
+== node
+NODE              STATUS         ARCH    IP               UMUR
+chisli-control    KubeletReady   amd64   100.66.57.46     2026-11-18T08:55:30Z
+chisli-worker-1   KubeletReady   arm64   100.109.151.22   2026-11-18T08:58:24Z
+
+== pod aplikasi per node
+chisli-control   17 pod (17 siap): satellite-ingestor x1, pvmbg-mock x1, situation-analyst x1, dashboard-updater x1, aggregator x3, rabbitmq x1, notifier x1, bmkg-mock x1, client-facing-api x2, store x2, auth-service x2, sensor-pantai x1
+chisli-worker-1  3 pod (3 siap): aggregator x2, store x1
+
+== sebaran data per node (Audit API)
+   partial=False under_replicated=0 rebuilding=[] tak_terjangkau=[]
+   chisli-control   unit=store-0,store-2        salinan=167145  primary=85739   replica=81406
+   chisli-worker-1  unit=store-1                salinan=77865   primary=36766   replica=41099
+   store-0  di chisli-control   salinan=87551
+   store-1  di chisli-worker-1  salinan=77865
+   store-2  di chisli-control   salinan=79594

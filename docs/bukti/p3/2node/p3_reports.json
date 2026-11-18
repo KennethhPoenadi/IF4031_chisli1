@@ -1,0 +1,17 @@
+{
+  "dikirim": 300,
+  "berbalas_202": 300,
+  "ditolak_awal": 0,
+  "hilang": 0,
+  "contoh_hilang": [],
+  "p95_detik": 0.16292255700318492,
+  "stats": {
+    "reports": 300,
+    "deliveries": 300,
+    "duplicate_deliveries": 0,
+    "max_process_count": 1,
+    "processed_more_than_once": 0,
+    "partial": false
+  },
+  "lolos": true
+}

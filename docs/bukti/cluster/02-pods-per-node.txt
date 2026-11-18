@@ -1,0 +1,23 @@
+# 2026-11-18 17:05:58 WIB
+$ kubectl -n sistem-informasi-kebencanaan-bnpb get pods -o wide
+NAME                                 READY   STATUS    RESTARTS   AGE     IP           NODE              NOMINATED NODE   READINESS GATES
+aggregator-5d47df69f9-9fh59          1/1     Running   0          5m35s   10.42.0.58   chisli-control    <none>           <none>
+aggregator-5d47df69f9-dc2rp          1/1     Running   0          5m41s   10.42.1.25   chisli-worker-1   <none>           <none>
+aggregator-5d47df69f9-f2nzr          1/1     Running   0          5m29s   10.42.0.59   chisli-control    <none>           <none>
+aggregator-5d47df69f9-kslr8          1/1     Running   0          5m23s   10.42.1.26   chisli-worker-1   <none>           <none>
+aggregator-5d47df69f9-pg4rj          1/1     Running   0          5m17s   10.42.1.27   chisli-worker-1   <none>           <none>
+auth-service-7df9d787d4-jm79j        1/1     Running   0          50m     10.42.0.31   chisli-control    <none>           <none>
+auth-service-7df9d787d4-t78pq        1/1     Running   0          50m     10.42.1.11   chisli-worker-1   <none>           <none>
+bmkg-mock-8547578d96-vscgf           1/1     Running   0          50m     10.42.0.32   chisli-control    <none>           <none>
+client-facing-api-685d7f86f6-vmv75   1/1     Running   0          50m     10.42.1.13   chisli-worker-1   <none>           <none>
+client-facing-api-685d7f86f6-zbfxb   1/1     Running   0          50m     10.42.0.33   chisli-control    <none>           <none>
+dashboard-updater-5c7ccd7f45-4hmb8   1/1     Running   0          50m     10.42.0.37   chisli-control    <none>           <none>
+notifier-d68bcb95f-wljch             1/1     Running   0          50m     10.42.0.38   chisli-control    <none>           <none>
+pvmbg-mock-84c7966576-97krn          1/1     Running   0          50m     10.42.0.30   chisli-control    <none>           <none>
+rabbitmq-0                           1/1     Running   0          51m     10.42.0.29   chisli-control    <none>           <none>
+satellite-ingestor-bf956b88b-f4wss   1/1     Running   0          50m     10.42.0.35   chisli-control    <none>           <none>
+sensor-pantai-7b855559d4-csvv4       1/1     Running   0          50m     10.42.1.10   chisli-worker-1   <none>           <none>
+situation-analyst-764f69b6df-2mz79   1/1     Running   0          50m     10.42.0.36   chisli-control    <none>           <none>
+store-0                              1/1     Running   0          13m     10.42.1.24   chisli-worker-1   <none>           <none>
+store-1                              1/1     Running   0          12m     10.42.0.56   chisli-control    <none>           <none>
+store-2                              1/1     Running   0          46m     10.42.0.43   chisli-control    <none>           <none>

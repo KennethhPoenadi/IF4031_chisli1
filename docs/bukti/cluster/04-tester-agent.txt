@@ -1,0 +1,5 @@
+# 2026-11-18 17:05:59 WIB
+$ kubectl -n tester-agent get pods -o wide
+NAME                 READY   STATUS    RESTARTS   AGE   IP               NODE              NOMINATED NODE   READINESS GATES
+tester-agent-7cvn5   1/1     Running   0          46m   100.66.57.46     chisli-control    <none>           <none>
+tester-agent-gs8r9   1/1     Running   0          46m   100.109.151.22   chisli-worker-1   <none>           <none>

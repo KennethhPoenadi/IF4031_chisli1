@@ -1,0 +1,124 @@
+{
+  "victim": "store-1",
+  "second": "store-2",
+  "syarat_awal": {
+    "under_replicated": 0,
+    "rebuilding_units": [],
+    "detik_menunggu": 47.0
+  },
+  "baseline": {
+    "event": 126194,
+    "partial": false,
+    "salinan_store-1": 131071
+  },
+  "pemulihan": {
+    "siap": true,
+    "detik_sampai_hidup": 5.7,
+    "salinan_awal": 0,
+    "salinan_akhir": 134334,
+    "detik_sampai_lengkap": 245.7,
+    "under_replicated": 0,
+    "rebuilding_units": [],
+    "lengkap": true
+  },
+  "lalu_lintas_kehilangan_unit": {
+    "read": {
+      "jumlah": 50,
+      "kode": {
+        "200": 50
+      },
+      "partial": 0,
+      "p95_detik": 0.101,
+      "maks_detik": 0.203
+    },
+    "checksum": {
+      "jumlah": 50,
+      "kode": {
+        "200": 50
+      },
+      "partial": 0,
+      "p95_detik": 6.529,
+      "maks_detik": 8.566
+    },
+    "write": {
+      "jumlah": 206,
+      "kode": {
+        "200": 206
+      },
+      "partial": 0,
+      "p95_detik": 0.421,
+      "maks_detik": 2.009
+    }
+  },
+  "kriteria4": {
+    "baseline": 126194,
+    "sesudah": 130934,
+    "hilang": 0,
+    "contoh_hilang": [],
+    "partial": false
+  },
+  "kriteria6": {
+    "hilang_saat_unit_kedua_mati": 0,
+    "partial": false,
+    "lalu_lintas": {
+      "read": {
+        "jumlah": 5,
+        "kode": {
+          "200": 5
+        },
+        "partial": 0,
+        "p95_detik": 0.083,
+        "maks_detik": 1.421
+      },
+      "checksum": {
+        "jumlah": 5,
+        "kode": {
+          "200": 5
+        },
+        "partial": 0,
+        "p95_detik": 6.504,
+        "maks_detik": 6.679
+      },
+      "write": {
+        "jumlah": 30,
+        "kode": {
+          "200": 30
+        },
+        "partial": 0,
+        "p95_detik": 0.5,
+        "maks_detik": 1.494
+      }
+    }
+  },
+  "lalu_lintas_total": {
+    "read": {
+      "jumlah": 61,
+      "kode": {
+        "200": 61
+      },
+      "partial": 0,
+      "p95_detik": 0.13,
+      "maks_detik": 1.421
+    },
+    "checksum": {
+      "jumlah": 60,
+      "kode": {
+        "200": 60
+      },
+      "partial": 0,
+      "p95_detik": 6.679,
+      "maks_detik": 8.566
+    },
+    "write": {
+      "jumlah": 267,
+      "kode": {
+        "200": 267
+      },
+      "partial": 0,
+      "p95_detik": 0.468,
+      "maks_detik": 2.009
+    }
+  },
+  "lolos": true,
+  "pelanggaran_lalu_lintas": 0
+}

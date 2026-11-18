@@ -1,0 +1,77 @@
+{
+  "baseline": {
+    "parked": 27,
+    "retrying": 0,
+    "PVMBG": 1942,
+    "BMKG": 88005
+  },
+  "per_mode": {
+    "rename": {
+      "parked_total": 32,
+      "bmkg_count": 88005,
+      "bmkg_poll_sukses": 22,
+      "contoh": {
+        "message_id": "msg-b84e04b9f267d1ca",
+        "source": "PVMBG",
+        "received_at": "2026-11-18T17:02:58.707169394Z",
+        "reason": "blocked_by_earlier: source_ref_id pvmbg-000237 masih punya pesan parked",
+        "retryable": false,
+        "attempts": 1,
+        "status": "parked"
+      }
+    },
+    "type": {
+      "parked_total": 38,
+      "bmkg_count": 88005,
+      "bmkg_poll_sukses": 78,
+      "contoh": {
+        "message_id": "msg-fb22a5b9aaa35274",
+        "source": "PVMBG",
+        "received_at": "2026-11-18T17:04:02.851656584Z",
+        "reason": "schema_incompatible: field \"eruption_count_24h\" must be a number, got string",
+        "retryable": false,
+        "attempts": 1,
+        "status": "parked"
+      }
+    },
+    "missing": {
+      "parked_total": 60,
+      "bmkg_count": 88005,
+      "bmkg_poll_sukses": 22,
+      "contoh": {
+        "message_id": "msg-7b0d4a6940d4e25a",
+        "source": "PVMBG",
+        "received_at": "2026-11-18T17:07:38.153698007Z",
+        "reason": "schema_incompatible: missing required field \"volcano_id\"",
+        "retryable": false,
+        "attempts": 1,
+        "status": "parked"
+      }
+    }
+  },
+  "parked_akhir": 61,
+  "retrying_akhir": 0,
+  "reprocess": {
+    "source": "",
+    "considered": 61,
+    "recovered": 0,
+    "still_parked": 61,
+    "blocked": 0,
+    "skipped_unsupported": 0,
+    "recovered_ids": []
+  },
+  "parked_setelah_reprocess": 61,
+  "pvmbg": [
+    1942,
+    1942
+  ],
+  "kesinambungan_pvmbg": {
+    "jumlah": 1942,
+    "duplikat": 0,
+    "celah": 25
+  },
+  "pod_restart": {},
+  "field_lengkap": true,
+  "membedakan_retryable": true,
+  "lolos": true
+}

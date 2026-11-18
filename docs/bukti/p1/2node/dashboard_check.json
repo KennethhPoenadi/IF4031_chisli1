@@ -1,0 +1,67 @@
+{
+  "total_audit": 3375,
+  "total_dashboard": 3422,
+  "event_berubah_sesudah_potret": 51,
+  "selisih_total": 141,
+  "partial_audit": false,
+  "partial_dashboard": false,
+  "unavailable_units": [],
+  "rebalancing": true,
+  "per_jenis": {
+    "audit": {
+      "COASTAL": 558,
+      "SEISMIC": 2817
+    },
+    "dashboard": {
+      "COASTAL": 605,
+      "SEISMIC": 2817
+    }
+  },
+  "per_severity": {
+    "audit": {
+      "NORMAL": 2782,
+      "WASPADA": 593
+    },
+    "dashboard": {
+      "WASPADA": 593,
+      "NORMAL": 2829
+    }
+  },
+  "jumlah_wilayah": {
+    "audit": 5,
+    "dashboard": 5
+  },
+  "selisih": {
+    "jenis": {
+      "COASTAL": {
+        "audit": 558,
+        "dashboard": 605
+      }
+    },
+    "severity": {
+      "NORMAL": {
+        "audit": 2782,
+        "dashboard": 2829
+      }
+    },
+    "wilayah": {
+      "Pelabuhan Ratu": {
+        "audit": 139,
+        "dashboard": 151
+      },
+      "Cilacap": {
+        "audit": 140,
+        "dashboard": 151
+      },
+      "Padang": {
+        "audit": 140,
+        "dashboard": 152
+      },
+      "Banda Aceh": {
+        "audit": 139,
+        "dashboard": 151
+      }
+    }
+  },
+  "lolos": true
+}

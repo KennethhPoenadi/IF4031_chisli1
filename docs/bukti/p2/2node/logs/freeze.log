@@ -1,0 +1,12 @@
+pod pembeku freezer-chisli-control di node chisli-control
+leader: aggregator-6d46f79676-j7n9b (container c77dfc9be555), transisi 11
+  pause: proses=1
+container dibekukan, menunggu 40 dtk (> lease 15 dtk)...
+  resume: proses=1
+container dilepas; mengukur 60 dtk sesudah bangun...
+leader sesudah bangun: aggregator-6d46f79676-2dwd2 (leader lama aggregator-6d46f79676-j7n9b)
+laju permintaan per menit setelah bangun: {'BMKG': 12.0, 'PVMBG': 12.0} (satu instance = 12)
+kesinambungan ID: {'BMKG': (113, 'duplikat 0', 'celah 0'), 'PVMBG': (114, 'duplikat 0', 'celah 0')}
+
+HASIL freeze: LOLOS
+bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p2/2node

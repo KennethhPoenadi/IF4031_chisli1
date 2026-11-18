@@ -1,0 +1,10 @@
+apiVersion: v1
+data:
+  run: '{"id":"16f8e784175e","mode":"practice","name":"wipe-node","status":"go","snapshot":{"nodes":[{"name":"chisli-control","control_plane":true,"internal_ip":"100.66.57.46"},{"name":"chisli-worker-1","internal_ip":"100.109.151.22"}],"placements":[{"role":"aggregator","node":"chisli-control","pod":"aggregator-5fd4f6f76c-4sd77"},{"role":"aggregator","node":"chisli-worker-1","pod":"aggregator-5fd4f6f76c-85prr"},{"role":"aggregator","node":"chisli-worker-1","pod":"aggregator-5fd4f6f76c-9c7p2"},{"role":"aggregator","node":"chisli-control","pod":"aggregator-5fd4f6f76c-dd9cs"},{"role":"aggregator","node":"chisli-control","pod":"aggregator-5fd4f6f76c-vfr5g"},{"role":"api","node":"chisli-control","pod":"auth-service-7df9d787d4-8rdx9"},{"role":"api","node":"chisli-control","pod":"auth-service-7df9d787d4-jm79j"},{"role":"mock","node":"chisli-control","pod":"bmkg-mock-8547578d96-vscgf"},{"role":"api","node":"chisli-control","pod":"client-facing-api-685d7f86f6-j66jl"},{"role":"api","node":"chisli-control","pod":"client-facing-api-685d7f86f6-xcl7v"},{"role":"consumer","node":"chisli-control","pod":"dashboard-updater-5c7ccd7f45-4hmb8"},{"role":"consumer","node":"chisli-control","pod":"notifier-d68bcb95f-wljch"},{"role":"mock","node":"chisli-control","pod":"pvmbg-mock-84c7966576-97krn"},{"role":"broker","node":"chisli-control","pod":"rabbitmq-0"},{"role":"consumer","node":"chisli-control","pod":"satellite-ingestor-bf956b88b-f4wss"},{"role":"sensor","node":"chisli-control","pod":"sensor-pantai-7b855559d4-trg6b"},{"role":"other","node":"chisli-control","pod":"situation-analyst-764f69b6df-2mz79"},{"role":"store","node":"chisli-control","pod":"store-0"},{"role":"store","node":"chisli-worker-1","pod":"store-1"},{"role":"store","node":"chisli-control","pod":"store-2"}],"coordinator":"chisli-control"}}'
+kind: ConfigMap
+metadata:
+  creationTimestamp: "2026-11-18T12:29:43Z"
+  name: tester-run
+  namespace: tester-agent
+  resourceVersion: "44363"
+  uid: f607e1b5-05e1-4346-b27d-43da65eaa4ec

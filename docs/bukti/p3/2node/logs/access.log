@@ -1,0 +1,4 @@
+GET /ops/unprocessed: {'ops': 200, 'field': 403, 'media': 403, 'tanpa_token': 401}
+
+HASIL access: LOLOS
+bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p3/2node

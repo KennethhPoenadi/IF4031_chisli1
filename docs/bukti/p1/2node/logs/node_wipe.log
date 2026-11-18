@@ -1,0 +1,60 @@
+== 0. syarat awal: cluster sehat
+   node: {'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'}
+   unit penyimpanan -> node: {'store-0': 'chisli-control', 'store-1': 'chisli-worker-1', 'store-2': 'chisli-control'}
+== 1. baseline BMKG
+   76472 event (partial=False)
+== 2. memicu skenario Tester Agent: wipe-node
+   Latihan "wipe-node": 1 langkah
+     - t+5s wipe_and_shutdown role=store nodes=any
+   Permintaan 16f8e784175e dikirim. Lihat hasil dengan: kubectl logs -n tester-agent -l app=tester-agent
+== 3. memantau node, pod, dan replikasi (tiap 10 dtk) sampai Tester Agent selesai memulihkan
+   t+   4s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=0 partial=False under_replicated=9 rebuilding=[] tak_terjangkau=[]
+   t+  16s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=0 partial=False under_replicated=67453 rebuilding=[] tak_terjangkau=['store-1']
+   >>> catatan run Tester Agent dihapus agar node tidak dimatikan ulang saat kembali (configmap "tester-run" deleted from tester-agent namespace); salinan: tester-run.backup.yaml
+   t+  78s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=0 partial=False under_replicated=68616 rebuilding=[] tak_terjangkau=['store-1']
+
+   >>> node ['chisli-worker-1'] tidak siap/hilang dari cluster. Bila node tidak kembali sendiri, join ulang
+   >>> worker (token baru dari WSL: sudo cat /var/lib/rancher/k3s/server/node-token),
+   >>> lalu tes ini melanjutkan otomatis.
+
+   t+  90s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=0 partial=False under_replicated=68847 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 103s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=0 partial=False under_replicated=69107 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 116s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=0 partial=False under_replicated=69368 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 129s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=0 partial=False under_replicated=69588 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 143s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=0 partial=False under_replicated=69861 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 156s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=0 partial=False under_replicated=70104 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 169s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=0 partial=False under_replicated=70354 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 183s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=0 partial=False under_replicated=70617 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 196s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=3 partial=False under_replicated=70831 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 210s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=3 partial=False under_replicated=71073 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 224s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=3 partial=False under_replicated=71344 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 236s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=3 partial=False under_replicated=71620 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 250s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=3 partial=False under_replicated=71876 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 263s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=3 partial=False under_replicated=72159 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 277s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=3 partial=False under_replicated=72347 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 290s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=3 partial=False under_replicated=72630 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 303s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=3 partial=False under_replicated=72907 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 317s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=1 partial=False under_replicated=73116 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 330s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=1 partial=False under_replicated=73378 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 344s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=1 partial=False under_replicated=73605 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 357s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=1 partial=False under_replicated=73884 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 370s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=1 partial=False under_replicated=74172 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 383s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=1 partial=False under_replicated=74432 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 396s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=1 partial=False under_replicated=74720 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 410s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=1 partial=False under_replicated=74904 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 424s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=1 partial=False under_replicated=75184 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 437s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=1 partial=False under_replicated=75317 rebuilding=['store-1'] tak_terjangkau=[]
+   t+ 450s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=0 partial=False under_replicated=52676 rebuilding=['store-1'] tak_terjangkau=[]
+   log Tester Agent:
+== 4. tunggu replikasi utuh (partial=False, under_replicated=0, tidak ada unit dibangun ulang)
+   lengkap=True under_replicated=0 salinan per node={'chisli-control': 164972, 'chisli-worker-1': 76840}
+== 5. periksa tidak ada event BMKG yang hilang
+   hilang: 0 dari 76472 (partial=False)
+
+== lalu lintas selama uji:
+   read      223 permintaan, kode {'200': 223}, partial 0, p95 0.122 dtk, maks 2.004 dtk
+   checksum  222 permintaan, kode {'200': 222}, partial 0, p95 3.361 dtk, maks 9.671 dtk
+   write     505 permintaan, kode {'200': 505}, partial 0, p95 0.294 dtk, maks 5.087 dtk
+   node akhir: {'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'}; seluruh node menanggung data: True
+
+HASIL: LOLOS (respons melanggar: 0; Tester Agent selesai: True)

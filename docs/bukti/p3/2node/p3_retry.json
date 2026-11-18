@@ -1,0 +1,21 @@
+{
+  "retrying_terlihat": 2,
+  "contoh": {
+    "message_id": "msg-c1903ed8cc998847",
+    "source": "PVMBG",
+    "received_at": "2026-11-18T17:50:53.172564752Z",
+    "reason": "transient: rabbitmq reconnect: Exception (501) Reason: \"read tcp 10.42.1.112:52504->10.43.23.146:5672: i/o timeout\"",
+    "retryable": true,
+    "attempts": 1,
+    "status": "retrying"
+  },
+  "retrying_tersisa": 0,
+  "detik_pulih": 6,
+  "parked_baru": 0,
+  "kesinambungan_pvmbg": {
+    "jumlah": 1942,
+    "duplikat": 0,
+    "celah": 25
+  },
+  "lolos": true
+}

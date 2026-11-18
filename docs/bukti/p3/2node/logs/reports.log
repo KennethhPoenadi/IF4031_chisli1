@@ -1,0 +1,8 @@
+mengirim 300 laporan; komponen dimatikan paksa sesudah 3.0 dtk
+   dibunuh paksa: client-facing-api-78b8c67cf6-46jz4
+   dibunuh paksa: aggregator-788dd675b7-8tj65
+202: 300, ditolak/gagal: 0 (kode []), p95 0.163 dtk
+laporan 202 yang hilang: 0 dari 300; diproses lebih dari sekali: 0; stats {'reports': 300, 'deliveries': 300, 'duplicate_deliveries': 0, 'max_process_count': 1, 'processed_more_than_once': 0, 'partial': False}
+
+HASIL reports: LOLOS
+bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p3/2node

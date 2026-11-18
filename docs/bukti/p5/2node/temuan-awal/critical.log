@@ -1,0 +1,6 @@
+dasar penghitungan: sensor; pengamatan critical: 3; sampai ke notifier: 0; disisihkan karena melanggar kontrak: 0; hilang: 3
+latensi event tersimpan -> notifikasi: p50=None p95=None maks=None detik
+contoh hilang: ['obs-000120', 'obs-000362', 'obs-000601']
+
+HASIL critical: GAGAL
+bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p5/2node

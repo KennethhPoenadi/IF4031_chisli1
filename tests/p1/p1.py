@@ -102,7 +102,16 @@ class Client:
         raise SystemExit("ingest gagal: penyimpanan tidak terjangkau setelah 8 percobaan")
 
     def audit_get(self, path):
-        code, res = http_json("GET", self.audit + path, {"Authorization": "Bearer " + self.token})
+        # Jalur ke Audit API lewat port-forward dapat putus sesaat saat pod diganti (rolling, kill, freeze): coba ulang
+        # pada gangguan koneksi, bukan pada jawaban HTTP (kode non-200 tetap dianggap hasil sebenarnya).
+        for attempt in range(6):
+            try:
+                code, res = http_json("GET", self.audit + path, {"Authorization": "Bearer " + self.token})
+                break
+            except OSError:
+                if attempt == 5:
+                    raise
+                time.sleep(3)
         if code != 200:
             raise SystemExit(f"audit {path} gagal: HTTP {code} {res}")
         return res

@@ -1,0 +1,136 @@
+{
+  "distribusi_sebelum": {
+    "as_of": "2026-11-18T03:46:00Z",
+    "max_min_ratio": 0,
+    "nodes": [
+      {
+        "copies": 240890,
+        "node": "xops-control-plane",
+        "primary": 120450,
+        "replica": 120440,
+        "units": [
+          "store-0",
+          "store-1",
+          "store-2"
+        ]
+      }
+    ],
+    "partial": false,
+    "replication_factor": 2,
+    "total_events": 120538,
+    "unavailable_units": [],
+    "units": [
+      {
+        "by_source": {
+          "BMKG": 55464,
+          "PVMBG": 212,
+          "SATELIT": 15638,
+          "SENSOR_PANTAI": 14798
+        },
+        "copies": 86112,
+        "node": "xops-control-plane",
+        "primary": 43223,
+        "replica": 42889,
+        "unit": "store-0"
+      },
+      {
+        "by_source": {
+          "BMKG": 49233,
+          "PVMBG": 180,
+          "SATELIT": 14048,
+          "SENSOR_PANTAI": 12895
+        },
+        "copies": 76356,
+        "node": "xops-control-plane",
+        "primary": 36010,
+        "replica": 40346,
+        "unit": "store-1"
+      },
+      {
+        "by_source": {
+          "BMKG": 50481,
+          "PVMBG": 200,
+          "SATELIT": 14274,
+          "SENSOR_PANTAI": 13467
+        },
+        "copies": 78422,
+        "node": "xops-control-plane",
+        "primary": 41217,
+        "replica": 37205,
+        "unit": "store-2"
+      }
+    ]
+  },
+  "distribusi": {
+    "as_of": "2026-11-18T03:46:05Z",
+    "max_min_ratio": 0,
+    "nodes": [
+      {
+        "copies": 240930,
+        "node": "xops-control-plane",
+        "primary": 120470,
+        "replica": 120460,
+        "units": [
+          "store-0",
+          "store-1",
+          "store-2"
+        ]
+      }
+    ],
+    "partial": false,
+    "replication_factor": 2,
+    "total_events": 120558,
+    "unavailable_units": [],
+    "units": [
+      {
+        "by_source": {
+          "BMKG": 55464,
+          "PVMBG": 212,
+          "SATELIT": 15638,
+          "SENSOR_PANTAI": 14814
+        },
+        "copies": 86128,
+        "node": "xops-control-plane",
+        "primary": 43229,
+        "replica": 42899,
+        "unit": "store-0"
+      },
+      {
+        "by_source": {
+          "BMKG": 49233,
+          "PVMBG": 180,
+          "SATELIT": 14048,
+          "SENSOR_PANTAI": 12908
+        },
+        "copies": 76369,
+        "node": "xops-control-plane",
+        "primary": 36018,
+        "replica": 40351,
+        "unit": "store-1"
+      },
+      {
+        "by_source": {
+          "BMKG": 50481,
+          "PVMBG": 200,
+          "SATELIT": 14274,
+          "SENSOR_PANTAI": 13478
+        },
+        "copies": 78433,
+        "node": "xops-control-plane",
+        "primary": 41223,
+        "replica": 37210,
+        "unit": "store-2"
+      }
+    ]
+  },
+  "checksum": {
+    "algorithm": "sha256",
+    "as_of": "2026-11-18T03:46:03Z",
+    "checksum": "aa146466fde35d518930f360126b4bdbddfbe545ad7417062ee12c938e4c87ff",
+    "count": 120545,
+    "partial": false,
+    "source": "ALL",
+    "unavailable_units": []
+  },
+  "konsisten": true
+}

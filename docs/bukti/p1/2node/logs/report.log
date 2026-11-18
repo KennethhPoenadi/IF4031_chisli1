@@ -1,0 +1,9 @@
+node                  unit                      salinan  primary  replica  persen
+chisli-control        store-0,store-2             34194    17635    16559   68.2%
+chisli-worker-1       store-1                     15955     7439     8516   31.8%
+event unik: 25075   RF: 2   max/min: 2.14   partial: False   tak terjangkau: []
+
+checksum  : 7facc0d42aa927a0ec56caaf5d6e66a18ace25404033f939df4bfbd76ed93b08
+jumlah    : 25060   partial: False
+konsisten dengan checksum: YA (distribusi 25037 -> 25075, checksum 25060)
+bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p1/2node

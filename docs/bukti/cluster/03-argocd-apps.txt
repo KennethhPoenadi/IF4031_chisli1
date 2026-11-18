@@ -1,0 +1,15 @@
+# 2026-11-18 17:05:58 WIB
+$ kubectl -n argocd get applications
+NAME                      SYNC STATUS   HEALTH STATUS
+aggregator-prod           Synced        Healthy
+auth-service-prod         Synced        Healthy
+bmkg-mock-prod            Synced        Healthy
+client-facing-api-prod    Synced        Healthy
+dashboard-updater-prod    Synced        Healthy
+notifier-prod             Synced        Healthy
+pvmbg-mock-prod           Synced        Healthy
+rabbitmq-prod             Synced        Healthy
+satellite-ingestor-prod   Synced        Healthy
+sensor-pantai-prod        Synced        Healthy
+situation-analyst-prod    Synced        Healthy
+store-prod                Synced        Healthy

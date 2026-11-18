@@ -1,0 +1,104 @@
+{
+  "fase": "load",
+  "durasi_detik": 14.19,
+  "throughput_event_per_detik": 1409.2,
+  "latensi_batch_detik": {
+    "p50": 2.747,
+    "p95": 3.174
+  },
+  "received": 20000,
+  "stored": 20000,
+  "rejected": 0,
+  "failed": 0,
+  "contoh_penolakan": [],
+  "tambahan_salinan_per_node": {
+    "chisli-control": 27512,
+    "chisli-worker-1": 12844
+  },
+  "beban_node_kubectl_top": {
+    "chisli-control": {
+      "cpu_m_avg": 1456,
+      "cpu_m_max": 1456,
+      "mem_mi_max": 5622,
+      "samples": 5
+    },
+    "chisli-worker-1": {
+      "cpu_m_avg": 1014,
+      "cpu_m_max": 1014,
+      "mem_mi_max": 1611,
+      "samples": 5
+    }
+  },
+  "distribusi_sesudah": {
+    "as_of": "2026-11-18T11:05:57Z",
+    "max_min_ratio": 2.1405697800216372,
+    "nodes": [
+      {
+        "copies": 29679,
+        "node": "chisli-control",
+        "primary": 15313,
+        "replica": 14366,
+        "units": [
+          "store-0",
+          "store-2"
+        ]
+      },
+      {
+        "copies": 13865,
+        "node": "chisli-worker-1",
+        "primary": 6459,
+        "replica": 7406,
+        "units": [
+          "store-1"
+        ]
+      }
+    ],
+    "partial": false,
+    "rebuilding_units": [],
+    "replication_factor": 2,
+    "total_events": 21772,
+    "unavailable_units": [],
+    "under_replicated": 0,
+    "units": [
+      {
+        "by_source": {
+          "BMKG": 14235,
+          "PVMBG": 10,
+          "SATELIT": 943,
+          "SENSOR_PANTAI": 301
+        },
+        "copies": 15489,
+        "node": "chisli-control",
+        "primary": 7824,
+        "replica": 7665,
+        "unit": "store-0"
+      },
+      {
+        "by_source": {
+          "BMKG": 12739,
+          "PVMBG": 4,
+          "SATELIT": 854,
+          "SENSOR_PANTAI": 268
+        },
+        "copies": 13865,
+        "node": "chisli-worker-1",
+        "primary": 6459,
+        "replica": 7406,
+        "unit": "store-1"
+      },
+      {
+        "by_source": {
+          "BMKG": 13046,
+          "PVMBG": 8,
+          "SATELIT": 877,
+          "SENSOR_PANTAI": 259
+        },
+        "copies": 14190,
+        "node": "chisli-control",
+        "primary": 7489,
+        "replica": 6701,
+        "unit": "store-2"
+      }
+    ]
+  }
+}

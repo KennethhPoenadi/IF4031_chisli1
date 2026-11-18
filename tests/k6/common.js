@@ -31,14 +31,45 @@ const measuredTraffic = {
   admin: trafficMetrics('admin'),
 };
 
+// Token akses berumur pendek (bawaan 60 detik), padahal beban berlangsung >= 120 detik. Bila CLIENT_ID dan CLIENT_SECRET
+// diberikan, tiap VU mengambil token client_credentials sendiri dan memperbaruinya 15 detik sebelum kedaluwarsa.
+// Modul k6 dimuat per VU, jadi variabel di bawah ini milik masing-masing VU. API_TOKEN statis tetap didukung (durasi pendek).
+export const authBaseURL = (__ENV.AUTH_BASE_URL || 'http://localhost:8091').replace(/\/$/, '');
+export const authRequests = new Counter('auth_token_requests');
+export const authFailures = new Counter('auth_token_failures');
+let vuToken = '';
+let vuTokenExpiresAt = 0;
+
+function accessToken() {
+  if (__ENV.API_TOKEN) return __ENV.API_TOKEN;
+  if (!__ENV.CLIENT_ID) return '';
+  const now = Date.now();
+  if (vuToken && now < vuTokenExpiresAt - 15000) return vuToken;
+  authRequests.add(1);
+  const res = http.post(`${authBaseURL}/token`, {
+    grant_type: 'client_credentials',
+    client_id: __ENV.CLIENT_ID,
+    client_secret: __ENV.CLIENT_SECRET || '',
+  }, { tags: { traffic: 'auth' }, responseType: 'text' }); // isi respons token wajib disimpan walau discardResponseBodies aktif
+  if (res.status === 200) {
+    const body = res.json();
+    vuToken = body.access_token;
+    vuTokenExpiresAt = now + Number(body.expires_in || 60) * 1000;
+  } else {
+    authFailures.add(1);
+  }
+  return vuToken;
+}
+
 export function apiHeaders() {
   const vu = typeof __VU === 'undefined' ? 0 : __VU;
   const iteration = typeof __ITER === 'undefined' ? 0 : __ITER;
   const headers = {
     'X-Correlation-ID': `k6-${vu}-${iteration}-${Date.now()}`,
   };
-  if (__ENV.API_TOKEN) {
-    headers.Authorization = `Bearer ${__ENV.API_TOKEN}`;
+  const token = accessToken();
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
   }
   return { headers };
 }

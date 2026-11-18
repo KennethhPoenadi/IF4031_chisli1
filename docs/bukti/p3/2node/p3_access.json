@@ -1,0 +1,9 @@
+{
+  "status_per_klien": {
+    "ops": 200,
+    "field": 403,
+    "media": 403,
+    "tanpa_token": 401
+  },
+  "lolos": true
+}

@@ -1,0 +1,20 @@
+{
+  "pod_restart": {},
+  "bmkg": [
+    88005,
+    88005
+  ],
+  "bmkg_poll_sukses": 66,
+  "tak_terproses": [
+    61,
+    63
+  ],
+  "kinds": [
+    "truncated",
+    "deep",
+    "invalid_utf8",
+    "oversize"
+  ],
+  "per_kind": 3,
+  "lolos": true
+}

@@ -1,0 +1,17 @@
+{
+  "dasar": "sensor",
+  "critical_total": 3,
+  "sampai_notifier": 0,
+  "disisihkan_kontrak": 0,
+  "hilang": 3,
+  "contoh_hilang": [
+    "obs-000120",
+    "obs-000362",
+    "obs-000601"
+  ],
+  "latensi_p50_dtk": null,
+  "latensi_p95_dtk": null,
+  "latensi_maks_dtk": null,
+  "catatan": "latensi dihitung dari event disimpan oleh Aggregator sampai notifier memproses (age_ms)",
+  "lolos": false
+}

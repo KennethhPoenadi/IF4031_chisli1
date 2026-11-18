@@ -1,0 +1,20 @@
+instance aggregator: 5 di node ['chisli-control', 'chisli-worker-1']
+   aggregator-788dd675b7-8tj65  chisli-control  10.42.0.173
+   aggregator-788dd675b7-gnk9r  chisli-control  10.42.0.172
+   aggregator-788dd675b7-jj2cf  chisli-control  10.42.0.171
+   aggregator-788dd675b7-kd2mn  chisli-worker-1  10.42.1.104
+   aggregator-788dd675b7-tthpq  chisli-worker-1  10.42.1.100
+endpoint siap di titik masuk sebelum uji: 5
+pod yang dibekukan: aggregator-788dd675b7-gnk9r (chisli-control, 10.42.0.172); leader aggregator-788dd675b7-8tj65 tidak disentuh
+pod pembeku freezer-chisli-control di node chisli-control
+  pause: proses=1
+aggregator-788dd675b7-gnk9r dibekukan; memantau Endpoints sampai pod itu dikeluarkan...
+pod dikeluarkan dari endpoint titik masuk setelah 11.7 dtk
+  resume: proses=1
+pod dilepas; kembali ke endpoint: ya (0.2 dtk)
+permintaan sebelum pembekuan: 129, gagal 0
+permintaan antara pembekuan dan pod dikeluarkan (+2 dtk): 73, gagal 8
+permintaan setelah pod dikeluarkan (25 dtk): 297, gagal 1
+
+HASIL unhealthy: GAGAL
+bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p2/2node

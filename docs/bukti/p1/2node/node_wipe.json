@@ -1,0 +1,442 @@
+{
+  "baseline": {
+    "event": 76472,
+    "node": {
+      "chisli-control": "Ready",
+      "chisli-worker-1": "Ready"
+    },
+    "unit_ke_node": {
+      "store-0": "chisli-control",
+      "store-1": "chisli-worker-1",
+      "store-2": "chisli-control"
+    }
+  },
+  "skenario": {
+    "keluaran": "Latihan \"wipe-node\": 1 langkah\n  - t+5s wipe_and_shutdown role=store nodes=any\nPermintaan 16f8e784175e dikirim. Lihat hasil dengan: kubectl logs -n tester-agent -l app=tester-agent"
+  },
+  "agent_menyatakan_selesai": false,
+  "catatan_run_dihapus": true,
+  "lini_masa": [
+    {
+      "t": 4,
+      "node": {
+        "chisli-control": "Ready",
+        "chisli-worker-1": "Ready"
+      },
+      "pod_tidak_siap": [],
+      "replikasi": "partial=False under_replicated=9 rebuilding=[] tak_terjangkau=[]"
+    },
+    {
+      "t": 16,
+      "node": {
+        "chisli-control": "Ready",
+        "chisli-worker-1": "Ready"
+      },
+      "pod_tidak_siap": [],
+      "replikasi": "partial=False under_replicated=67453 rebuilding=[] tak_terjangkau=['store-1']"
+    },
+    {
+      "t": 78,
+      "node": {
+        "chisli-control": "Ready",
+        "chisli-worker-1": "NotReady"
+      },
+      "pod_tidak_siap": [],
+      "replikasi": "partial=False under_replicated=68616 rebuilding=[] tak_terjangkau=['store-1']"
+    },
+    {
+      "t": 90,
+      "node": {
+        "chisli-control": "Ready",
+        "chisli-worker-1": "NotReady"
+      },
+      "pod_tidak_siap": [],
+      "replikasi": "partial=False under_replicated=68847 rebuilding=[] tak_terjangkau=['store-1']"
+    },
+    {
+      "t": 103,
+      "node": {
+        "chisli-control": "Ready",
+        "chisli-worker-1": "NotReady"
+      },
+      "pod_tidak_siap": [],
+      "replikasi": "partial=False under_replicated=69107 rebuilding=[] tak_terjangkau=['store-1']"
+    },
+    {
+      "t": 116,
+      "node": {
+        "chisli-control": "Ready",
+        "chisli-worker-1": "NotReady"
+      },
+      "pod_tidak_siap": [],
+      "replikasi": "partial=False under_replicated=69368 rebuilding=[] tak_terjangkau=['store-1']"
+    },
+    {
+      "t": 129,
+      "node": {
+        "chisli-control": "Ready",
+        "chisli-worker-1": "NotReady"
+      },
+      "pod_tidak_siap": [],
+      "replikasi": "partial=False under_replicated=69588 rebuilding=[] tak_terjangkau=['store-1']"
+    },
+    {
+      "t": 143,
+      "node": {
+        "chisli-control": "Ready",
+        "chisli-worker-1": "NotReady"
+      },
+      "pod_tidak_siap": [],
+      "replikasi": "partial=False under_replicated=69861 rebuilding=[] tak_terjangkau=['store-1']"
+    },
+    {
+      "t": 156,
+      "node": {
+        "chisli-control": "Ready",
+        "chisli-worker-1": "NotReady"
+      },
+      "pod_tidak_siap": [],
+      "replikasi": "partial=False under_replicated=70104 rebuilding=[] tak_terjangkau=['store-1']"
+    },
+    {
+      "t": 169,
+      "node": {
+        "chisli-control": "Ready",
+        "chisli-worker-1": "NotReady"
+      },
+      "pod_tidak_siap": [],
+      "replikasi": "partial=False under_replicated=70354 rebuilding=[] tak_terjangkau=['store-1']"
+    },
+    {
+      "t": 183,
+      "node": {
+        "chisli-control": "Ready",
+        "chisli-worker-1": "NotReady"
+      },
+      "pod_tidak_siap": [],
+      "replikasi": "partial=False under_replicated=70617 rebuilding=[] tak_terjangkau=['store-1']"
+    },
+    {
+      "t": 196,
+      "node": {
+        "chisli-control": "Ready",
+        "chisli-worker-1": "Ready"
+      },
+      "pod_tidak_siap": [
+        "aggregator-5fd4f6f76c-85prr:ContainerCreating",
+        "aggregator-5fd4f6f76c-9c7p2:ContainerCreating",
+        "store-1:ContainerCreating"
+      ],
+      "replikasi": "partial=False under_replicated=70831 rebuilding=[] tak_terjangkau=['store-1']"
+    },
+    {
+      "t": 210,
+      "node": {
+        "chisli-control": "Ready",
+        "chisli-worker-1": "Ready"
+      },
+      "pod_tidak_siap": [
+        "aggregator-5fd4f6f76c-85prr:ContainerCreating",
+        "aggregator-5fd4f6f76c-9c7p2:ContainerCreating",
+        "store-1:ContainerCreating"
+      ],
+      "replikasi": "partial=False under_replicated=71073 rebuilding=[] tak_terjangkau=['store-1']"
+    },
+    {
+      "t": 224,
+      "node": {
+        "chisli-control": "Ready",
+        "chisli-worker-1": "Ready"
+      },
+      "pod_tidak_siap": [
+        "aggregator-5fd4f6f76c-85prr:ContainerCreating",
+        "aggregator-5fd4f6f76c-9c7p2:ContainerCreating",
+        "store-1:ContainerCreating"
+      ],
+      "replikasi": "partial=False under_replicated=71344 rebuilding=[] tak_terjangkau=['store-1']"
+    },
+    {
+      "t": 236,
+      "node": {
+        "chisli-control": "Ready",
+        "chisli-worker-1": "Ready"
+      },
+      "pod_tidak_siap": [
+        "aggregator-5fd4f6f76c-85prr:ContainerCreating",
+        "aggregator-5fd4f6f76c-9c7p2:ContainerCreating",
+        "store-1:ContainerCreating"
+      ],
+      "replikasi": "partial=False under_replicated=71620 rebuilding=[] tak_terjangkau=['store-1']"
+    },
+    {
+      "t": 250,
+      "node": {
+        "chisli-control": "Ready",
+        "chisli-worker-1": "Ready"
+      },
+      "pod_tidak_siap": [
+        "aggregator-5fd4f6f76c-85prr:ContainerCreating",
+        "aggregator-5fd4f6f76c-9c7p2:ContainerCreating",
+        "store-1:ContainerCreating"
+      ],
+      "replikasi": "partial=False under_replicated=71876 rebuilding=[] tak_terjangkau=['store-1']"
+    },
+    {
+      "t": 263,
+      "node": {
+        "chisli-control": "Ready",
+        "chisli-worker-1": "Ready"
+      },
+      "pod_tidak_siap": [
+        "aggregator-5fd4f6f76c-85prr:ContainerCreating",
+        "aggregator-5fd4f6f76c-9c7p2:ContainerCreating",
+        "store-1:ContainerCreating"
+      ],
+      "replikasi": "partial=False under_replicated=72159 rebuilding=[] tak_terjangkau=['store-1']"
+    },
+    {
+      "t": 277,
+      "node": {
+        "chisli-control": "Ready",
+        "chisli-worker-1": "Ready"
+      },
+      "pod_tidak_siap": [
+        "aggregator-5fd4f6f76c-85prr:ContainerCreating",
+        "aggregator-5fd4f6f76c-9c7p2:ContainerCreating",
+        "store-1:ContainerCreating"
+      ],
+      "replikasi": "partial=False under_replicated=72347 rebuilding=[] tak_terjangkau=['store-1']"
+    },
+    {
+      "t": 290,
+      "node": {
+        "chisli-control": "Ready",
+        "chisli-worker-1": "Ready"
+      },
+      "pod_tidak_siap": [
+        "aggregator-5fd4f6f76c-85prr:ContainerCreating",
+        "aggregator-5fd4f6f76c-9c7p2:ContainerCreating",
+        "store-1:ContainerCreating"
+      ],
+      "replikasi": "partial=False under_replicated=72630 rebuilding=[] tak_terjangkau=['store-1']"
+    },
+    {
+      "t": 303,
+      "node": {
+        "chisli-control": "Ready",
+        "chisli-worker-1": "Ready"
+      },
+      "pod_tidak_siap": [
+        "aggregator-5fd4f6f76c-85prr:ContainerCreating",
+        "aggregator-5fd4f6f76c-9c7p2:ContainerCreating",
+        "store-1:ContainerCreating"
+      ],
+      "replikasi": "partial=False under_replicated=72907 rebuilding=[] tak_terjangkau=['store-1']"
+    },
+    {
+      "t": 317,
+      "node": {
+        "chisli-control": "Ready",
+        "chisli-worker-1": "Ready"
+      },
+      "pod_tidak_siap": [
+        "store-1:ContainerCreating"
+      ],
+      "replikasi": "partial=False under_replicated=73116 rebuilding=[] tak_terjangkau=['store-1']"
+    },
+    {
+      "t": 330,
+      "node": {
+        "chisli-control": "Ready",
+        "chisli-worker-1": "Ready"
+      },
+      "pod_tidak_siap": [
+        "store-1:ContainerCreating"
+      ],
+      "replikasi": "partial=False under_replicated=73378 rebuilding=[] tak_terjangkau=['store-1']"
+    },
+    {
+      "t": 344,
+      "node": {
+        "chisli-control": "Ready",
+        "chisli-worker-1": "Ready"
+      },
+      "pod_tidak_siap": [
+        "store-1:ContainerCreating"
+      ],
+      "replikasi": "partial=False under_replicated=73605 rebuilding=[] tak_terjangkau=['store-1']"
+    },
+    {
+      "t": 357,
+      "node": {
+        "chisli-control": "Ready",
+        "chisli-worker-1": "Ready"
+      },
+      "pod_tidak_siap": [
+        "store-1:ContainerCreating"
+      ],
+      "replikasi": "partial=False under_replicated=73884 rebuilding=[] tak_terjangkau=['store-1']"
+    },
+    {
+      "t": 370,
+      "node": {
+        "chisli-control": "Ready",
+        "chisli-worker-1": "Ready"
+      },
+      "pod_tidak_siap": [
+        "store-1:ContainerCreating"
+      ],
+      "replikasi": "partial=False under_replicated=74172 rebuilding=[] tak_terjangkau=['store-1']"
+    },
+    {
+      "t": 383,
+      "node": {
+        "chisli-control": "Ready",
+        "chisli-worker-1": "Ready"
+      },
+      "pod_tidak_siap": [
+        "store-1:ContainerCreating"
+      ],
+      "replikasi": "partial=False under_replicated=74432 rebuilding=[] tak_terjangkau=['store-1']"
+    },
+    {
+      "t": 396,
+      "node": {
+        "chisli-control": "Ready",
+        "chisli-worker-1": "Ready"
+      },
+      "pod_tidak_siap": [
+        "store-1:ContainerCreating"
+      ],
+      "replikasi": "partial=False under_replicated=74720 rebuilding=[] tak_terjangkau=['store-1']"
+    },
+    {
+      "t": 410,
+      "node": {
+        "chisli-control": "Ready",
+        "chisli-worker-1": "Ready"
+      },
+      "pod_tidak_siap": [
+        "store-1:ContainerCreating"
+      ],
+      "replikasi": "partial=False under_replicated=74904 rebuilding=[] tak_terjangkau=['store-1']"
+    },
+    {
+      "t": 424,
+      "node": {
+        "chisli-control": "Ready",
+        "chisli-worker-1": "Ready"
+      },
+      "pod_tidak_siap": [
+        "store-1:Running"
+      ],
+      "replikasi": "partial=False under_replicated=75184 rebuilding=[] tak_terjangkau=['store-1']"
+    },
+    {
+      "t": 437,
+      "node": {
+        "chisli-control": "Ready",
+        "chisli-worker-1": "Ready"
+      },
+      "pod_tidak_siap": [
+        "store-1:Running"
+      ],
+      "replikasi": "partial=False under_replicated=75317 rebuilding=['store-1'] tak_terjangkau=[]"
+    },
+    {
+      "t": 450,
+      "node": {
+        "chisli-control": "Ready",
+        "chisli-worker-1": "Ready"
+      },
+      "pod_tidak_siap": [],
+      "replikasi": "partial=False under_replicated=52676 rebuilding=['store-1'] tak_terjangkau=[]"
+    }
+  ],
+  "lalu_lintas_selama_skenario": {
+    "read": {
+      "jumlah": 196,
+      "kode": {
+        "200": 196
+      },
+      "partial": 0,
+      "p95_detik": 0.094,
+      "maks_detik": 2.004
+    },
+    "checksum": {
+      "jumlah": 196,
+      "kode": {
+        "200": 196
+      },
+      "partial": 0,
+      "p95_detik": 2.768,
+      "maks_detik": 5.094
+    },
+    "write": {
+      "jumlah": 406,
+      "kode": {
+        "200": 406
+      },
+      "partial": 0,
+      "p95_detik": 0.274,
+      "maks_detik": 5.087
+    }
+  },
+  "node_sempat_tidak_siap": true,
+  "replikasi_akhir": {
+    "lengkap": true,
+    "salinan_per_node": {
+      "chisli-control": 164972,
+      "chisli-worker-1": 76840
+    },
+    "under_replicated": 0,
+    "rebuilding_units": []
+  },
+  "kriteria5": {
+    "baseline": 76472,
+    "sesudah": 86628,
+    "hilang": 0,
+    "contoh_hilang": [],
+    "partial": false
+  },
+  "lalu_lintas_total": {
+    "read": {
+      "jumlah": 223,
+      "kode": {
+        "200": 223
+      },
+      "partial": 0,
+      "p95_detik": 0.122,
+      "maks_detik": 2.004
+    },
+    "checksum": {
+      "jumlah": 222,
+      "kode": {
+        "200": 222
+      },
+      "partial": 0,
+      "p95_detik": 3.361,
+      "maks_detik": 9.671
+    },
+    "write": {
+      "jumlah": 505,
+      "kode": {
+        "200": 505
+      },
+      "partial": 0,
+      "p95_detik": 0.294,
+      "maks_detik": 5.087
+    }
+  },
+  "node_akhir": {
+    "chisli-control": "Ready",
+    "chisli-worker-1": "Ready"
+  },
+  "unit_ke_node_akhir": {
+    "store-0": "chisli-control",
+    "store-1": "chisli-worker-1",
+    "store-2": "chisli-control"
+  },
+  "lolos": true,
+  "pelanggaran_lalu_lintas": 0
+}

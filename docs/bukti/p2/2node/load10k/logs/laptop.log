@@ -1,0 +1,24 @@
+# 10.000 VU dua tempat: sisi laptop 8000 VU, beban penuh 150s, ramp 30s; replika aggregator 3 -> 5 -> 2
+# menunggu hingga loadgen_probe memberi sinyal GO...
+22:55:22 t+1s aggregator -> 3 replika
+22:56:21 t+60s aggregator -> 5 replika
+22:57:12 t+111s aggregator -> 2 replika
+   t+  5s mem_control=81% mem_mac=48% wsl_tersedia=2897MB | t+   5s vu=1315 rps=5587 2xx=1644 429=26289 gagal=0 (0.00%) heap=116MB
+   t+ 22s mem_control=88% mem_mac=50% wsl_tersedia=1855MB | t+  20s vu=5312 rps=5007 2xx=1382 429=125286 gagal=4 (0.02%) heap=290MB
+   t+ 38s mem_control=88% mem_mac=52% wsl_tersedia=1348MB | t+  35s vu=8000 rps=1785 2xx=3017 429=150153 gagal=0 (0.00%) heap=414MB
+   t+ 55s mem_control=89% mem_mac=53% wsl_tersedia=1319MB | t+  50s vu=8000 rps=2848 2xx=4147 429=171922 gagal=27 (0.19%) heap=484MB
+   t+ 71s mem_control=90% mem_mac=55% wsl_tersedia=1273MB | t+  70s vu=8000 rps=2109 2xx=3810 429=202620 gagal=38 (0.36%) heap=522MB
+   t+ 88s mem_control=89% mem_mac=56% wsl_tersedia=1401MB | t+  85s vu=8000 rps=2552 2xx=2586 429=233072 gagal=153 (1.20%) heap=522MB
+   t+104s mem_control=89% mem_mac=56% wsl_tersedia=1246MB | t+ 100s vu=8000 rps=2863 2xx=2810 429=268164 gagal=11 (0.08%) heap=522MB
+   t+121s mem_control=90% mem_mac=56% wsl_tersedia=1575MB | t+ 120s vu=8000 rps=3271 2xx=1866 429=314050 gagal=73 (0.45%) heap=526MB
+   t+137s mem_control=88% mem_mac=55% wsl_tersedia=1576MB | t+ 135s vu=8000 rps=3942 2xx=1422 429=365359 gagal=44 (0.22%) heap=526MB
+   t+153s mem_control=90% mem_mac=55% wsl_tersedia=1635MB | t+ 150s vu=8000 rps=3627 2xx=426 429=423373 gagal=387 (2.13%) heap=526MB
+   t+169s mem_control=89% mem_mac=53% wsl_tersedia=1636MB | t+ 165s vu=8000 rps=2323 2xx=988 429=470319 gagal=420 (3.62%) heap=526MB
+== loadgen: 8000 VU, 180 detik
+   permintaan 577068 (3199/detik): 2xx=87965  429(ditolak terkontrol)=484691  401=93  5xx=3710  lain=0  galat_jaringan=609
+   gagal bukan-429: 0.76% (batas 1.0%)   latensi p50=1722ms p95=6889ms p99=13777ms
+   token: 29322 diminta, 103 gagal   memori heap pembangkit: 526 MB
+HASIL: LOLOS
+   puncak memori: control=90% mac=58% wsl_tersedia_min=1246MB  restart_pod=0
+# jumlah replika aggregator selama uji (dicatat tiap 5 dtk):      13 siap=2/2      10 siap=3/3       2 siap=3/5       8 siap=5/5 
+   HPA aggregator dikembalikan ke 3..5

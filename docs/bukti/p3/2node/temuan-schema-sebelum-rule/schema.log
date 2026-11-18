@@ -1,0 +1,17 @@
+baseline: {'parked': 27, 'retrying': 0, 'PVMBG': 1942, 'BMKG': 88005}
+== mode tidak kompatibel: rename
+   parked=32  poll BMKG sukses selama mode ini: 22 (hitungan event BMKG 88005)
+   contoh: sumber=PVMBG retryable=False alasan=blocked_by_earlier: source_ref_id pvmbg-000237 masih punya pesan parked
+== mode tidak kompatibel: type
+   parked=38  poll BMKG sukses selama mode ini: 78 (hitungan event BMKG 88005)
+   contoh: sumber=PVMBG retryable=False alasan=schema_incompatible: field "eruption_count_24h" must be a number, got string
+== mode tidak kompatibel: missing
+   parked=60  poll BMKG sukses selama mode ini: 22 (hitungan event BMKG 88005)
+   contoh: sumber=PVMBG retryable=False alasan=schema_incompatible: missing required field "volcano_id"
+parked setelah mode rusak: 61 (sebelum 27), retrying: 0
+reprocess: {'source': '', 'considered': 61, 'recovered': 0, 'still_parked': 61, 'blocked': 0, 'skipped_unsupported': 0, 'recovered_ids': []}
+parked setelah reprocess: 61; PVMBG 1942 -> 1942; duplikat ID: 0
+pod restart selama uji: tidak ada
+
+HASIL schema: LOLOS
+bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p3/2node

@@ -1,0 +1,17 @@
+baseline: {'parked': 0, 'retrying': 0, 'PVMBG': 1942, 'BMKG': 88005}
+== mode tidak kompatibel: rename
+   parked=6  BMKG tetap bertambah ke 88005
+   contoh: sumber=PVMBG retryable=False alasan=schema_incompatible: missing required field "alert_level"
+== mode tidak kompatibel: type
+   parked=12  BMKG tetap bertambah ke 88005
+   contoh: sumber=PVMBG retryable=False alasan=blocked_by_earlier: source_ref_id pvmbg-000192 masih punya pesan parked
+== mode tidak kompatibel: missing
+   parked=19  BMKG tetap bertambah ke 88005
+   contoh: sumber=PVMBG retryable=False alasan=schema_incompatible: missing required field "volcano_id"
+parked setelah mode rusak: 22 (sebelum 0), retrying: 0
+reprocess: {'source': '', 'considered': 22, 'recovered': 0, 'still_parked': 22, 'blocked': 0, 'skipped_unsupported': 0, 'recovered_ids': []}
+parked setelah reprocess: 22; PVMBG 1942 -> 1942; duplikat ID: 0
+pod restart selama uji: tidak ada
+
+HASIL schema: GAGAL
+bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p3/2node

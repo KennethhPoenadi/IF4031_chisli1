@@ -1,0 +1,8 @@
+== kirim respons korup: truncated x 3
+== kirim respons korup: deep x 3
+== kirim respons korup: invalid_utf8 x 3
+== kirim respons korup: oversize x 3
+pod restart: tidak ada; poll BMKG sukses selama uji: 66; BMKG 88005 -> 88005; pesan tak terproses 61 -> 63
+
+HASIL corrupt: LOLOS
+bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p3/2node

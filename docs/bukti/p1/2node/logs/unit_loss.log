@@ -1,0 +1,20 @@
+== 0. syarat awal: cluster sehat (tidak ada event yang salinannya kurang)
+   sehat setelah menunggu 2 dtk (under_replicated=0)
+== 1. baseline BMKG
+   24000 event, store-0 memegang 20578 salinan
+== 2. hapus pod dan volume store-0 (disk kosong)
+   store-0 hidup lagi setelah 6 dtk dengan 0 salinan (disk kosong)
+== 3. tunggu sistem melaporkan dirinya kembali tahan kehilangan satu unit
+   store-0: 26950 salinan; setelah 347 dtk under_replicated=0 rebuilding=[] lengkap=True
+== 4. periksa tidak ada event BMKG yang hilang
+   hilang: 0 dari 24000 (partial=False)
+== 5. matikan store-1 (kriteria 6)
+   saat store-1 mati: hilang 0, partial=False
+
+== lalu lintas selama uji:
+   read       128 permintaan, kode {'200': 128}, partial 0, p95 0.35 dtk, maks 2.25 dtk
+   checksum   128 permintaan, kode {'200': 128}, partial 0, p95 3.484 dtk, maks 6.152 dtk
+   write      340 permintaan, kode {'200': 340}, partial 0, p95 0.401 dtk, maks 2.082 dtk
+
+HASIL: LOLOS (respons melanggar: 0)
+bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p1/2node

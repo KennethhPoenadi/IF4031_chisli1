@@ -1,0 +1,27 @@
+{
+  "aturan": {
+    "PVMBG_FIELD_ALIASES": "level_status:alert_level",
+    "PVMBG_FIELD_COERCE": "eruption_count_24h:int"
+  },
+  "parked_sebelum": 63,
+  "parked_sesudah": 23,
+  "pulih": 40,
+  "pvmbg": [
+    1942,
+    1942
+  ],
+  "kesinambungan_pvmbg": {
+    "jumlah": 1942,
+    "duplikat": 0,
+    "celah": 25
+  },
+  "alasan_tersisa": [
+    "malformed: JSON terpotong",
+    "malformed: UTF-8 tidak valid",
+    "malformed: nesting terlalu dalam (5001 > 32)",
+    "schema_incompatible: missing required field \"volcano_id\""
+  ],
+  "hanya_field_wajib_hilang_tersisa": false,
+  "pod_restart": {},
+  "lolos": false
+}

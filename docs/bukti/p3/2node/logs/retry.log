@@ -1,0 +1,10 @@
+pod pembeku freezer-chisli-control di node chisli-control
+  pause: proses=9
+broker rabbitmq-0 dibekukan; menunggu pesan PVMBG yang valid masuk status retrying...
+  resume: proses=9
+retrying=2; contoh: retryable=True percobaan=1 alasan=transient: rabbitmq reconnect: Exception (501) Reason: "read tcp 10.42.1.112:52504->10.43.23.146:567
+broker dilepas; menunggu percobaan ulang otomatis...
+retrying tersisa: 0; detik sampai pulih: 6; parked baru: 0; duplikat ID: 0
+
+HASIL retry: LOLOS
+bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p3/2node

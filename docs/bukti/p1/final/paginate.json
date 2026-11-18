@@ -1,0 +1,12 @@
+{
+  "halaman": 40,
+  "ukuran_halaman": 50,
+  "event": 2000,
+  "halaman_partial": 0,
+  "latensi_halaman_detik": {
+    "p50": 0.007,
+    "p95": 0.026
+  },
+  "pelanggaran": [],
+  "jumlah_pelanggaran": 0
+}

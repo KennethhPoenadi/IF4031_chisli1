@@ -1,0 +1,16 @@
+== aggregator dikunci 1 replika
+   replika siap: 1/1; menunggu 20 dtk agar stabil
+   permintaan 88862 (1777/detik): 2xx=26189  429(ditolak terkontrol)=62027  401=0  5xx=646  lain=0  galat_jaringan=0
+   gagal bukan-429: 0.73% (batas 1.0%)   latensi p50=27ms p95=1448ms p99=4871ms
+HASIL: LOLOS
+   throughput sukses (2xx): 654.7 permintaan/detik
+== aggregator dikunci 3 replika
+   replika siap: 3/3; menunggu 20 dtk agar stabil
+   permintaan 107203 (2144/detik): 2xx=39765  429(ditolak terkontrol)=67036  401=0  5xx=400  lain=0  galat_jaringan=2
+   gagal bukan-429: 0.37% (batas 1.0%)   latensi p50=45ms p95=1024ms p99=4096ms
+HASIL: LOLOS
+   throughput sukses (2xx): 994.1 permintaan/detik
+
+== throughput 1 instance: 654.7 rps | 3 instance: 994.1 rps | rasio: 1.52x (batas 2,0x)
+HASIL: GAGAL
+# HPA aggregator dikembalikan ke 3..5

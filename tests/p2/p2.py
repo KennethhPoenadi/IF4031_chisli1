@@ -11,7 +11,7 @@ Subperintah (tiap subperintah menyimpan JSON bukti dan mengembalikan kode keluar
   rolling   Kriteria 8: ganti versi Aggregator (rolling restart) saat beban berjalan; tidak boleh ada permintaan gagal.
 
 Lingkungan: KUBECONFIG, AGG_URL (Audit API), AUDIT_TOKEN, DASHBOARD_TOKEN. Subperintah freeze memakai
-`docker exec <node kind>` untuk membekukan container, sehingga hanya berlaku untuk cluster kind lokal.
+pod pembeku (privileged, hostPID) pada node leader yang mengirim SIGSTOP/SIGCONT ke proses container. FREEZE_MODE=kind memakai `docker exec` pada node kind.
 Membunuh atau membekukan leader menghentikan polling sesaat: aman, kursor tersimpan.
 
   python3 tests/p2/p2.py once
@@ -83,7 +83,10 @@ def refs(c, source):
     items, cursor = [], ""
     while True:
         page = c.audit_get(f"/internal/audit/events?source={source}&limit=1000" + (f"&cursor={cursor}" if cursor else ""))
-        items += [e["source_ref_id"] for e in page["items"]]
+        # Hanya ID yang diambil dari mock (bmkg-NNNNNN, pvmbg-NNNNNN). Event sintetis dari tes lain (katalog, lonjakan,
+        # uji kehilangan unit) memakai prefix sendiri dan penomorannya bertabrakan, bukan tanda polling ganda.
+        items += [e["source_ref_id"] for e in page["items"]
+                  if re.match(rf"^{re.escape(source.lower())}-\d+$", e["source_ref_id"])]
         cursor = page.get("next_cursor")
         if not cursor:
             return items
@@ -181,16 +184,44 @@ def cmd_failover(args):
                                "kesinambungan_sebelum": before, "kesinambungan_sesudah": after}, ok)
 
 
-def container_id(pod):
-    raw = sh("docker", "exec", KIND_NODE, "crictl", "ps", "--name", "aggregator", "-o", "json")
-    for ctr in json.loads(raw)["containers"]:
-        if ctr["labels"].get("io.kubernetes.pod.name") == pod:
-            return ctr["id"]
-    raise SystemExit(f"container aggregator untuk pod {pod} tidak ditemukan")
+FREEZER_NS = os.environ.get("FREEZER_NAMESPACE", "default")
+_freezer = {"pod": None}
+
+
+def container_id(pod, cname="aggregator"):
+    """ID container aggregator milik pod. Pada k3s node-nya bisa mana saja, jadi pod pembeku dipasang di node itu."""
+    if os.environ.get("FREEZE_MODE") == "kind":
+        raw = sh("docker", "exec", KIND_NODE, "crictl", "ps", "--name", "aggregator", "-o", "json")
+        for c in json.loads(raw)["containers"]:
+            if c["labels"].get("io.kubernetes.pod.name") == pod:
+                return c["id"]
+        raise SystemExit(f"container aggregator untuk pod {pod} tidak ditemukan")
+    info = json.loads(kubectl("get", "pod", pod, "-o", "json"))
+    cid = next((c["containerID"].split("://")[-1] for c in info["status"]["containerStatuses"] if c["name"] == cname), "")
+    if not cid:
+        raise SystemExit(f"container aggregator untuk pod {pod} tidak ditemukan")
+    node = info["spec"]["nodeName"]
+    name = f"freezer-{node}"[:50]
+    sh("kubectl", "-n", FREEZER_NS, "delete", "pod", name, "--now", "--ignore-not-found", check=False)
+    overrides = json.dumps({"spec": {"nodeName": node, "hostPID": True, "terminationGracePeriodSeconds": 0, "containers": [{
+        "name": "freezer", "image": "busybox:1.36", "command": ["sleep", "900"], "securityContext": {"privileged": True}}]}})
+    sh("kubectl", "-n", FREEZER_NS, "run", name, "--image=busybox:1.36", "--restart=Never", f"--overrides={overrides}")
+    sh("kubectl", "-n", FREEZER_NS, "wait", "--for=condition=Ready", f"pod/{name}", "--timeout=120s")
+    _freezer["pod"] = name
+    print(f"pod pembeku {name} di node {node}")
+    return cid
 
 
 def ctr(action, cid):
-    return sh("docker", "exec", KIND_NODE, "ctr", "-n", "k8s.io", "tasks", action, cid, check=False)
+    """pause/resume: kirim SIGSTOP/SIGCONT ke semua proses di cgroup container (setara membekukan container)."""
+    if os.environ.get("FREEZE_MODE") == "kind":
+        return sh("docker", "exec", KIND_NODE, "ctr", "-n", "k8s.io", "tasks", action, cid, check=False)
+    sig = "STOP" if action == "pause" else "CONT"
+    script = (f"n=0; for f in $(grep -l {cid} /proc/[0-9]*/cgroup 2>/dev/null); do p=$(echo $f | cut -d/ -f3); "
+              f"kill -{sig} $p && n=$((n+1)); done; echo proses=$n")
+    out = sh("kubectl", "-n", FREEZER_NS, "exec", _freezer["pod"], "--", "sh", "-c", script, check=False)
+    print(f"  {action}: {out}")
+    return out
 
 
 def cmd_freeze(args):
@@ -228,6 +259,7 @@ class Load:
     def __init__(self, host, token, workers):
         self.host, self.token, self.workers = host, token, workers
         self.stop, self.lock, self.codes, self.lat = threading.Event(), threading.Lock(), {}, []
+        self.events = []  # (waktu kirim, kode); permintaan yang sudah terkirim ke pod beku sebelum dikeluarkan boleh gagal, yang dikirim sesudahnya tidak
 
     def _run(self):
         conn = None
@@ -246,6 +278,7 @@ class Load:
             with self.lock:
                 self.codes[code] = self.codes.get(code, 0) + 1
                 self.lat.append(time.monotonic() - t)
+                self.events.append((time.time() - (time.monotonic() - t), code))  # waktu permintaan DIKIRIM
             time.sleep(0.02)
 
     def __enter__(self):
@@ -283,6 +316,80 @@ def cmd_rolling(args):
                               "gagal": bad, "p95_detik": round(p95, 3) if p95 else None}, bad == 0 and total > 0)
 
 
+def ready_endpoints():
+    """IP pod aggregator yang siap menerima lalu lintas menurut Endpoints Service (yang dipakai titik masuk)."""
+    raw = kubectl("get", "endpoints", "aggregator", "-o", "jsonpath={.subsets[*].addresses[*].ip}", check=False)
+    return set(raw.split())
+
+
+def cmd_unhealthy(args):
+    """Kriteria 1: >= 3 instance di node berbeda di belakang satu titik masuk yang berhenti mengarahkan permintaan ke instance
+    yang tidak sehat. Satu pod non-leader dibekukan (readiness probe gagal) selama beban lewat ingress berjalan."""
+    token = os.environ.get("DASHBOARD_TOKEN", "")
+    if not token:
+        raise SystemExit("DASHBOARD_TOKEN wajib")
+    info = json.loads(kubectl("get", "pods", "-l", "app.kubernetes.io/name=aggregator", "-o", "json"))["items"]
+    placement = {p["metadata"]["name"]: (p["spec"]["nodeName"], p["status"].get("podIP", "")) for p in info}
+    nodes = sorted({n for n, _ in placement.values()})
+    print(f"instance aggregator: {len(placement)} di node {nodes}")
+    for name, (node, ip) in sorted(placement.items()):
+        print(f"   {name}  {node}  {ip}")
+    before = ready_endpoints()
+    print(f"endpoint siap di titik masuk sebelum uji: {len(before)}")
+    holder = (lease() or {}).get("holder")
+    victim = next((n for n in sorted(placement) if n != holder), None)
+    if victim is None:
+        raise SystemExit("tidak ada pod non-leader")
+    v_node, v_ip = placement[victim]
+    print(f"pod yang dibekukan: {victim} ({v_node}, {v_ip}); leader {holder} tidak disentuh")
+    ok_layout = len(placement) >= 3 and len(nodes) >= 2 and v_ip in before
+
+    with Load("ops.prod.localtest.me", token, args.workers) as ld:
+        time.sleep(10)
+        base_total = len(ld.events)
+        cid = container_id(victim)
+        ctr("pause", cid)
+        t_freeze = time.time()
+        print(f"{victim} dibekukan; memantau Endpoints sampai pod itu dikeluarkan...")
+        t_removed = None
+        while time.time() - t_freeze < args.timeout:
+            if v_ip not in ready_endpoints():
+                t_removed = time.time()
+                break
+            time.sleep(0.5)
+        if t_removed:
+            print(f"pod dikeluarkan dari endpoint titik masuk setelah {t_removed - t_freeze:.1f} dtk")
+            time.sleep(args.after)
+        ctr("resume", cid)
+        t_resume = time.time()
+        back = False
+        for _ in range(int(args.timeout * 2)):
+            if v_ip in ready_endpoints():
+                back = True
+                break
+            time.sleep(0.5)
+        print(f"pod dilepas; kembali ke endpoint: {'ya' if back else 'tidak'} ({time.time() - t_resume:.1f} dtk)")
+        time.sleep(5)
+
+    ev = list(ld.events)
+    def bad(rows):
+        return sum(1 for _, c in rows if c != 200)
+    window_before = [e for e in ev if e[0] < t_freeze]
+    window_gap = [e for e in ev if t_removed and t_freeze <= e[0] < t_removed + 2]
+    window_after = [e for e in ev if t_removed and t_removed + 2 <= e[0] < (t_removed + args.after)]
+    print(f"permintaan sebelum pembekuan: {len(window_before)}, gagal {bad(window_before)}")
+    print(f"permintaan antara pembekuan dan pod dikeluarkan (+2 dtk): {len(window_gap)}, gagal {bad(window_gap)}")
+    print(f"permintaan setelah pod dikeluarkan ({args.after} dtk): {len(window_after)}, gagal {bad(window_after)}")
+    ok = bool(ok_layout and t_removed and (t_removed - t_freeze) <= 60 and window_after and bad(window_after) == 0 and back)
+    return report("unhealthy", {
+        "instance": len(placement), "node": nodes, "pod_dibekukan": victim, "node_pod_dibekukan": v_node,
+        "detik_sampai_dikeluarkan": round(t_removed - t_freeze, 1) if t_removed else None,
+        "gagal_sebelum": bad(window_before), "permintaan_sebelum": len(window_before),
+        "gagal_antara": bad(window_gap), "permintaan_antara": len(window_gap),
+        "gagal_sesudah_dikeluarkan": bad(window_after), "permintaan_sesudah_dikeluarkan": len(window_after),
+        "kembali_ke_endpoint": back, "kode_semua": ld.codes}, ok)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -290,8 +397,9 @@ def main():
     f = sub.add_parser("failover"); f.add_argument("--timeout", type=int, default=120); f.add_argument("--settle", type=int, default=30)
     z = sub.add_parser("freeze"); z.add_argument("--freeze-seconds", type=int, default=40)
     r = sub.add_parser("rolling"); r.add_argument("--workers", type=int, default=8)
+    u = sub.add_parser("unhealthy"); u.add_argument("--workers", type=int, default=8); u.add_argument("--timeout", type=int, default=90); u.add_argument("--after", type=int, default=25)
     args = ap.parse_args()
-    sys.exit({"once": cmd_once, "failover": cmd_failover, "freeze": cmd_freeze, "rolling": cmd_rolling}[args.cmd](args))
+    sys.exit({"once": cmd_once, "failover": cmd_failover, "freeze": cmd_freeze, "rolling": cmd_rolling, "unhealthy": cmd_unhealthy}[args.cmd](args))
 
 
 if __name__ == "__main__":

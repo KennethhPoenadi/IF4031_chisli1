@@ -1,0 +1,140 @@
+== 0. syarat awal: cluster sehat
+   node: {'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'}
+   unit penyimpanan -> node: {'store-0': 'chisli-control', 'store-1': 'chisli-worker-1', 'store-2': 'chisli-control'}
+== 1. baseline BMKG
+   30957 event (partial=False)
+== 2. memicu skenario Tester Agent: wipe-node
+   Latihan "wipe-node": 1 langkah
+     - t+5s wipe_and_shutdown role=store nodes=any
+   Permintaan 51421ee4f32e dikirim. Lihat hasil dengan: kubectl logs -n tester-agent -l app=tester-agent
+== 3. memantau node, pod, dan replikasi (tiap 10 dtk) sampai Tester Agent selesai memulihkan
+   t+   3s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=0 partial=False under_replicated=0 rebuilding=[] tak_terjangkau=[]
+   t+  14s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=0 partial=False under_replicated=31796 rebuilding=[] tak_terjangkau=['store-1']
+   t+  75s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=0 partial=False under_replicated=33123 rebuilding=[] tak_terjangkau=['store-1']
+
+   >>> node ['chisli-worker-1'] tidak siap/hilang dari cluster. Bila node tidak kembali sendiri, join ulang
+   >>> worker (token baru dari WSL: sudo cat /var/lib/rancher/k3s/server/node-token),
+   >>> lalu tes ini melanjutkan otomatis.
+
+   t+  86s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=0 partial=False under_replicated=33298 rebuilding=[] tak_terjangkau=['store-1']
+   t+  98s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=0 partial=False under_replicated=33459 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 110s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=0 partial=False under_replicated=33637 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 121s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=0 partial=False under_replicated=33790 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 133s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=0 partial=False under_replicated=33957 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 144s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=34130 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 156s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=3 partial=False under_replicated=34319 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 223s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=3 partial=False under_replicated=35303 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 234s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=3 partial=False under_replicated=35475 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 246s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=3 partial=False under_replicated=35665 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 257s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=3 partial=False under_replicated=35810 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 269s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=3 partial=False under_replicated=35969 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 281s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=3 partial=False under_replicated=36125 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 292s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=3 partial=False under_replicated=36267 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 304s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=3 partial=False under_replicated=36430 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 316s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=3 partial=False under_replicated=36586 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 328s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=3 partial=False under_replicated=36750 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 340s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=3 partial=False under_replicated=36922 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 352s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=3 partial=False under_replicated=37094 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 364s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=3 partial=False under_replicated=37278 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 376s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=3 partial=False under_replicated=37460 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 387s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=3 partial=False under_replicated=37613 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 399s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=3 partial=False under_replicated=37772 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 411s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=37914 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 423s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=38078 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 435s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=38243 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 447s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=38392 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 459s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=38558 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 471s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=38727 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 484s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=38875 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 495s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=39041 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 507s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=39202 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 519s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=39372 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 531s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=39544 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 543s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=39719 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 555s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=39891 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 567s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=40038 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 579s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=40217 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 591s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=40392 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 603s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=40563 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 615s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=40725 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 627s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=40917 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 639s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=41072 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 651s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=41242 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 663s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=41397 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 675s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=41558 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 687s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=41715 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 699s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=41874 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 711s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=42046 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 723s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=42228 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 735s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=42404 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 747s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=42582 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 759s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=42731 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 771s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=42898 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 783s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=43060 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 795s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=43227 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 865s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=44176 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 876s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=44350 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 888s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=44521 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 900s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=44683 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 912s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=44843 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 924s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=45004 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 936s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=45168 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 947s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=45337 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 959s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=45491 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 971s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=45657 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 983s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=45816 rebuilding=[] tak_terjangkau=['store-1']
+   t+ 995s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=45981 rebuilding=[] tak_terjangkau=['store-1']
+   t+1007s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=46116 rebuilding=[] tak_terjangkau=['store-1']
+   t+1018s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=46274 rebuilding=[] tak_terjangkau=['store-1']
+   t+1031s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=46429 rebuilding=[] tak_terjangkau=['store-1']
+   t+1042s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=46600 rebuilding=[] tak_terjangkau=['store-1']
+   t+1055s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=46773 rebuilding=[] tak_terjangkau=['store-1']
+   t+1067s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=46959 rebuilding=[] tak_terjangkau=['store-1']
+   t+1079s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=47095 rebuilding=[] tak_terjangkau=['store-1']
+   t+1091s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=47267 rebuilding=[] tak_terjangkau=['store-1']
+   t+1103s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=47433 rebuilding=[] tak_terjangkau=['store-1']
+   t+1116s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=47605 rebuilding=[] tak_terjangkau=['store-1']
+   t+1128s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=47777 rebuilding=[] tak_terjangkau=['store-1']
+   t+1140s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=47943 rebuilding=[] tak_terjangkau=['store-1']
+   t+1152s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=48119 rebuilding=[] tak_terjangkau=['store-1']
+   t+1165s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=48294 rebuilding=[] tak_terjangkau=['store-1']
+   t+1177s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=48473 rebuilding=[] tak_terjangkau=['store-1']
+   t+1190s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=48634 rebuilding=[] tak_terjangkau=['store-1']
+   t+1202s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=48815 rebuilding=[] tak_terjangkau=['store-1']
+   t+1214s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=48975 rebuilding=[] tak_terjangkau=['store-1']
+   t+1226s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=49158 rebuilding=[] tak_terjangkau=['store-1']
+   t+1239s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=49304 rebuilding=[] tak_terjangkau=['store-1']
+   t+1251s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=49466 rebuilding=[] tak_terjangkau=['store-1']
+   t+1263s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=49618 rebuilding=[] tak_terjangkau=['store-1']
+   t+1276s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=49784 rebuilding=[] tak_terjangkau=['store-1']
+   t+1288s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=49968 rebuilding=[] tak_terjangkau=['store-1']
+   t+1300s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=50120 rebuilding=[] tak_terjangkau=['store-1']
+   t+1312s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=50285 rebuilding=[] tak_terjangkau=['store-1']
+   t+1324s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=50454 rebuilding=[] tak_terjangkau=['store-1']
+   t+1336s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=50631 rebuilding=[] tak_terjangkau=['store-1']
+   t+1348s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=50789 rebuilding=[] tak_terjangkau=['store-1']
+   t+1361s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=50934 rebuilding=[] tak_terjangkau=['store-1']
+   t+1373s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=51103 rebuilding=[] tak_terjangkau=['store-1']
+   t+1385s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=51286 rebuilding=[] tak_terjangkau=['store-1']
+   t+1397s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=51482 rebuilding=[] tak_terjangkau=['store-1']
+   t+1409s node={'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'} pod_tidak_siap=6 partial=False under_replicated=51651 rebuilding=[] tak_terjangkau=['store-1']
+   t+1421s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=51800 rebuilding=[] tak_terjangkau=['store-1']
+   t+1433s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=51972 rebuilding=[] tak_terjangkau=['store-1']
+   t+1446s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=52112 rebuilding=[] tak_terjangkau=['store-1']
+   t+1458s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=52303 rebuilding=[] tak_terjangkau=['store-1']
+   t+1471s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=52483 rebuilding=[] tak_terjangkau=['store-1']
+   t+1483s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=52640 rebuilding=[] tak_terjangkau=['store-1']
+   t+1496s node={'chisli-control': 'Ready', 'chisli-worker-1': 'Ready'} pod_tidak_siap=6 partial=False under_replicated=52808 rebuilding=[] tak_terjangkau=['store-1']
+   log Tester Agent:
+== 4. tunggu replikasi utuh (partial=False, under_replicated=0, tidak ada unit dibangun ulang)
+   lengkap=False under_replicated=65205 salinan per node={'chisli-control': 139727}
+== 5. periksa tidak ada event BMKG yang hilang
+   hilang: 0 dari 30957 (partial=False)
+
+== lalu lintas selama uji:
+   read      1527 permintaan, kode {'200': 1527}, partial 0, p95 0.085 dtk, maks 5.004 dtk
+   checksum  1526 permintaan, kode {'200': 1526}, partial 0, p95 1.798 dtk, maks 2.508 dtk
+   write     2260 permintaan, kode {'200': 2260}, partial 0, p95 0.195 dtk, maks 5.01 dtk
+   node akhir: {'chisli-control': 'Ready', 'chisli-worker-1': 'NotReady'}; seluruh node menanggung data: False
+
+HASIL: GAGAL (respons melanggar: 0; Tester Agent selesai: False)

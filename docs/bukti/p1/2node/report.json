@@ -1,0 +1,156 @@
+{
+  "distribusi_sebelum": {
+    "as_of": "2026-11-18T11:06:22Z",
+    "max_min_ratio": 2.142390963288359,
+    "nodes": [
+      {
+        "copies": 34139,
+        "node": "chisli-control",
+        "primary": 17608,
+        "replica": 16531,
+        "units": [
+          "store-0",
+          "store-2"
+        ]
+      },
+      {
+        "copies": 15935,
+        "node": "chisli-worker-1",
+        "primary": 7429,
+        "replica": 8506,
+        "units": [
+          "store-1"
+        ]
+      }
+    ],
+    "partial": false,
+    "rebuilding_units": [],
+    "replication_factor": 2,
+    "total_events": 25037,
+    "unavailable_units": [],
+    "under_replicated": 0,
+    "units": [
+      {
+        "by_source": {
+          "BMKG": 16402,
+          "PVMBG": 12,
+          "SATELIT": 1059,
+          "SENSOR_PANTAI": 374
+        },
+        "copies": 17847,
+        "node": "chisli-control",
+        "primary": 9019,
+        "replica": 8828,
+        "unit": "store-0"
+      },
+      {
+        "by_source": {
+          "BMKG": 14642,
+          "PVMBG": 6,
+          "SATELIT": 968,
+          "SENSOR_PANTAI": 319
+        },
+        "copies": 15935,
+        "node": "chisli-worker-1",
+        "primary": 7429,
+        "replica": 8506,
+        "unit": "store-1"
+      },
+      {
+        "by_source": {
+          "BMKG": 14982,
+          "PVMBG": 8,
+          "SATELIT": 975,
+          "SENSOR_PANTAI": 327
+        },
+        "copies": 16292,
+        "node": "chisli-control",
+        "primary": 8589,
+        "replica": 7703,
+        "unit": "store-2"
+      }
+    ]
+  },
+  "distribusi": {
+    "as_of": "2026-11-18T11:06:25Z",
+    "max_min_ratio": 2.143152616734566,
+    "nodes": [
+      {
+        "copies": 34194,
+        "node": "chisli-control",
+        "primary": 17635,
+        "replica": 16559,
+        "units": [
+          "store-0",
+          "store-2"
+        ]
+      },
+      {
+        "copies": 15955,
+        "node": "chisli-worker-1",
+        "primary": 7439,
+        "replica": 8516,
+        "units": [
+          "store-1"
+        ]
+      }
+    ],
+    "partial": false,
+    "rebuilding_units": [],
+    "replication_factor": 2,
+    "total_events": 25075,
+    "unavailable_units": [],
+    "under_replicated": 1,
+    "units": [
+      {
+        "by_source": {
+          "BMKG": 16402,
+          "PVMBG": 12,
+          "SATELIT": 1080,
+          "SENSOR_PANTAI": 387
+        },
+        "copies": 17881,
+        "node": "chisli-control",
+        "primary": 9031,
+        "replica": 8850,
+        "unit": "store-0"
+      },
+      {
+        "by_source": {
+          "BMKG": 14642,
+          "PVMBG": 6,
+          "SATELIT": 981,
+          "SENSOR_PANTAI": 326
+        },
+        "copies": 15955,
+        "node": "chisli-worker-1",
+        "primary": 7439,
+        "replica": 8516,
+        "unit": "store-1"
+      },
+      {
+        "by_source": {
+          "BMKG": 14982,
+          "PVMBG": 8,
+          "SATELIT": 987,
+          "SENSOR_PANTAI": 336
+        },
+        "copies": 16313,
+        "node": "chisli-control",
+        "primary": 8604,
+        "replica": 7709,
+        "unit": "store-2"
+      }
+    ]
+  },
+  "checksum": {
+    "algorithm": "sha256",
+    "as_of": "2026-11-18T11:06:24Z",
+    "checksum": "7facc0d42aa927a0ec56caaf5d6e66a18ace25404033f939df4bfbd76ed93b08",
+    "count": 25060,
+    "partial": false,
+    "source": "ALL",
+    "unavailable_units": []
+  },
+  "konsisten": true
+}

@@ -1,0 +1,10 @@
+apiVersion: v1
+data:
+  run: '{"id":"51421ee4f32e","mode":"practice","name":"wipe-node","status":"go","snapshot":{"nodes":[{"name":"chisli-control","control_plane":true,"internal_ip":"100.66.57.46"},{"name":"chisli-worker-1","internal_ip":"100.109.151.22"}],"placements":[{"role":"aggregator","node":"chisli-control","pod":"aggregator-5fd4f6f76c-4sd77"},{"role":"aggregator","node":"chisli-control","pod":"aggregator-5fd4f6f76c-dd9cs"},{"role":"aggregator","node":"chisli-worker-1","pod":"aggregator-5fd4f6f76c-sqmkc"},{"role":"aggregator","node":"chisli-control","pod":"aggregator-5fd4f6f76c-vfr5g"},{"role":"aggregator","node":"chisli-worker-1","pod":"aggregator-5fd4f6f76c-wknzf"},{"role":"api","node":"chisli-control","pod":"auth-service-7df9d787d4-jm79j"},{"role":"api","node":"chisli-worker-1","pod":"auth-service-7df9d787d4-t78pq"},{"role":"mock","node":"chisli-control","pod":"bmkg-mock-8547578d96-vscgf"},{"role":"api","node":"chisli-control","pod":"client-facing-api-685d7f86f6-xcl7v"},{"role":"api","node":"chisli-worker-1","pod":"client-facing-api-685d7f86f6-zz9ft"},{"role":"consumer","node":"chisli-control","pod":"dashboard-updater-5c7ccd7f45-4hmb8"},{"role":"consumer","node":"chisli-control","pod":"notifier-d68bcb95f-wljch"},{"role":"mock","node":"chisli-control","pod":"pvmbg-mock-84c7966576-97krn"},{"role":"broker","node":"chisli-control","pod":"rabbitmq-0"},{"role":"consumer","node":"chisli-control","pod":"satellite-ingestor-bf956b88b-f4wss"},{"role":"sensor","node":"chisli-worker-1","pod":"sensor-pantai-7b855559d4-csvv4"},{"role":"other","node":"chisli-control","pod":"situation-analyst-764f69b6df-2mz79"},{"role":"store","node":"chisli-control","pod":"store-0"},{"role":"store","node":"chisli-worker-1","pod":"store-1"},{"role":"store","node":"chisli-control","pod":"store-2"}],"coordinator":"chisli-control"}}'
+kind: ConfigMap
+metadata:
+  creationTimestamp: "2026-11-18T11:24:30Z"
+  name: tester-run
+  namespace: tester-agent
+  resourceVersion: "33558"
+  uid: d9fc0a90-2f25-40f4-bb1e-e6aaa0fde29d

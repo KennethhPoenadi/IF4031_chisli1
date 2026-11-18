@@ -1,0 +1,48 @@
+{
+  "total_audit": 102515,
+  "total_dashboard": 102515,
+  "event_berubah_sesudah_potret": 0,
+  "selisih_total": 0,
+  "partial_audit": false,
+  "partial_dashboard": false,
+  "unavailable_units": [],
+  "rebalancing": true,
+  "per_jenis": {
+    "audit": {
+      "COASTAL": 36060,
+      "SEISMIC": 66099,
+      "TSUNAMI": 74,
+      "VOLCANIC": 282
+    },
+    "dashboard": {
+      "COASTAL": 36060,
+      "SEISMIC": 66099,
+      "TSUNAMI": 74,
+      "VOLCANIC": 282
+    }
+  },
+  "per_severity": {
+    "audit": {
+      "AWAS": 98,
+      "NORMAL": 100048,
+      "WASPADA": 2211,
+      "SIAGA": 158
+    },
+    "dashboard": {
+      "AWAS": 98,
+      "SIAGA": 158,
+      "WASPADA": 2211,
+      "NORMAL": 100048
+    }
+  },
+  "jumlah_wilayah": {
+    "audit": 14,
+    "dashboard": 14
+  },
+  "selisih": {
+    "jenis": {},
+    "severity": {},
+    "wilayah": {}
+  },
+  "lolos": true
+}
