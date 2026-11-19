@@ -28,6 +28,10 @@ type Client struct {
 	// Cache singkat khusus kelas reguler (bukan prioritas). Lihat WithRegularCache.
 	regularTTL time.Duration
 	regular    map[string]cached
+
+	// hedgeAfter > 0: panggilan kelas prioritas yang belum kembali dalam waktu ini disusul panggilan kedua (ke replika lain lewat
+	// Service); jawaban pertama yang sukses dipakai. Lihat WithPriorityHedge.
+	hedgeAfter time.Duration
 }
 
 type cached struct {
@@ -36,6 +40,14 @@ type cached struct {
 }
 
 const regularCacheMax = 256
+
+// WithPriorityHedge memangkas ekor latensi kelas prioritas. Permintaan identik digabung (coalescing), jadi satu panggilan lambat ke
+// Aggregator menggagalkan semua penunggunya sekaligus. Bila panggilan belum kembali sesudah d, panggilan kedua dikirim (Service
+// membaginya ke replika lain) dan jawaban sukses yang pertama dipakai. Hanya kelas prioritas; d <= 0 mematikannya.
+func (c *Client) WithPriorityHedge(d time.Duration) *Client {
+	c.hedgeAfter = d
+	return c
+}
 
 // WithRegularCache menyimpan hasil Events untuk kelas reguler (Media) selama ttl. Pada beban Media tinggi ribuan klien meminta kueri
 // yang sama; tanpa cache setiap pod tetap memanggil Aggregator tanpa henti walau jawabannya hampir selalu 429 atau sama, dan beban itu
@@ -152,7 +164,7 @@ func (c *Client) Events(ctx context.Context, q url.Values, correlationID string)
 
 	// Panggilan berjalan terpisah dari pembatalan pemanggil pertama; batas waktunya tetap dari http.Client.Timeout.
 	go func() {
-		cl.res, cl.err = c.fetchEvents(context.WithoutCancel(ctx), q, correlationID)
+		cl.res, cl.err = c.fetchEventsHedged(context.WithoutCancel(ctx), q, correlationID)
 		c.mu.Lock()
 		delete(c.inflight, key)
 		if !priority && c.regularTTL > 0 && cl.err == nil {
@@ -174,6 +186,48 @@ func (cl *call) wait(ctx context.Context) (Result, error) {
 	case <-ctx.Done():
 		return Result{}, ctx.Err()
 	}
+}
+
+func (c *Client) fetchEventsHedged(ctx context.Context, q url.Values, correlationID string) (Result, error) {
+	if c.hedgeAfter <= 0 || !httpx.IsPriority(ctx) {
+		return c.fetchEvents(ctx, q, correlationID)
+	}
+	type out struct {
+		res Result
+		err error
+	}
+	hctx, cancel := context.WithCancel(ctx)
+	defer cancel() // panggilan yang kalah dibatalkan
+	ch := make(chan out, 2)
+	launch := func() {
+		go func() {
+			res, err := c.fetchEvents(hctx, q, correlationID)
+			ch <- out{res, err}
+		}()
+	}
+	launch()
+	timer := time.NewTimer(c.hedgeAfter)
+	defer timer.Stop()
+	pending := 1
+	var last out
+	for pending > 0 {
+		select {
+		case x := <-ch:
+			pending--
+			if x.err == nil {
+				return x.res, nil
+			}
+			last = x
+			if pending == 0 && timer.Stop() { // panggilan pertama gagal sebelum waktunya: coba sekali lagi segera
+				launch()
+				pending++
+			}
+		case <-timer.C:
+			launch()
+			pending++
+		}
+	}
+	return last.res, last.err
 }
 
 func (c *Client) fetchEvents(ctx context.Context, q url.Values, correlationID string) (Result, error) {

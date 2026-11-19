@@ -67,7 +67,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	agg := upstream.New(cfg.AggregatorURL, cfg.AggregatorKey, cfg.AggregatorTimeout, cfg.MaxInflight, log).WithRegularCache(cfg.RegularCacheTTL)
+	agg := upstream.New(cfg.AggregatorURL, cfg.AggregatorKey, cfg.AggregatorTimeout, cfg.MaxInflight, log).WithRegularCache(cfg.RegularCacheTTL).WithPriorityHedge(cfg.PriorityHedge)
 	opsAgg := upstream.New(cfg.AggregatorURL, cfg.AggregatorKey, cfg.OpsTimeout, 4, log)
 	apiHandler := api.NewHandler(agg).WithOps(opsAgg)
 	if cfg.RabbitMQURL != "" {

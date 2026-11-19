@@ -382,3 +382,41 @@ func TestRegularCacheServesRegularButNeverPriority(t *testing.T) {
 		t.Fatalf("kelas prioritas tidak boleh memakai cache: %d panggilan", got)
 	}
 }
+
+func TestPriorityHedgeBypassesASlowFirstCallButRegularDoesNotHedge(t *testing.T) {
+	var calls atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) == 1 {
+			select { // panggilan pertama macet
+			case <-time.After(3 * time.Second):
+			case <-r.Context().Done():
+			}
+			return
+		}
+		_, _ = w.Write([]byte(`[{"id":"1"}]`))
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "k", 5*time.Second, 4, slog.New(slog.NewTextHandler(io.Discard, nil))).WithPriorityHedge(100 * time.Millisecond)
+	prio := httpx.WithPriority(context.Background(), true)
+
+	start := time.Now()
+	res, err := c.Events(prio, url.Values{"hazard_type": {"COASTAL"}}, "c")
+	if err != nil || len(res.Events) != 1 {
+		t.Fatalf("hedge harus menjawab: err=%v events=%d", err, len(res.Events))
+	}
+	if took := time.Since(start); took > time.Second {
+		t.Fatalf("jawaban menunggu panggilan macet %v", took)
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("panggilan = %d, want 2 (asli + hedge)", calls.Load())
+	}
+
+	calls.Store(0)
+	rc := New(srv.URL, "k", 300*time.Millisecond, 4, slog.New(slog.NewTextHandler(io.Discard, nil))).WithPriorityHedge(50 * time.Millisecond)
+	if _, err := rc.Events(context.Background(), url.Values{"x": {"1"}}, "c"); err == nil {
+		t.Fatal("kelas reguler tidak boleh di-hedge: panggilan macet harus gagal oleh timeout")
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("kelas reguler memanggil %d kali, want 1", calls.Load())
+	}
+}
