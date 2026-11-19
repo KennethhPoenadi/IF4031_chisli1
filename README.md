@@ -55,14 +55,15 @@ Kedua node terhubung lewat Tailscale (100.66.57.46 dan 100.109.151.22). Rincian 
 Deploy dikelola dari repositori infra (GitOps dengan Argo CD). Ringkasnya, dengan cluster k3s dua node yang sudah `Ready`
 (panduan pembuatan cluster: `docs/k3s-cluster.md` di repo infra):
 
-1. **Satu perintah deploy:** jalankan workflow CI repo infra di self-hosted runner, `gh workflow run ci.yml --ref main`
-   (push ke `main` juga memicunya). Workflow menjalankan validasi, pemasangan platform (Traefik, metrics-server, Kyverno,
-   KEDA, Argo CD), policy, Secret, dan `ApplicationSet`; Argo CD lalu men-deploy semua service ke namespace
-   `sistem-informasi-kebencanaan-bnpb`.
-2. **Tester Agent** (sekali): `./scripts/install-tester-agent.sh` di repo infra (manifest dan digest image di-pin).
-3. **Observabilitas** (sekali, di luar CI): `./scripts/observability.sh` di repo infra.
+**Satu perintah deploy:** jalankan workflow CI repo infra di self-hosted runner (push ke `main` repo infra juga memicunya):
 
-Langkah manual yang setara dengan workflow, urutan perintahnya, dan isi file Secret ada di README repo infra. Setiap push ke
+```
+gh workflow run ci.yml --ref main --repo <owner>/IF4031_chisli1_infra
+```
+
+Workflow menjalankan validasi, pemasangan platform (Traefik, metrics-server, Kyverno, KEDA, Argo CD), policy, Secret, dan
+`ApplicationSet` (Argo CD lalu men-deploy semua service ke namespace `sistem-informasi-kebencanaan-bnpb`), kemudian memasang
+Tester Agent dan observabilitas. Langkah manual yang setara, dan isi file Secret di runner, ada di README repo infra. Setiap push ke
 `main` repo ini membangun image baru dan menulis tag ke repo infra; Argo CD menerapkannya otomatis.
 
 Akses (Traefik pada `127.0.0.1:80` di node control):
