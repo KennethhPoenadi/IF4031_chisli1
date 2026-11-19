@@ -15,7 +15,7 @@ Semua beban kerja berada di satu namespace, `sistem-informasi-kebencanaan-bnpb`.
                                    | HTTPS (pemroses satelit)
  +---------------------------------+--------------------------------------+        Tailscale (WireGuard)        +----------------------------------+
  |  NODE 1: chisli-control  (control-plane + worker)                       | <==================================> |  NODE 2: chisli-worker-1 (worker) |
- |  Laptop Windows, WSL2 Ubuntu 26.04, amd64                               |   100.66.57.46      100.109.151.22   |  MacBook, Colima (VM Ubuntu 24.04)|
+ |  Laptop Windows (i7-12650H, 16 GB), WSL2 Ubuntu 26.04, amd64           |   100.66.57.46      100.109.151.22   |  MacBook Air M1 8 GB, VM Colima   |
  |  8 vCPU (i7-12650H), 9,7 GiB RAM terlihat oleh WSL                      |   (flannel antar node lewat tailnet) |  3 vCPU, 4,8 GiB RAM, arm64       |
  |                                                                         |                                      |                                   |
  |  k3s server, Traefik (ingress), Argo CD, KEDA, Kyverno                  |                                      |  k3s agent                        |
@@ -34,9 +34,10 @@ Semua beban kerja berada di satu namespace, `sistem-informasi-kebencanaan-bnpb`.
 | | chisli-control | chisli-worker-1 |
 |---|---|---|
 | Peran | control-plane + menjalankan beban kerja | worker |
-| Mesin | Laptop Windows, WSL2 | MacBook, VM Colima |
-| CPU | 8 vCPU (Intel Core i7-12650H) | 3 vCPU |
-| RAM | 9,7 GiB (batas WSL2) | 4,8 GiB (VM Colima) |
+| Host fisik | Laptop Windows: Intel Core i7-12650H, RAM 16 GB | MacBook Air M1 (2020): Apple M1, RAM 8 GB, SSD 512 GB |
+| Jenis node | VM WSL2 | VM Colima |
+| CPU node | 8 vCPU | 3 vCPU |
+| RAM node | 9,7 GiB (batas WSL2 10 GB) | 4,8 GiB (VM Colima) |
 | Arsitektur | amd64 | **arm64** |
 | OS | Ubuntu 26.04.1 LTS | Ubuntu 24.04.4 LTS |
 | Kernel | 6.18.58.1-microsoft-standard-WSL2 | 6.8.0-117-generic |
@@ -47,8 +48,8 @@ Semua beban kerja berada di satu namespace, `sistem-informasi-kebencanaan-bnpb`.
 Catatan penting:
 
 - **Dua arsitektur CPU (amd64 dan arm64).** Image yang dipakai tersedia untuk kedua arsitektur, sehingga pod bisa dijadwalkan di kedua node.
-- Worker adalah **VM di dalam MacBook**, bukan seluruh MacBook. Spesifikasi MacBook sendiri (chip, RAM fisik) tidak terlihat dari cluster;
-  yang terlihat hanya sumber daya yang dialokasikan ke VM Colima (3 vCPU, 4,8 GiB).
+- Worker adalah **VM di dalam MacBook Air M1 (8 GB RAM)**, bukan seluruh MacBook: VM Colima mendapat 3 vCPU dan 4,8 GiB, sisanya untuk
+  macOS. Node control juga VM (WSL2) dengan batas 10 GB dari RAM laptop 16 GB.
 - Control node adalah laptop yang sama dengan mesin penguji (k6, skrip bukti, peramban). Beban uji dan cluster **berbagi CPU dan RAM**
   laptop itu, sehingga pada beban tinggi hasil uji ikut dibatasi oleh kapasitas laptop (memori control node sering di atas 80%).
 - Kedua node berkomunikasi lewat Tailscale (WireGuard), bukan LAN langsung, sehingga lalu lintas antar node (misalnya ke `store-1`)

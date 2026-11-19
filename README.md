@@ -42,13 +42,12 @@ flowchart LR
 
 ## Deklarasi topologi
 
-| Node | Jenis | Host fisik | CPU / RAM node | Arsitektur |
-|---|---|---|---|---|
-| `chisli-control` (control plane + worker) | VM WSL2 (Ubuntu 26.04) | Laptop Windows, Intel Core i7-12650H | 8 vCPU / 9,7 GiB | amd64 |
-| `chisli-worker-1` (worker) | VM Colima (Ubuntu 24.04) | MacBook | 3 vCPU / 4,8 GiB | arm64 |
+| Node | Jenis | Host fisik | Spesifikasi host | Sumber daya node | Arsitektur |
+|---|---|---|---|---|---|
+| `chisli-control` (control plane + worker) | VM WSL2 (Ubuntu 26.04) | Laptop Windows | Intel Core i7-12650H, RAM 16 GB | 8 vCPU / 10 GB (batas WSL2) | amd64 |
+| `chisli-worker-1` (worker) | VM Colima (Ubuntu 24.04) | MacBook Air M1 (2020) | Apple M1, RAM 8 GB, SSD 512 GB | 3 vCPU / 4,8 GiB (VM Colima) | arm64 |
 
-Kedua node terhubung lewat Tailscale (100.66.57.46 dan 100.109.151.22). Spesifikasi CPU/RAM di atas adalah sumber daya yang
-terlihat oleh node (batas WSL2 dan VM Colima). Rincian penempatan pod, resource per layanan, dan keterbatasan topologi ada di
+Kedua node terhubung lewat Tailscale (100.66.57.46 dan 100.109.151.22). Rincian penempatan pod, resource per layanan, dan keterbatasan topologi ada di
 [docs/topologi-arsitektur.md](docs/topologi-arsitektur.md).
 
 ## Deploy ke cluster
