@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"telemetry"
@@ -57,6 +58,11 @@ func (w *statusWriter) WriteHeader(code int) {
 	w.ResponseWriter.WriteHeader(code)
 }
 
+// rejectedLogEvery: hanya satu dari sekian respons 429 yang dicatat per baris log.
+const rejectedLogEvery = 100
+
+var rejectedSeen atomic.Int64
+
 func Observe(log *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -77,9 +83,18 @@ func Observe(log *slog.Logger) func(http.Handler) http.Handler {
 					sw.status = http.StatusInternalServerError
 					WriteError(w, http.StatusInternalServerError, "internal_error", "internal error")
 				}
-				log.Info("request", append([]any{"method", r.Method, "path", r.URL.Path, "status", sw.status,
-					"duration_ms", time.Since(start).Milliseconds(), "client", info.Client, "correlation_id", id},
-					telemetry.LogAttrs(ctx)...)...)
+				attrs := []any{"method", r.Method, "path", r.URL.Path, "status", sw.status,
+					"duration_ms", time.Since(start).Milliseconds(), "client", info.Client, "correlation_id", id}
+				if sw.status == http.StatusTooManyRequests {
+					// Penolakan terkontrol pada banjir beban bisa ribuan per detik; satu baris log per penolakan membuat penulisan log
+					// sendiri memakan CPU node dan menggeser permintaan prioritas. Catat 1 dari tiap rejectedLogEvery beserta totalnya.
+					n := rejectedSeen.Add(1)
+					if (n-1)%rejectedLogEvery != 0 {
+						return
+					}
+					attrs = append(attrs, "rejected_total", n, "sampled_every", rejectedLogEvery)
+				}
+				log.Info("request", append(attrs, telemetry.LogAttrs(ctx)...)...)
 			}()
 			next.ServeHTTP(sw, r.WithContext(ctx))
 		})
