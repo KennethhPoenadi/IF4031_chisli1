@@ -20,9 +20,10 @@ Semua beban kerja berada di satu namespace, `sistem-informasi-kebencanaan-bnpb`.
  |                                                                         |                                      |                                   |
  |  k3s server, Traefik (ingress), Argo CD, KEDA, Kyverno                  |                                      |  k3s agent                        |
  |  store-0, store-2 (MongoDB)   rabbitmq-0                                |                                      |  store-1 (MongoDB)                |
- |  aggregator x3, client-facing-api x5, auth-service x1                   |                                      |  aggregator x2, client-facing-api |
- |  satellite-ingestor, sensor-pantai, dashboard-updater,                  |                                      |  x5, auth-service x3, notifier    |
- |  situation-analyst, bmkg-mock, pvmbg-mock, tester-agent                 |                                      |  tester-agent                     |
+ |  client-facing-api x6, aggregator, auth-service                         |                                      |  aggregator, auth-service         |
+ |  satellite-ingestor, sensor-pantai, dashboard-updater, notifier         |                                      |  bmkg-mock, pvmbg-mock,           |
+ |  Prometheus, Grafana, Alloy, tester-agent                               |                                      |  situation-analyst, Loki, Tempo,  |
+ |                                                                         |                                      |  Alloy, tester-agent              |
  +-------------------------------------------------------------------------+                                      +----------------------------------+
         ^
         | 127.0.0.1:80  (ingress Traefik; api./auth./ops.prod.localtest.me)
@@ -66,25 +67,46 @@ Catatan penting:
 | Kyverno | kyverno | Kebijakan: image hanya boleh dari registry GitHub Container Registry grup |
 | Tester Agent | tester-agent | DaemonSet milik asisten untuk skenario gangguan latihan (satu pod per node) |
 
-Observabilitas (Alloy/Grafana) **tidak terpasang** di cluster ini; log diambil dengan `kubectl logs`.
+| Observabilitas | observability | Prometheus dan Grafana di control; Loki dan Tempo di worker; Alloy (DaemonSet) dan node-exporter di kedua node |
 
 ## 4. Beban kerja aplikasi
 
-Penempatan pod pada saat dokumen ini ditulis. Scheduler dapat memindahkan pod, jadi jumlah per node bisa berubah.
+### 4.1 Cara membaca sizing
+
+Sizing di cluster ini punya dua lapis:
+
+1. **Node (mesin):** 1 control-plane (`chisli-control`, 8 vCPU / 9,7 GiB) dan 1 worker (`chisli-worker-1`, 3 vCPU / 4,8 GiB).
+   Control-plane **juga menjalankan beban kerja** (tidak di-taint), karena hanya ada dua node.
+2. **Replika per layanan:** jumlah pod tiap layanan, tidak bergantung pada jumlah node. Angka minimum utamanya
+   **client-facing-api 6, aggregator 3, store 3** (ditambah auth-service 4). HPA boleh menaikkannya sampai batas maksimum.
+   Scheduler Kubernetes yang menentukan pod mana jalan di node mana.
+
+Alasan angka minimum:
+
+| Layanan | Min | Alasan |
+|---|---|---|
+| client-facing-api | 6 | Pre-scale untuk uji beban; kapasitas jalur Tim Lapangan: 6 pod x 10 slot cadangan = 60 permintaan prioritas serentak, total 6 x 25 = 150 |
+| aggregator | 3 | Satu pemimpin per sumber (lease) dan dua cadangan siap ambil alih; cukup untuk uji rolling, kill-leader, dan freeze |
+| store (MongoDB) | 3 | Tiga unit penyimpanan dengan replikasi faktor 2, sehingga kehilangan satu unit tidak menghilangkan data |
+| auth-service | 4 | Disiapkan lebih dulu (pre-scale) agar login massal pada uji beban tidak menunggu HPA |
+
+### 4.2 Penempatan pod
+
+Penempatan diambil pada 19 November 2026. Scheduler dapat memindahkan pod, jadi jumlah per node bisa berubah.
 
 | Layanan | Replika (min-maks) | CPU request / limit | RAM request / limit | Penempatan |
 |---|---|---|---|---|
-| aggregator | 3-5 (HPA CPU 70%) | 100m / 1 | 256Mi / 512Mi | tersebar di kedua node (3 control, 2 worker) |
-| client-facing-api | 6-10 (HPA CPU 70%) | 100m / 500m | 128Mi / 256Mi | tersebar (5 control, 5 worker) |
-| auth-service | 4-6 (HPA CPU 70%) | 100m / 500m | 128Mi / 256Mi | tersebar (1 control, 3 worker) |
+| aggregator | 3-5 (HPA CPU 70%) | 100m / 1 | 256Mi / 512Mi | tersebar di kedua node |
+| client-facing-api | 6-10 (HPA CPU 70%) | 100m / 500m | 128Mi / 256Mi | **control** (`preferNode`: dekat ingress Traefik agar tidak melewati Tailscale) |
+| auth-service | 4-6 (HPA CPU 70%) | 100m / 500m | 128Mi / 256Mi | tersebar (3 control, 1 worker) |
 | store (MongoDB 7) | 3 (StatefulSet) | 200m / 1,5 | 512Mi / 1Gi | store-0, store-2 di control; **store-1 di worker** |
 | rabbitmq | 1 (StatefulSet) | 100m / 500m | 512Mi / 1Gi | control |
-| notifier | 1-5 (KEDA) | 100m / 500m | 128Mi / 256Mi | worker |
+| notifier | 1-5 (KEDA) | 100m / 500m | 128Mi / 256Mi | control |
 | dashboard-updater | 1-5 (KEDA) | 100m / 500m | 128Mi / 256Mi | control |
 | satellite-ingestor | 1 | 100m / 500m | 128Mi / 256Mi | control |
 | sensor-pantai | 1 | 100m / 500m | 128Mi / 256Mi | control |
-| situation-analyst | 1 | 100m / 500m | 128Mi / 256Mi | control |
-| bmkg-mock, pvmbg-mock | 1 | 100m / 500m | 64Mi / 128Mi | control |
+| situation-analyst | 1 | 100m / 500m | 128Mi / 256Mi | worker |
+| bmkg-mock, pvmbg-mock | 1 | 100m / 500m | 64Mi / 128Mi | worker |
 
 Setiap unit penyimpanan memakai volume persisten 2 GiB.
 
@@ -115,7 +137,9 @@ Setiap unit penyimpanan memakai volume persisten 2 GiB.
 |---|---|---|
 | `CLIENT_API_MAX_INFLIGHT` | 25 per pod | Total permintaan serentak = batas x replika |
 | `CLIENT_API_PRIORITY_RESERVED` | 10 per pod | Slot khusus Tim Lapangan |
-| `CLIENT_API_REGULAR_CACHE_TTL_MS` | 1000 | Cache singkat untuk kelas reguler saja |
+| `CLIENT_API_PRIORITY_HEDGE_MS` | 700 | Permintaan prioritas dikirim ulang ke aggregator lain bila belum dijawab |
+| `CLIENT_API_PRIORITY_STALE_AFTER_MS` / `MAX_STALE_MS` | 2000 / 30000 | Tim Lapangan menerima data terakhir (ditandai basi) bila aggregator lambat |
+| `CLIENT_API_REGULAR_CACHE_TTL_MS` | tidak diisi (mati) | Kode cache reguler ada, tetapi dimatikan |
 | `CLIENT_API_AGGREGATOR_TIMEOUT_MS` | 5000 | Batas tunggu ke aggregator |
 | `STORE_UNIT_TIMEOUT_MS` | 5000 | Batas tunggu per unit penyimpanan |
 | `DOC_TOMBSTONE_GRACE_SECONDS` | 7200 (bawaan) | Masa tenggang pembersihan tombstone |
@@ -129,4 +153,5 @@ Setiap unit penyimpanan memakai volume persisten 2 GiB.
 3. **Control node ikut menjalankan beban kerja** dan menampung dua dari tiga unit penyimpanan, sehingga kehilangan control node jauh lebih berat
    daripada kehilangan worker.
 4. **Worker lebih kecil** (3 vCPU, 4,8 GiB) dan berarsitektur berbeda (arm64).
-5. **Tanpa stack observabilitas**, sehingga metrik seperti lag satelit dan p95 latensi dibaca dari endpoint `/health` ingestor dan log, bukan dari dashboard metrik.
+5. **Stack observabilitas ikut memakai node yang sama** (Prometheus/Grafana di control, Loki/Tempo di worker), sehingga menambah beban
+   pada kedua laptop.
