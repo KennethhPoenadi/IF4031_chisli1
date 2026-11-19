@@ -1,0 +1,1 @@
+Bukti dashboard_check sebelum dashboard memakai waktu analitik (occurred_at, atau ingested_at bila occurred_at lebih dari 1 jam di depan). Saat itu WILDFIRE berjam virtual tidak masuk rentang mana pun.

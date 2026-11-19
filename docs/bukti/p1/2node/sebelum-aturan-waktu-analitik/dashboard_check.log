@@ -1,0 +1,11 @@
+total  audit=3375  dashboard=3422  (event baru atau diperbarui sesudah potret: 51, selisih total 141)
+jenis   : {'COASTAL': 558, 'SEISMIC': 2817}
+severity: {'NORMAL': 2782, 'WASPADA': 593}
+wilayah : 5 wilayah (audit) vs 5 (dashboard)
+partial : audit False | dashboard False | tak terjangkau []
+selisih jenis: {'COASTAL': {'audit': 558, 'dashboard': 605}}
+selisih severity: {'NORMAL': {'audit': 2782, 'dashboard': 2829}}
+selisih wilayah: {'Pelabuhan Ratu': {'audit': 139, 'dashboard': 151}, 'Cilacap': {'audit': 140, 'dashboard': 151}, 'Padang': {'audit': 140, 'dashboard': 152}, 'Banda Aceh': {'audit': 139, 'dashboard': 151}}
+
+HASIL: LOLOS
+bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p1/2node
