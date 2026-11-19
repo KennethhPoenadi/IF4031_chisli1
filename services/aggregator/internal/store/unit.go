@@ -61,6 +61,9 @@ func (u *MongoUnit) ensureIndexes(ctx context.Context) error {
 			{Keys: bson.D{{Key: "hazard_type", Value: 1}, {Key: "ingested_at", Value: -1}}},
 			{Keys: bson.D{{Key: "severity", Value: 1}, {Key: "ingested_at", Value: -1}}},
 			{Keys: bson.D{{Key: "source", Value: 1}, {Key: "ingested_at", Value: -1}}},
+			// Agregasi dashboard menyaring rentang waktu pada occurred_at ATAU ingested_at; dengan dua indeks ini MongoDB hanya
+			// membaca dokumen di rentang itu, bukan seluruh koleksi.
+			{Keys: bson.D{{Key: "occurred_at", Value: -1}}},
 		}
 		_, err := u.collection.Indexes().CreateMany(ctx, models)
 		if err != nil && mongo.IsDuplicateKeyError(err) {
@@ -307,7 +310,13 @@ func (u *MongoUnit) Aggregate(ctx context.Context, q shardstore.AggregateQuery, 
 	analyticsTime := bson.D{{Key: "$cond", Value: bson.A{
 		bson.D{{Key: "$gt", Value: bson.A{"$occurred_at", bson.D{{Key: "$add", Value: bson.A{ingested, shardstore.AnalyticsFutureTolerance.Milliseconds()}}}}}},
 		ingested, "$occurred_at"}}}
+	rng := bson.D{{Key: "$gte", Value: q.From.UTC()}, {Key: "$lt", Value: q.To.UTC()}}
 	pipeline := mongo.Pipeline{
+		// Saringan awal pada field mentah: waktu analitik selalu salah satu dari occurred_at atau ingested_at, jadi dokumen yang
+		// keduanya di luar rentang pasti tidak terhitung. Tanpa saringan ini setiap dokumen mengevaluasi ekspresi _t, dan agregasi
+		// rentang 1 jam ikut memindai seluruh koleksi dengan biaya ekspresi (1,5 dtk per panggilan pada ~230 ribu dokumen per unit).
+		{{Key: "$match", Value: bson.D{{Key: "$or", Value: bson.A{
+			bson.D{{Key: "occurred_at", Value: rng}}, bson.D{{Key: "ingested_at", Value: rng}}}}}}},
 		{{Key: "$addFields", Value: bson.D{{Key: "_t", Value: analyticsTime}}}},
 		{{Key: "$match", Value: bson.D{{Key: "_t", Value: bson.D{
 			{Key: "$gte", Value: q.From.UTC()}, {Key: "$lt", Value: q.To.UTC()}}}}}},
