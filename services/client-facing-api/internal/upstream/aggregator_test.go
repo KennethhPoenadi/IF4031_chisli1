@@ -353,3 +353,32 @@ func TestEventsNeverCoalescesPriorityWithNonPriority(t *testing.T) {
 		t.Fatalf("Aggregator dipanggil %d kali; prioritas dan non-prioritas harus terpisah (2)", hits.Load())
 	}
 }
+
+func TestRegularCacheServesRegularButNeverPriority(t *testing.T) {
+	var calls atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		_, _ = w.Write([]byte(`[{"id":"1"}]`))
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "k", time.Second, 4, slog.New(slog.NewTextHandler(io.Discard, nil))).WithRegularCache(time.Minute)
+	q := url.Values{"hazard_type": {"COASTAL"}}
+
+	for i := 0; i < 5; i++ {
+		if _, err := c.Events(context.Background(), q, "c"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("kelas reguler harus memakai cache: %d panggilan", got)
+	}
+	prio := httpx.WithPriority(context.Background(), true)
+	for i := 0; i < 3; i++ {
+		if _, err := c.Events(prio, q, "c"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := calls.Load(); got != 4 {
+		t.Fatalf("kelas prioritas tidak boleh memakai cache: %d panggilan", got)
+	}
+}

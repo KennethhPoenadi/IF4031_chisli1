@@ -24,6 +24,26 @@ type Client struct {
 	// Panggilan Events yang sedang berjalan, dikelompokkan menurut kueri. Lihat Events.
 	mu       sync.Mutex
 	inflight map[string]*call
+
+	// Cache singkat khusus kelas reguler (bukan prioritas). Lihat WithRegularCache.
+	regularTTL time.Duration
+	regular    map[string]cached
+}
+
+type cached struct {
+	res     Result
+	expires time.Time
+}
+
+const regularCacheMax = 256
+
+// WithRegularCache menyimpan hasil Events untuk kelas reguler (Media) selama ttl. Pada beban Media tinggi ribuan klien meminta kueri
+// yang sama; tanpa cache setiap pod tetap memanggil Aggregator tanpa henti walau jawabannya hampir selalu 429 atau sama, dan beban itu
+// memperlambat penyimpanan yang juga melayani Tim Lapangan. Kelas prioritas tidak pernah memakai cache sehingga selalu segar; kelas
+// reguler paling lama tertinggal ttl. ttl <= 0 mematikan cache.
+func (c *Client) WithRegularCache(ttl time.Duration) *Client {
+	c.regularTTL = ttl
+	return c
 }
 
 // call adalah satu panggilan ke Aggregator yang hasilnya dibagi ke semua penunggu kueri yang sama.
@@ -108,10 +128,17 @@ func (c *Client) Events(ctx context.Context, q url.Values, correlationID string)
 	// Kelas prioritas ikut kunci: permintaan prioritas hanya digabung dengan sesama prioritas, jadi panggilan yang macet milik
 	// permintaan biasa tidak pernah menahan permintaan prioritas (isolasi prioritas P5).
 	key := q.Encode()
-	if httpx.IsPriority(ctx) {
+	priority := httpx.IsPriority(ctx)
+	if priority {
 		key = "priority|" + key
 	}
 	c.mu.Lock()
+	if !priority && c.regularTTL > 0 {
+		if e, ok := c.regular[key]; ok && time.Now().Before(e.expires) {
+			c.mu.Unlock()
+			return e.res, nil
+		}
+	}
 	if cl, ok := c.inflight[key]; ok {
 		c.mu.Unlock()
 		return cl.wait(ctx)
@@ -128,6 +155,12 @@ func (c *Client) Events(ctx context.Context, q url.Values, correlationID string)
 		cl.res, cl.err = c.fetchEvents(context.WithoutCancel(ctx), q, correlationID)
 		c.mu.Lock()
 		delete(c.inflight, key)
+		if !priority && c.regularTTL > 0 && cl.err == nil {
+			if c.regular == nil || len(c.regular) >= regularCacheMax {
+				c.regular = make(map[string]cached)
+			}
+			c.regular[key] = cached{res: cl.res, expires: time.Now().Add(c.regularTTL)}
+		}
 		c.mu.Unlock()
 		close(cl.done)
 	}()

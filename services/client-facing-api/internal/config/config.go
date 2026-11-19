@@ -16,6 +16,7 @@ type Config struct {
 	AggregatorURL     string
 	AggregatorKey     string
 	AggregatorTimeout time.Duration
+	RegularCacheTTL   time.Duration
 	AuthURL           string
 	AuthInternalKey   string
 	PinnedPublicKey   ed25519.PublicKey
@@ -62,6 +63,7 @@ func Load() (Config, error) {
 		AggregatorURL:     getEnv("AGGREGATOR_URL", "http://aggregator:8090"),
 		AggregatorKey:     aggKey,
 		AggregatorTimeout: time.Duration(getInt("CLIENT_API_AGGREGATOR_TIMEOUT_MS", 1500)) * time.Millisecond,
+		RegularCacheTTL:   time.Duration(getInt("CLIENT_API_REGULAR_CACHE_TTL_MS", 0)) * time.Millisecond,
 		AuthURL:           getEnv("AUTH_SERVICE_URL", "http://auth-service:8091"),
 		AuthInternalKey:   authKey,
 		RevocationPoll:    time.Duration(getInt("CLIENT_API_REVOCATION_POLL_MS", 250)) * time.Millisecond,
