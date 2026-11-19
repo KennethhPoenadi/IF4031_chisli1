@@ -1,0 +1,98 @@
+{
+  "menit": 5.0,
+  "sampel": [
+    {
+      "t": 50,
+      "ready": true,
+      "committed": 6365865,
+      "latest": 6365867,
+      "kebakaran": 64408,
+      "stats": {},
+      "latensi": {
+        "max_s": 14.526991089,
+        "p50_s": 0.566144123,
+        "p95_s": 10.257044306,
+        "p99_s": 13.094604425,
+        "samples": 700,
+        "total": 700
+      }
+    },
+    {
+      "t": 128,
+      "ready": true,
+      "committed": 6367141,
+      "latest": 6367140,
+      "kebakaran": 64412,
+      "stats": {},
+      "latensi": {
+        "max_s": 14.526991089,
+        "p50_s": 0.773344549,
+        "p95_s": 5.495205036,
+        "p99_s": 11.508712637,
+        "samples": 1976,
+        "total": 1976
+      }
+    },
+    {
+      "t": 179,
+      "ready": false,
+      "committed": 0,
+      "latest": 0,
+      "kebakaran": 64412,
+      "stats": {},
+      "latensi": {
+        "samples": 0,
+        "total": 0
+      }
+    },
+    {
+      "t": 237,
+      "ready": false,
+      "committed": 0,
+      "latest": 0,
+      "kebakaran": 64422,
+      "stats": {},
+      "latensi": {
+        "samples": 0,
+        "total": 0
+      }
+    },
+    {
+      "t": 286,
+      "ready": true,
+      "committed": 6368074,
+      "latest": 6368054,
+      "kebakaran": 64430,
+      "stats": {},
+      "latensi": {
+        "max_s": 5.815575927,
+        "p50_s": 1.636725282,
+        "p95_s": 5.815551354,
+        "p99_s": 5.81557102,
+        "samples": 726,
+        "total": 726
+      }
+    },
+    {
+      "t": 330,
+      "ready": true,
+      "committed": 6369293,
+      "latest": 6369242,
+      "kebakaran": 64444,
+      "stats": {},
+      "latensi": {
+        "max_s": 5.815575927,
+        "p50_s": 0.409241837,
+        "p95_s": 5.815514282,
+        "p99_s": 5.81556419,
+        "samples": 1945,
+        "total": 1945
+      }
+    }
+  ],
+  "offset_awal": 6365865,
+  "p95_masuk_tersimpan_dtk": 5.815514282,
+  "tertinggal_maks": 2,
+  "offset_akhir": 6369293,
+  "lolos": false
+}

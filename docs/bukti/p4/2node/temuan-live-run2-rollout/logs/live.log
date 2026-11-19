@@ -1,0 +1,13 @@
+memantau aliran feed live selama 5.0 menit (tiap 10 dtk)
+   waktu ready    offset   terbaru tertinggal kebakaran  p95 latensi
+     50s  True   6365865   6365867          2     64408  p95 masuk-tersimpan=10.257s (n=700)
+    128s  True   6367141   6367140          0     64412  p95 masuk-tersimpan=5.495s (n=1976)
+    178s False         0         0          0     64412  p95 masuk-tersimpan=- (n=0)
+    236s False         0         0          0     64422  p95 masuk-tersimpan=- (n=0)
+    286s  True   6368074   6368054          0     64430  p95 masuk-tersimpan=5.816s (n=726)
+    329s  True   6369293   6369242          0     64444  p95 masuk-tersimpan=5.816s (n=1945)
+p95 latensi data masuk -> HazardEvent tersimpan (sampel terakhir 1945): 5.816 dtk; p99 5.816; maks 5.816
+tertinggal terbesar selama pemantauan: 2 kejadian
+
+HASIL live: GAGAL
+bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p4/2node
