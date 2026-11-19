@@ -1,6 +1,6 @@
 import http from 'k6/http';
 import { check, fail } from 'k6';
-import { Rate, Trend } from 'k6/metrics';
+import { Counter, Rate, Trend } from 'k6/metrics';
 
 const apiBaseURL = (__ENV.BASE_URL || __ENV.API_BASE_URL || 'http://localhost:8080').replace(/\/$/, '');
 const authBaseURL = (__ENV.AUTH_BASE_URL || 'http://localhost:8091').replace(/\/$/, '');
@@ -11,6 +11,12 @@ const fieldRejected = new Rate('field_429_rate');
 const fieldLatency = new Trend('field_latency', true);
 // Jawaban Tim Lapangan yang berupa hasil terakhir (aggregator lambat/gagal), ditandai header X-Data-Stale-Seconds.
 const fieldStale = new Rate('field_stale_rate');
+// Rincian kegagalan Tim Lapangan: 0 = gagal di jaringan (tanpa respons HTTP), selain itu kode HTTP.
+const fieldFailNetwork = new Counter('field_fail_network');
+const fieldFail502 = new Counter('field_fail_502');
+const fieldFail503 = new Counter('field_fail_503');
+const fieldFail504 = new Counter('field_fail_504');
+const fieldFailOther = new Counter('field_fail_other');
 const fieldStaleAge = new Trend('field_stale_age_seconds');
 const fieldBlocked = new Trend('field_phase_blocked', true);
 const fieldConnecting = new Trend('field_phase_connecting', true);
@@ -125,6 +131,10 @@ export function fieldTraffic(data) {
   fieldSuccess.add(success);
   fieldRejected.add(response.status === 429);
   fieldLatency.add(response.timings.duration);
+  if (!success) {
+    const st = response.status;
+    (st === 0 ? fieldFailNetwork : st === 502 ? fieldFail502 : st === 503 ? fieldFail503 : st === 504 ? fieldFail504 : fieldFailOther).add(1);
+  }
   const staleAge = response.headers['X-Data-Stale-Seconds'];
   fieldStale.add(success && staleAge !== undefined);
   if (staleAge !== undefined) fieldStaleAge.add(Number(staleAge));

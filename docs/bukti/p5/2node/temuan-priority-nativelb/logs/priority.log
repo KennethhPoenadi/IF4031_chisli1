@@ -1,0 +1,40 @@
+k6 p5-priority.js: 1000 VU Media + 50 VU Tim Lapangan, 45s
+
+     ✗ media is served or rejected in a controlled way
+      ↳  97% — ✓ 148984 / ✗ 3712
+     ✗ field request stays available
+      ↳  95% — ✓ 4143 / ✗ 195
+
+     checks.........................: 97.51% 153127 out of 157034
+     data_received..................: 465 MB 10 MB/s
+     data_sent......................: 83 MB  1.8 MB/s
+   ✓ field_429_rate.................: 0.00%  0 out of 4338
+     field_fail_502.................: 195    4.236273/s
+   ✓ field_latency..................: avg=508.82ms med=353.24ms p(90)=1.07s    p(95)=1.49s    p(99)=2.55s    max=3.98s   
+     field_phase_blocked............: avg=1.57ms   med=2.64µs   p(90)=5.7µs    p(95)=7.33µs   p(99)=21.37ms  max=417.57ms
+     field_phase_connecting.........: avg=877.98µs med=0s       p(90)=0s       p(95)=0s       p(99)=1.69ms   max=310.59ms
+     field_phase_receiving..........: avg=54.96ms  med=17.88ms  p(90)=132.72ms p(95)=217.73ms p(99)=585.11ms max=1.62s   
+     field_phase_waiting............: avg=452.92ms med=311.35ms p(90)=974.05ms p(95)=1.42s    p(99)=2.25s    max=3.69s   
+     field_stale_rate...............: 0.00%  0 out of 4338
+   ✗ field_success_rate.............: 95.50% 4143 out of 4338
+     http_req_blocked...............: avg=772.48µs med=2.28µs   p(90)=5.25µs   p(95)=6.8µs    p(99)=174.39µs max=417.57ms
+     http_req_connecting............: avg=591.18µs med=0s       p(90)=0s       p(95)=0s       p(99)=0s       max=310.59ms
+     http_req_duration..............: avg=284.34ms med=136.14ms p(90)=623.78ms p(95)=1.07s    p(99)=2.43s    max=4.8s    
+       { expected_response:true }...: avg=628.15ms med=400.49ms p(90)=1.41s    p(95)=2.19s    p(99)=3.37s    max=4.8s    
+     http_req_failed................: 76.41% 119998 out of 157036
+     http_req_receiving.............: avg=23.15ms  med=23.42µs  p(90)=55.26ms  p(95)=115.07ms p(99)=458.21ms max=2.2s    
+     http_req_sending...............: avg=894.94µs med=7.55µs   p(90)=27.1µs   p(95)=119.92µs p(99)=34.27ms  max=415.16ms
+     http_req_tls_handshaking.......: avg=0s       med=0s       p(90)=0s       p(95)=0s       p(99)=0s       max=0s      
+     http_req_waiting...............: avg=260.29ms med=131.59ms p(90)=567.27ms p(95)=961.04ms p(99)=2.19s    max=4.4s    
+     http_reqs......................: 157036 3411.524579/s
+     iteration_duration.............: avg=302.14ms med=160ms    p(90)=645.6ms  p(95)=1.08s    p(99)=2.43s    max=4.8s    
+     iterations.....................: 157034 3411.48113/s
+   ✓ media_controlled_429_rate......: 76.02% 116091 out of 152696
+   ✗ unexpected_response_rate.......: 2.48%  3907 out of 157034
+     vus............................: 215    min=215              max=1050
+     vus_max........................: 1050   min=1050             max=1050
+
+time="2026-11-19T14:20:04+07:00" level=error msg="thresholds on metrics 'field_success_rate, unexpected_response_rate' have been crossed"
+
+HASIL priority: GAGAL
+bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p5/2node

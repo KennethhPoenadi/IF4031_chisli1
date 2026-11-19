@@ -1,0 +1,36 @@
+k6 p5-priority.js: 1000 VU Media + 50 VU Tim Lapangan, 45s
+
+     ✓ media is served or rejected in a controlled way
+     ✓ field request stays available
+
+     checks.........................: 100.00% 383380 out of 383380
+     data_received..................: 856 MB  19 MB/s
+     data_sent......................: 204 MB  4.5 MB/s
+   ✓ field_429_rate.................: 0.00%   0 out of 9536
+   ✓ field_latency..................: avg=217.78ms med=193.68ms p(90)=375.27ms p(95)=448.06ms p(99)=645.06ms max=1.02s   
+     field_phase_blocked............: avg=654.63µs med=2.3µs    p(90)=5.11µs   p(95)=6.59µs   p(99)=90.38µs  max=184.18ms
+     field_phase_connecting.........: avg=278.95µs med=0s       p(90)=0s       p(95)=0s       p(99)=0s       max=100.12ms
+     field_phase_receiving..........: avg=25.17ms  med=6.64ms   p(90)=75.03ms  p(95)=106.22ms p(99)=169.79ms max=393.86ms
+     field_phase_waiting............: avg=191.57ms med=168.43ms p(90)=337.09ms p(95)=403.68ms p(99)=589.64ms max=1.02s   
+     field_stale_rate...............: 0.00%   0 out of 9536
+   ✓ field_success_rate.............: 100.00% 9536 out of 9536
+     http_req_blocked...............: avg=326.02µs med=1.95µs   p(90)=4.57µs   p(95)=5.88µs   p(99)=27.54µs  max=184.18ms
+     http_req_connecting............: avg=99.35µs  med=0s       p(90)=0s       p(95)=0s       p(99)=0s       max=100.12ms
+     http_req_duration..............: avg=107.28ms med=85.45ms  p(90)=214.95ms p(95)=269.34ms p(99)=407.82ms max=1.06s   
+       { expected_response:true }...: avg=204.81ms med=183.68ms p(90)=346.35ms p(95)=411.48ms p(99)=584.54ms max=1.06s   
+     http_req_failed................: 83.43%  319867 out of 383382
+     http_req_receiving.............: avg=4.47ms   med=18.11µs  p(90)=4.89ms   p(95)=32.5ms   p(99)=90.91ms  max=520.5ms 
+     http_req_sending...............: avg=706.65µs med=6.19µs   p(90)=20.84µs  p(95)=103.38µs p(99)=30.39ms  max=188.79ms
+     http_req_tls_handshaking.......: avg=0s       med=0s       p(90)=0s       p(95)=0s       p(99)=0s       max=0s      
+     http_req_waiting...............: avg=102.1ms  med=83.41ms  p(90)=200.68ms p(95)=247.15ms p(99)=372.07ms max=1.02s   
+     http_reqs......................: 383382  8474.589601/s
+     iteration_duration.............: avg=122.65ms med=97.77ms  p(90)=241.97ms p(95)=301.14ms p(99)=445.07ms max=1.09s   
+     iterations.....................: 383380  8474.545391/s
+   ✓ media_controlled_429_rate......: 85.56%  319867 out of 373844
+   ✓ unexpected_response_rate.......: 0.00%   0 out of 383380
+     vus............................: 1050    min=1050             max=1050
+     vus_max........................: 1050    min=1050             max=1050
+
+
+HASIL priority: LOLOS
+bukti disimpan di /tmp/prio_konf3
