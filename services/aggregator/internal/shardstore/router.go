@@ -226,6 +226,78 @@ func (r *Router) each(ctx context.Context, op string, timeout time.Duration, fn 
 	return sortedKeys(failed)
 }
 
+// eachCovered menjalankan fn pada semua unit seperti each, tetapi kembali begitu unit yang sudah menjawab mencakup seluruh data
+// (Ring.Covered dengan faktor replikasi). Dengan RF=2 pada 3 unit, dua unit mana pun memuat setiap dokumen, jadi satu unit yang lambat
+// (mis. node di seberang jaringan overlay yang sedang jenuh) tidak perlu ditunggu sampai timeout. Unit yang belum menjawab dibiarkan
+// selesai di latar belakang: bila timeout atau gagal, ia tetap ditandai mati, hanya saja hasilnya tidak ditunggu. Pemanggil wajib
+// mengabaikan hasil yang datang sesudah kembali (lihat ListEvents). failed hanya berisi unit yang benar-benar gagal atau sedang mati.
+func (r *Router) eachCovered(ctx context.Context, op string, timeout time.Duration, fn func(ctx context.Context, u Unit) error) []string {
+	type res struct {
+		name string
+		err  error
+	}
+	failed := map[string]bool{}
+	pending := map[string]bool{}
+	results := make(chan res, len(r.units))
+	for name, u := range r.units {
+		if r.isDown(name) {
+			failed[name] = true
+			continue
+		}
+		pending[name] = true
+		go func(name string, u Unit) {
+			uctx, cancel := context.WithTimeout(ctx, timeout)
+			defer cancel()
+			uctx, endSpan := telemetry.StartSpan(uctx, op, "db.system", "mongodb", "store.unit", name)
+			err := fn(uctx, u)
+			endSpan(err)
+			if err != nil {
+				r.markDownCtx(ctx, name, err)
+			}
+			results <- res{name, err}
+		}(name, u)
+	}
+	unresolved := func() map[string]bool {
+		out := make(map[string]bool, len(failed)+len(pending))
+		for k := range failed {
+			out[k] = true
+		}
+		for k := range pending {
+			out[k] = true
+		}
+		return out
+	}
+	for len(pending) > 0 && !r.ring.Covered(unresolved(), r.rf) {
+		x := <-results
+		delete(pending, x.name)
+		if x.err != nil {
+			failed[x.name] = true
+		}
+	}
+	// Cakupan tercapai: beri unit yang tersisa waktu sangat singkat supaya kegagalan cepat (unit mati, koneksi ditolak) tetap tercatat
+	// sebagai tidak tersedia. Unit yang benar-benar lambat tidak ditunggu lebih lama dari ini.
+	if len(pending) > 0 {
+		grace := time.NewTimer(hedgeGrace)
+		defer grace.Stop()
+	wait:
+		for len(pending) > 0 {
+			select {
+			case x := <-results:
+				delete(pending, x.name)
+				if x.err != nil {
+					failed[x.name] = true
+				}
+			case <-grace.C:
+				break wait
+			}
+		}
+	}
+	return sortedKeys(failed)
+}
+
+// hedgeGrace adalah waktu tunggu tambahan untuk unit yang belum menjawab sesudah data terlindungi oleh unit lain.
+const hedgeGrace = 20 * time.Millisecond
+
 func (r *Router) SaveHazardEvent(ev hazard.Event) error {
 	ctx, cancel := context.WithTimeout(context.Background(), r.cfg.UnitTimeout*2)
 	defer cancel()
@@ -347,14 +419,18 @@ func (r *Router) ListEvents(ctx context.Context, q ListQuery) (Page, error) {
 	}
 
 	var mu sync.Mutex
+	closed := false
 	merged := map[string]hazard.Event{}
-	failed := r.each(ctx, "store.query", r.cfg.UnitTimeout, func(uctx context.Context, u Unit) error {
+	failed := r.eachCovered(ctx, "store.query", r.cfg.UnitTimeout, func(uctx context.Context, u Unit) error {
 		events, err := u.Query(uctx, UnitQuery{Filter: q.Filter, After: after, Limit: q.Limit + 1, Order: q.Order})
 		if err != nil {
 			return err
 		}
 		mu.Lock()
 		defer mu.Unlock()
+		if closed { // unit lambat yang menjawab sesudah permintaan dilayani: hasilnya tidak dipakai
+			return nil
+		}
 		for _, ev := range events {
 			if cur, ok := merged[ev.HazardID]; !ok || ev.IngestedAt.After(cur.IngestedAt) {
 				merged[ev.HazardID] = ev
@@ -362,12 +438,17 @@ func (r *Router) ListEvents(ctx context.Context, q ListQuery) (Page, error) {
 		}
 		return nil
 	})
+	mu.Lock()
+	closed = true
+	snapshot := merged
+	merged = nil
+	mu.Unlock()
 	if len(failed) == len(r.units) {
 		return Page{}, ErrUnavailable
 	}
 
-	events := make([]hazard.Event, 0, len(merged))
-	for _, ev := range merged {
+	events := make([]hazard.Event, 0, len(snapshot))
+	for _, ev := range snapshot {
 		events = append(events, ev)
 	}
 	sort.Slice(events, func(i, j int) bool { return less(events[i], events[j], q.Order) })

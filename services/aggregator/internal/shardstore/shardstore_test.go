@@ -1279,8 +1279,37 @@ func TestUnitOwnTimeoutStillMarksOnlyThatUnitDown(t *testing.T) {
 	if _, err := r.ListEvents(context.Background(), ListQuery{Limit: 1000, Order: NewestFirst}); err != nil {
 		t.Fatal(err)
 	}
+	// Unit lambat tidak ditunggu oleh permintaan (data sudah tercakup dua unit lain), jadi penandaan mati terjadi di latar belakang
+	// ketika timeout-nya habis.
+	deadline := time.Now().Add(2 * time.Second)
+	for len(r.downSet()) == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
 	if down := sortedKeys(r.downSet()); len(down) != 1 || down[0] != "store-1" {
 		t.Fatalf("down = %v, want hanya [store-1]", down)
+	}
+}
+
+// Satu unit yang sangat lambat tidak boleh menahan jawaban selama timeout-nya bila dua unit lain sudah memuat seluruh data, dan
+// jawabannya tetap lengkap (tidak partial).
+func TestSlowUnitDoesNotDelayCoveredReadAndAnswerIsComplete(t *testing.T) {
+	r, fakes := newCluster(t, "store-0", "store-1", "store-2")
+	events := load(t, r, 80)
+	fakes[1].mu.Lock()
+	fakes[1].blockQuery = true
+	fakes[1].mu.Unlock()
+
+	start := time.Now()
+	page, err := r.ListEvents(context.Background(), ListQuery{Limit: 1000, Order: NewestFirst})
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if elapsed > 100*time.Millisecond {
+		t.Fatalf("jawaban menunggu unit lambat %v (timeout unit 200ms)", elapsed)
+	}
+	if len(page.Events) != len(events) || page.Partial {
+		t.Fatalf("event = %d (want %d) partial=%v: harus lengkap", len(page.Events), len(events), page.Partial)
 	}
 }
 

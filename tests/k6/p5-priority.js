@@ -9,6 +9,10 @@ const testDuration = __ENV.DURATION || '45s';
 const fieldSuccess = new Rate('field_success_rate');
 const fieldRejected = new Rate('field_429_rate');
 const fieldLatency = new Trend('field_latency', true);
+const fieldBlocked = new Trend('field_phase_blocked', true);
+const fieldConnecting = new Trend('field_phase_connecting', true);
+const fieldWaiting = new Trend('field_phase_waiting', true);
+const fieldReceiving = new Trend('field_phase_receiving', true);
 const mediaControlledRejection = new Rate('media_controlled_429_rate');
 const unexpectedResponse = new Rate('unexpected_response_rate');
 
@@ -118,6 +122,10 @@ export function fieldTraffic(data) {
   fieldSuccess.add(success);
   fieldRejected.add(response.status === 429);
   fieldLatency.add(response.timings.duration);
+  fieldBlocked.add(response.timings.blocked);
+  fieldConnecting.add(response.timings.connecting);
+  fieldWaiting.add(response.timings.waiting);
+  fieldReceiving.add(response.timings.receiving);
   unexpectedResponse.add(!success && response.status !== 429);
   check(response, {
     'field request stays available': () => success,
