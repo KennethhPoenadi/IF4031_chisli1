@@ -1,0 +1,10 @@
+kontrol tanpa putus 100 dtk: 0 kebakaran kehilangan deteksi karena pembaruan feed
+sebelum: offset 6338462, terbaru di feed 6338453, kebakaran 63958
+koneksi pemroses ke feed DIPUTUS selama 60 dtk (egress hanya ke dalam cluster)
+koneksi DISAMBUNG kembali; menunggu pemroses menyusul
+log: {"time":"2026-11-19T03:59:51.203950431Z","level":"WARN","msg":"koneksi Feed Satelit terputus, menyambung ulang","service":"satellite-ingestor","reason":"disconnected","last_offset":6338588,"err":"koneksi feed terputus: EOF"}
+offset tertahan saat putus: 6338766; setelah sambung: 6338797 (menyusul dalam 101 dtk)
+kebakaran dengan deteksi hilang: 0 (kontrol tanpa putus: 0); ganda: 0; pod pemroses sama: True; restart: tidak ada
+
+HASIL reconnect: LOLOS
+bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p4/2node

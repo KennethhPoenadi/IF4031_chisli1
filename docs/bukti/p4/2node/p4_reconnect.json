@@ -1,0 +1,49 @@
+{
+  "pod": "satellite-ingestor-655d89d856-r688x",
+  "putus_dtk": 70,
+  "offset_sebelum": 6343987,
+  "offset_saat_putus": 6343987,
+  "offset_sesudah": 6344549,
+  "log_putus": [
+    "{\"time\":\"2026-11-19T04:10:29.059905678Z\",\"level\":\"WARN\",\"msg\":\"koneksi Feed Satelit terputus, menyambung ulang\",\"service\":\"satellite-ingestor\",\"reason\":\"heartbeat_timeout\",\"last_offset\":6343987,\"err\":\"heartbeat tidak datang dalam batas waktu\"}"
+  ],
+  "offset_selama_putus": [
+    [
+      10,
+      6343987
+    ],
+    [
+      21,
+      6343987
+    ],
+    [
+      31,
+      6343987
+    ],
+    [
+      42,
+      6343987
+    ],
+    [
+      53,
+      6343987
+    ],
+    [
+      64,
+      6343987
+    ],
+    [
+      75,
+      6343987
+    ]
+  ],
+  "lompatan_offset": 0,
+  "hilang": [],
+  "kontrol_hilang": [
+    "fire-686c123e41d2",
+    "fire-df23622ffcb1"
+  ],
+  "ganda": 0,
+  "restart": {},
+  "lolos": true
+}

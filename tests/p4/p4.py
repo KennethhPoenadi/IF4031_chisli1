@@ -195,6 +195,106 @@ def cmd_stats(args):
     return report("stats", {"offset": st.get("offset"), "stats": s, "terlambat": late, "wildfire_tersimpan": len(f)}, ok)
 
 
+FEED_RANGES = ["104.21.0.0/16", "172.67.0.0/16"]  # Cloudflare di depan satellite.naufarrel.dev; hanya berlaku di network namespace pemroses
+CUT_POD = "bukti-putus-feed"
+
+
+def cut_start(pod):
+    """Putuskan jalur pemroses ke feed: pod privileged di node yang sama memasang rute blackhole di network namespace pemroses.
+    (NetworkPolicy tidak ditegakkan di worker sehingga tidak dipakai.) Mengembalikan (pid, fungsi-pulihkan)."""
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "p2"))
+    import p2
+    node = json.loads(kubectl("get", "pod", pod, "-o", "json"))["spec"]["nodeName"]
+    ov = json.dumps({"spec": {"nodeName": node, "hostPID": True, "terminationGracePeriodSeconds": 0, "containers": [{
+        "name": "freezer", "image": "busybox:1.36", "command": ["sleep", "900"], "securityContext": {"privileged": True}}]}})
+    subprocess.run(["kubectl", "-n", "default", "delete", "pod", CUT_POD, "--now", "--ignore-not-found"], capture_output=True)
+    subprocess.run(["kubectl", "-n", "default", "run", CUT_POD, "--image=busybox:1.36", "--restart=Never", f"--overrides={ov}"], check=True, capture_output=True)
+    subprocess.run(["kubectl", "-n", "default", "wait", "--for=condition=Ready", f"pod/{CUT_POD}", "--timeout=120s"], check=True, capture_output=True)
+    cid = p2.container_id(pod, "satellite-ingestor")
+    pid = subprocess.run(["kubectl", "-n", "default", "exec", CUT_POD, "--", "sh", "-c", f"grep -l {cid} /proc/[0-9]*/cgroup 2>/dev/null | head -1 | cut -d/ -f3"],
+                         capture_output=True, text=True).stdout.strip()
+    if not pid:
+        raise SystemExit("proses pemroses tidak ditemukan di node")
+
+    def route(op):
+        for r in FEED_RANGES:
+            subprocess.run(["kubectl", "-n", "default", "exec", CUT_POD, "--", "nsenter", "-t", pid, "-n", "ip", "route", op, "blackhole", r],
+                           capture_output=True)
+
+    def restore():
+        route("del")
+        subprocess.run(["kubectl", "-n", "default", "delete", "pod", CUT_POD, "--now", "--wait=false"], capture_output=True)
+
+    route("add")
+    return pid, restore
+
+
+def cmd_reconnect(args):
+    """Kriteria 8: koneksi ke feed diputus (NetworkPolicy egress hanya ke dalam cluster) lalu disambung kembali. Pemroses harus
+    melanjutkan dari posisi tepat tanpa kehilangan dan tanpa menggandakan."""
+    c = p1.Client()
+    h0 = ingestor_health() or {}
+    if not h0.get("ready"):
+        raise SystemExit("pemroses belum Ready; tes tidak bermakna")
+    pod = ingestor_pod()
+    ctl0 = fires(c)
+    time.sleep(args.kontrol)
+    before = fires(c)
+    kontrol_hilang = lost(ctl0, before)
+    print(f"kontrol tanpa putus {args.kontrol} dtk: {len(kontrol_hilang)} kebakaran kehilangan deteksi karena pembaruan feed")
+    h0 = ingestor_health() or h0
+    r0 = restarts()
+    t_cut = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    print(f"sebelum: offset {h0['committed_offset']}, terbaru di feed {h0.get('latest_offset')}, kebakaran {len(before)}")
+    pid, restore = cut_start(pod)
+    try:
+        print(f"koneksi pemroses ke feed DIPUTUS selama {args.putus} dtk (rute blackhole ke {', '.join(FEED_RANGES)} di namespace jaringan pemroses)")
+        serie = []
+        t_hold = time.time()
+        while time.time() - t_hold < args.putus:
+            time.sleep(10)
+            serie.append((round(time.time() - t_hold), (ingestor_health() or {}).get("committed_offset")))
+        mid = ingestor_health() or {}
+        print("offset tersimpan selama putus (dtk, offset):", serie)
+    finally:
+        restore()
+    t0 = time.time()
+    print("koneksi DISAMBUNG kembali; menunggu pemroses menyusul")
+    h1 = None
+    while time.time() - t0 < args.timeout:
+        time.sleep(5)
+        h = ingestor_health() or {}
+        if h.get("ready") and h.get("committed_offset", 0) > h0["committed_offset"] and h.get("latest_offset", 0) - h.get("committed_offset", 0) < 5000:
+            h1 = h
+            break
+    logs = kubectl("logs", pod, "--since-time", t_cut, check=False)
+    putus_log = [ln for ln in logs.splitlines() if "koneksi Feed Satelit terputus" in ln]
+    lompat = [ln for ln in logs.splitlines() if "lompatan offset" in ln]
+    tertahan = len({o for _, o in serie[-3:]}) == 1
+    for ln in putus_log[:2]:
+        print("log:", ln[:240])
+    after = fires(c)
+    hilang = lost(before, after)
+    keys, dobel = {}, 0
+    for sid, e in after.items():
+        ks = tuple(sorted(dk(e)))
+        if ks and ks in keys:
+            dobel += 1
+        keys[ks] = sid
+    r1 = restarts()
+    restart_lain = {k: r1[k] - r0.get(k, 0) for k in r1 if k in r0 and r1[k] > r0[k]}
+    print(f"offset tertahan saat putus: {mid.get('committed_offset')}; setelah sambung: {(h1 or {}).get('committed_offset')} "
+          f"(menyusul dalam {time.time() - t0:.0f} dtk)")
+    print(f"kebakaran dengan deteksi hilang: {len(hilang)} (kontrol tanpa putus: {len(kontrol_hilang)}); ganda: {dobel}; "
+          f"pod pemroses sama: {ingestor_pod() == pod}; restart: {restart_lain or 'tidak ada'}")
+    print(f"offset tertahan selama putus: {tertahan}; lompatan offset (data terlewat) di log: {len(lompat)}")
+    ok = bool(h1 and putus_log and tertahan and not lompat and dobel == 0 and len(hilang) <= len(kontrol_hilang) * max(1.0, (time.time() - t0 + args.putus) / args.kontrol)
+              and not restart_lain)
+    return report("reconnect", {"pod": pod, "putus_dtk": args.putus, "offset_sebelum": h0["committed_offset"], "offset_saat_putus": mid.get("committed_offset"),
+                                "offset_sesudah": (h1 or {}).get("committed_offset"), "log_putus": [ln[:300] for ln in putus_log[:3]], "offset_selama_putus": serie, "lompatan_offset": len(lompat),
+                                "hilang": hilang, "kontrol_hilang": kontrol_hilang, "ganda": dobel, "restart": restart_lain}, ok)
+
+
 def cmd_reference(args):
     ref = json.load(open(args.file))
     ref = ref.get("items", ref) if isinstance(ref, dict) else ref
@@ -219,9 +319,10 @@ def main():
     a = sub.add_parser("live"); a.add_argument("--menit", type=float, default=5); a.add_argument("--interval", type=int, default=10)
     b = sub.add_parser("crash"); b.add_argument("--timeout", type=int, default=180); b.add_argument("--after", type=int, default=45); b.add_argument("--kontrol", type=int, default=100)
     sub.add_parser("stats")
+    q = sub.add_parser("reconnect"); q.add_argument("--putus", type=int, default=60); q.add_argument("--kontrol", type=int, default=100); q.add_argument("--timeout", type=int, default=240)
     r = sub.add_parser("reference"); r.add_argument("file")
     args = ap.parse_args()
-    sys.exit({"live": cmd_live, "crash": cmd_crash, "reference": cmd_reference, "stats": cmd_stats}[args.cmd](args))
+    sys.exit({"live": cmd_live, "crash": cmd_crash, "reference": cmd_reference, "stats": cmd_stats, "reconnect": cmd_reconnect}[args.cmd](args))
 
 
 if __name__ == "__main__":

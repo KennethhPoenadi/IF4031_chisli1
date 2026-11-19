@@ -1,0 +1,18 @@
+offset tersimpan: 6335640; kebakaran aktif: 101; diperbarui: 2026-11-19T03:53:16.374824435Z
+  accepted                        4857764
+  detections_active                  4704
+  detections_frozen                  6974
+  duplicate                        330615
+  final_single_detections          631420
+  fires_active                        101
+  fires_finalized                  100352
+  frozen_evicted                  4775325
+  low_confidence                   696451
+  retract_unmatched                 16081
+  retracted                        109966
+  single_detections_active            621
+deteksi melewati batas keterlambatan (dilaporkan, tidak dibuang diam-diam): 0
+HazardEvent WILDFIRE tersimpan: 63919
+
+HASIL stats: LOLOS
+bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p4/2node

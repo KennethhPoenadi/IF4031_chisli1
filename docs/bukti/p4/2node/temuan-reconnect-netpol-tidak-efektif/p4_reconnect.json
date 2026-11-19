@@ -1,0 +1,15 @@
+{
+  "pod": "satellite-ingestor-655d89d856-r688x",
+  "putus_dtk": 60,
+  "offset_sebelum": 6338462,
+  "offset_saat_putus": 6338766,
+  "offset_sesudah": 6338797,
+  "log_putus": [
+    "{\"time\":\"2026-11-19T03:59:51.203950431Z\",\"level\":\"WARN\",\"msg\":\"koneksi Feed Satelit terputus, menyambung ulang\",\"service\":\"satellite-ingestor\",\"reason\":\"disconnected\",\"last_offset\":6338588,\"err\":\"koneksi feed terputus: EOF\"}"
+  ],
+  "hilang": [],
+  "kontrol_hilang": [],
+  "ganda": 0,
+  "restart": {},
+  "lolos": true
+}

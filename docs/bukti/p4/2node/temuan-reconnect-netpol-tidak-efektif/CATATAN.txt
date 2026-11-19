@@ -1,0 +1,1 @@
+NetworkPolicy egress tidak ditegakkan di worker: pemroses tetap menyimpan batch selama policy aktif, jadi putus-sambung tidak benar-benar terjadi. Hanya satu log EOF, tanpa percobaan sambung gagal.

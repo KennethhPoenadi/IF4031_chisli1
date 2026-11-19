@@ -1,0 +1,20 @@
+{
+  "offset": 6335640,
+  "stats": {
+    "accepted": 4857764,
+    "detections_active": 4704,
+    "detections_frozen": 6974,
+    "duplicate": 330615,
+    "final_single_detections": 631420,
+    "fires_active": 101,
+    "fires_finalized": 100352,
+    "frozen_evicted": 4775325,
+    "low_confidence": 696451,
+    "retract_unmatched": 16081,
+    "retracted": 109966,
+    "single_detections_active": 621
+  },
+  "terlambat": 0,
+  "wildfire_tersimpan": 63919,
+  "lolos": true
+}
