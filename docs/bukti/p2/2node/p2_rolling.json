@@ -1,11 +1,11 @@
 {
-  "image": "ghcr.io/kennethhpoenadi/if4031_chisli1:aggregator-52bf2e42",
-  "detik_rollout": 32.7,
-  "permintaan": 1855,
+  "image": "ghcr.io/kennethhpoenadi/if4031_chisli1:aggregator-47c24bf5",
+  "detik_rollout": 43.9,
+  "permintaan": 501,
   "kode": {
-    "200": 1855
+    "200": 501
   },
   "gagal": 0,
-  "p95_detik": 0.374,
+  "p95_detik": 2.552,
   "lolos": true
 }
