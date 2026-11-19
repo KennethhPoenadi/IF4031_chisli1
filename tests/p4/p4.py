@@ -101,7 +101,7 @@ def cmd_live(args):
     samples = []
     t_end = time.time() + args.menit * 60
     print(f"memantau aliran feed live selama {args.menit} menit (tiap {args.interval} dtk)")
-    print(f"{'waktu':>8} {'ready':>5} {'offset':>9} {'terbaru':>9} {'tertinggal':>10} {'kebakaran':>9}  keadaan mesin")
+    print(f"{'waktu':>8} {'ready':>5} {'offset':>9} {'terbaru':>9} {'tertinggal':>10} {'kebakaran':>9}  p95 latensi")
     t0 = time.time()
     while time.time() < t_end:
         h = ingestor_health() or {}
@@ -109,14 +109,20 @@ def cmd_live(args):
         st = h.get("stats") or {}
         committed, latest = h.get("committed_offset", -1), h.get("latest_offset", -1)
         samples.append({"t": round(time.time() - t0), "ready": h.get("ready"), "committed": committed, "latest": latest,
-                        "kebakaran": len(f), "stats": st})
-        brief = ", ".join(f"{k}={v}" for k, v in sorted(st.items())[:5])
-        print(f"{int(time.time() - t0):>7}s {str(h.get('ready')):>5} {committed:>9} {latest:>9} {max(latest - committed, 0):>10} {len(f):>9}  {brief}")
+                        "kebakaran": len(f), "stats": st, "latensi": h.get("ingest_to_store")})
+        lt = h.get("ingest_to_store") or {}
+        p95 = f"{lt['p95_s']:.3f}s" if lt.get("p95_s") is not None else "-"
+        print(f"{int(time.time() - t0):>7}s {str(h.get('ready')):>5} {committed:>9} {latest:>9} {max(latest - committed, 0):>10} {len(f):>9}  p95 masuk-tersimpan={p95} (n={lt.get('samples', 0)})")
         time.sleep(args.interval)
+    lts = [s["latensi"] for s in samples if s.get("latensi") and s["latensi"].get("p95_s") is not None]
+    if lts:
+        print(f"p95 latensi data masuk -> HazardEvent tersimpan (sampel terakhir {lts[-1]['samples']}): {lts[-1]['p95_s']:.3f} dtk; p99 {lts[-1]['p99_s']:.3f}; maks {lts[-1]['max_s']:.3f}")
+    maxlag = max((max(s["latest"] - s["committed"], 0) for s in samples if isinstance(s["latest"], int) and s["latest"] >= 0), default=0)
+    print(f"tertinggal terbesar selama pemantauan: {maxlag} kejadian")
     advanced = [s["committed"] for s in samples if isinstance(s["committed"], int) and s["committed"] >= 0]
     ok = bool(samples and all(s["ready"] for s in samples[1:]) and len(advanced) > 1 and advanced[-1] > advanced[0]
               and samples[-1]["kebakaran"] > 0)
-    return report("live", {"menit": args.menit, "sampel": samples, "offset_awal": advanced[0] if advanced else None,
+    return report("live", {"menit": args.menit, "sampel": samples, "offset_awal": advanced[0] if advanced else None, "p95_masuk_tersimpan_dtk": lts[-1]["p95_s"] if lts else None, "tertinggal_maks": maxlag,
                            "offset_akhir": advanced[-1] if advanced else None}, ok)
 
 
