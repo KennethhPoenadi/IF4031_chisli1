@@ -9,6 +9,9 @@ const testDuration = __ENV.DURATION || '45s';
 const fieldSuccess = new Rate('field_success_rate');
 const fieldRejected = new Rate('field_429_rate');
 const fieldLatency = new Trend('field_latency', true);
+// Jawaban Tim Lapangan yang berupa hasil terakhir (aggregator lambat/gagal), ditandai header X-Data-Stale-Seconds.
+const fieldStale = new Rate('field_stale_rate');
+const fieldStaleAge = new Trend('field_stale_age_seconds');
 const fieldBlocked = new Trend('field_phase_blocked', true);
 const fieldConnecting = new Trend('field_phase_connecting', true);
 const fieldWaiting = new Trend('field_phase_waiting', true);
@@ -122,6 +125,9 @@ export function fieldTraffic(data) {
   fieldSuccess.add(success);
   fieldRejected.add(response.status === 429);
   fieldLatency.add(response.timings.duration);
+  const staleAge = response.headers['X-Data-Stale-Seconds'];
+  fieldStale.add(success && staleAge !== undefined);
+  if (staleAge !== undefined) fieldStaleAge.add(Number(staleAge));
   fieldBlocked.add(response.timings.blocked);
   fieldConnecting.add(response.timings.connecting);
   fieldWaiting.add(response.timings.waiting);
