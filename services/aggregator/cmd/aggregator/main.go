@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 	"unicode/utf8"
@@ -239,6 +241,7 @@ func main() {
 		WriteTimeout:      15 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
+	httpx.RotateConnections(srv, time.Duration(envSeconds("AGGREGATOR_MAX_CONN_AGE_SECONDS", 30))*time.Second)
 	shutdownDone := make(chan struct{})
 	go func() {
 		defer close(shutdownDone)
@@ -397,4 +400,12 @@ func buildStore(cfg config.Config, log *slog.Logger) (*shardstore.Router, *shard
 	}
 	log.Info("storage configured", "units", router.UnitNames(), "replication_factor", router.ReplicationFactor())
 	return router, docs, closeAll, nil
+}
+
+// envSeconds membaca bilangan bulat detik dari environment; nilai kosong atau tidak valid memakai bawaan.
+func envSeconds(name string, def int) int {
+	if v, err := strconv.Atoi(strings.TrimSpace(os.Getenv(name))); err == nil {
+		return v
+	}
+	return def
 }
