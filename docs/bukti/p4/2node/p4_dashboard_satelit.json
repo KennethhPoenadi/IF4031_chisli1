@@ -1,0 +1,15 @@
+{
+    "accepted": 4914775,
+    "active_fires": 93,
+    "age_seconds": 7.234764613,
+    "available": true,
+    "duplicate": 334509,
+    "event_time_lag_seconds": 0,
+    "feed_latest_offset": 6410258,
+    "ingest_p95_seconds": 13.319261077,
+    "lag_events": 0,
+    "late": 0,
+    "offset": 6410261,
+    "retracted": 111289,
+    "updated_at": "2026-11-19T06:24:33.857941192Z"
+}

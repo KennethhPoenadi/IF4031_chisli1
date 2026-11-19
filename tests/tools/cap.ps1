@@ -1,4 +1,4 @@
-param([string]$Title,[string]$Out,[int]$Wait=6)
+param([string]$Title,[string]$Out,[int]$Wait=6,[switch]$Front)
 Add-Type -AssemblyName System.Drawing
 Add-Type @"
 using System; using System.Text; using System.Runtime.InteropServices; using System.Collections.Generic;
@@ -22,6 +22,8 @@ if($h -eq [IntPtr]::Zero){ Write-Error "jendela '$Title' tidak ditemukan"; exit 
 # Bila konsol sedang dalam mode pilih teks (judul berawalan "Select"), keluaran tertahan: batalkan dengan Esc dan pastikan.
 for($i=0;$i -lt 5 -and [W]::Title($h).StartsWith("Select");$i++){ [void][W]::PostMessage($h,0x100,[IntPtr]0x1B,[IntPtr]0); [void][W]::PostMessage($h,0x101,[IntPtr]0x1B,[IntPtr]0); Start-Sleep -Milliseconds 700 }
 if([W]::Title($h).StartsWith("Select")){ Write-Error "konsol tetap dalam mode pilih teks"; exit 2 }
+# -Front: jendela peramban di belakang jendela lain tidak digambar ulang; bawa ke depan agar isi terkini yang tertangkap.
+if($Front){ [void][W]::SetForegroundWindow($h); Start-Sleep -Milliseconds 1500 }
 Start-Sleep -Milliseconds 500
 $r=New-Object W+RC; [void][W]::GetWindowRect($h,[ref]$r)
 $w=$r.Right-$r.Left; $ht=$r.Bottom-$r.Top
