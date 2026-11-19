@@ -124,7 +124,7 @@ Per skenario:
 
 | Problem | Perintah | Kriteria |
 |---|---|---|
-| P1 | `python3 tests/p1/p1.py load --synthetic 20000` lalu `report` | 1-2: sebaran data dan beban per node |
+| P1 | `python3 tests/p1/p1.py load --file <katalog-asisten.csv>` lalu `report` | 1-2: memuat katalog gempa historis asisten, sebaran data dan beban per node (`--synthetic N` untuk data uji berpola miring) |
 | P1 | `python3 tests/p1/p1.py surge --region "Kepulauan Mentawai" --count 3000` | 2: lonjakan satu wilayah |
 | P1 | `python3 tests/p1/p1.py paginate` | 3: baca lintas unit dengan pagination |
 | P1 | `python3 tests/p1/unit_loss.py --victim store-0 --second store-1` | 4-6: unit hilang dan dipulihkan, tahan kehilangan berikutnya |
