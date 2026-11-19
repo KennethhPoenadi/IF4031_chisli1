@@ -1,0 +1,10 @@
+memantau aliran feed live selama 5.0 menit (tiap 10 dtk)
+   waktu ready    offset   terbaru tertinggal kebakaran  keadaan mesin
+     51s  True   6030776   6299718     268942     59243  
+    112s  True   6038276   6300991     262715     59372  
+    178s  True   6046776   6301316     254540     59504  
+    244s  True   6055776   6301616     245840     59636  
+    315s  True   6063776   6301966     238190     59754  
+
+HASIL live: LOLOS
+bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p4/2node

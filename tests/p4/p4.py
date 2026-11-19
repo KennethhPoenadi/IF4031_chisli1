@@ -29,15 +29,19 @@ def kubectl(*args, check=True):
     return r.stdout
 
 
-def ingestor_pod():
-    out = kubectl("get", "pod", "-l", "app.kubernetes.io/name=satellite-ingestor", "-o", "jsonpath={.items[0].metadata.name}", check=False)
-    return out.strip()
+def ingestor_pod(exclude=""):
+    """Nama pod pemroses yang aktif (bukan yang sedang dihentikan, bukan `exclude`)."""
+    items = json.loads(kubectl("get", "pods", "-l", "app.kubernetes.io/name=satellite-ingestor", "-o", "json", check=False) or "{}").get("items", [])
+    for p in items:
+        if not p["metadata"].get("deletionTimestamp") and p["metadata"]["name"] != exclude:
+            return p["metadata"]["name"]
+    return ""
 
 
-def ingestor_health():
+def ingestor_health(exclude=""):
     """Keadaan pemroses lewat port-forward ke pod (jalur kubelet, tetap jalan saat pod ada di node worker); None bila belum menjawab."""
     import urllib.request
-    pod = ingestor_pod()
+    pod = ingestor_pod(exclude)
     if not pod:
         return None
     pf = subprocess.Popen(["kubectl", "-n", NS, "port-forward", f"pod/{pod}", "18095:8095"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -120,8 +124,8 @@ def cmd_crash(args):
     h1 = None
     while time.time() - t0 < args.timeout:
         time.sleep(3)
-        h = ingestor_health()
-        if h and h.get("ready"):
+        h = ingestor_health(exclude=pod)
+        if h and h.get("ready") and h.get("committed_offset", 0) > 0:
             h1 = h
             break
     if not h1:
@@ -131,11 +135,17 @@ def cmd_crash(args):
     h2 = ingestor_health() or {}
     after = fires(c)
     ids_before, ids_after = set(before), set(after)
-    hilang = sorted(ids_before - ids_after)
+    # ID kebakaran = hash deteksi paling awal, jadi ID berganti saat kebakaran menyatu/bertambah. Kehilangan yang sebenarnya adalah
+    # deteksi yang sebelumnya ada dalam suatu kebakaran dan sesudah pulih tidak ada di kebakaran mana pun.
+    def dk(e):
+        return set((e.get("attributes") or {}).get("detection_keys") or [])
+    covered = set().union(*(dk(e) for e in after.values())) if after else set()
+    hilang = sorted(sid for sid, e in before.items() if sid not in ids_after and dk(e) - covered)
+    id_berganti = len(ids_before - ids_after) - len(hilang)
     baru = len(ids_after - ids_before)
     r1 = restarts()
     pods_crash = {p: r1[p] - r0.get(p, 0) for p in r1 if p in r0 and r1[p] > r0[p]}
-    print(f"kebakaran hilang setelah pulih: {len(hilang)} {hilang[:5]}; kebakaran baru: {baru}; offset sekarang {h2.get('committed_offset')}")
+    print(f"kebakaran dengan deteksi hilang setelah pulih: {len(hilang)} {hilang[:5]}; ID berganti karena menyatu: {id_berganti}; kebakaran baru: {baru}; offset sekarang {h2.get('committed_offset')}")
     print(f"restart komponen lain: {pods_crash or 'tidak ada'}")
     # ID kebakaran adalah kunci penyimpanan, jadi ganda hanya bisa berupa kebakaran yang sama dengan ID berbeda: periksa himpunan deteksi.
     keys = {}
@@ -150,7 +160,7 @@ def cmd_crash(args):
     return report("crash", {"pod": pod, "detik_pulih": round(time.time() - t0 - args.after), "offset_sebelum": h0["committed_offset"],
                             "offset_sesudah": h2.get("committed_offset"), "kebakaran_sebelum": len(before),
                             "kebakaran_sesudah": len(after), "hilang": hilang, "baru": baru, "ganda": dobel,
-                            "restart_lain": pods_crash}, ok)
+                            "id_berganti_tanpa_kehilangan": id_berganti, "restart_lain": pods_crash}, ok)
 
 
 def cmd_reference(args):
