@@ -39,6 +39,9 @@ run() {
       echo "export OUT_DIR='$OUT_DIR' AGG_URL='$AGG_URL' AGG_INTERNAL_KEY='$AGG_INTERNAL_KEY'"
       echo "export POLL_INTERVAL_SECONDS='$POLL_INTERVAL_SECONDS' KUBECONFIG='$KUBECONFIG'"
       [ -n "${PVMBG_URL:-}" ] && echo "export PVMBG_URL='$PVMBG_URL'"
+      for v in AUDIT_TOKEN DASHBOARD_TOKEN PVMBG_TOKEN AUTH_CLIENT_FIELD_ID AUTH_CLIENT_FIELD_SECRET AUTH_CLIENT_MEDIA_ID AUTH_CLIENT_MEDIA_SECRET; do
+        [ -n "${!v:-}" ] && echo "export $v='${!v}'"
+      done
     } > /tmp/evidence.env; chmod 600 /tmp/evidence.env
     SHOT_CMD="$*" tests/tools/realshot.sh "$dir/img/$name.png" "BUKTI-$prob-$name" "$dir/logs/$name.log" -- "$@"
     rc=$?
