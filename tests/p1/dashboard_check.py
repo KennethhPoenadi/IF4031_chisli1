@@ -36,6 +36,13 @@ def parse(ts):
     return datetime.fromisoformat(ts.replace("Z", "+00:00"))
 
 
+def analytics_time(ev):
+    """Waktu yang dipakai dashboard (shardstore.AnalyticsTime): occurred_at, kecuali bila lebih dari 1 jam di depan ingested_at
+    (sumber berjam virtual seperti Feed Satelit 60x); saat itu ingested_at."""
+    occ, ing = parse(ev["occurred_at"]), parse(ev["ingested_at"])
+    return ing if occ > ing + timedelta(hours=1) else occ
+
+
 def read_all(c, upto):
     events, cursor, partial = {}, "", False
     while True:
@@ -78,8 +85,8 @@ def main():
     # di potret Audit API. Kedua sisi dibandingkan pada rentang yang sudah stabil.
     end = (cut - timedelta(minutes=3)).replace(second=0, microsecond=0)
     events, audit_partial = read_all(c, cut)
-    # Dashboard hanya menghitung event dengan occurred_at di dalam rentang; sisi Audit API memakai rentang sama.
-    events = {k: e for k, e in events.items() if start <= parse(e["occurred_at"]) < end}
+    # Dashboard hanya menghitung event yang waktu analitiknya (lihat analytics_time) di dalam rentang; sisi Audit API memakai aturan sama.
+    events = {k: e for k, e in events.items() if start <= analytics_time(e) < end}
     mine_types = Counter(category(e) for e in events.values())
     mine_sev = Counter(e["severity"] for e in events.values())
     mine_area = Counter(e["area_name"] for e in events.values())
@@ -93,7 +100,7 @@ def main():
     while True:
         q = f"/internal/audit/events?since={cut.strftime('%Y-%m-%dT%H:%M:%SZ')}&limit=1000" + (f"&cursor={cursor}" if cursor else "")
         pg = c.audit_get(q)
-        changed += sum(1 for e in pg["items"] if start <= parse(e["occurred_at"]) < end)
+        changed += sum(1 for e in pg["items"] if start <= analytics_time(e) < end)
         cursor = pg.get("next_cursor")
         if not cursor:
             break

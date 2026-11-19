@@ -200,10 +200,11 @@ func (f *fakeUnit) Aggregate(_ context.Context, q AggregateQuery, down []string)
 				break
 			}
 		}
-		if eff != f.name || ev.OccurredAt.Before(q.From) || !ev.OccurredAt.Before(q.To) {
+		at := AnalyticsTime(ev.OccurredAt, ev.IngestedAt)
+		if eff != f.name || at.Before(q.From) || !at.Before(q.To) {
 			continue
 		}
-		bucket := truncate(ev.OccurredAt, q.Bucket).Unix()
+		bucket := truncate(at, q.Bucket).Unix()
 		if out.Series[bucket] == nil {
 			out.Series[bucket] = map[string]int{}
 		}
@@ -812,6 +813,7 @@ func analyticsEvent(i int) hazard.Event {
 	ev.AreaName = []string{"Sumatera Barat", "Jawa Barat", "Kalimantan Tengah"}[i%3]
 	ev.Severity = []hazard.Severity{hazard.SeverityNormal, hazard.SeverityWaspada, hazard.SeveritySiaga, hazard.SeverityAwas}[i%4]
 	ev.OccurredAt = t0.Add(time.Duration(i) * 7 * time.Minute)
+	ev.IngestedAt = ev.OccurredAt.Add(time.Minute) // diterima sesudah terjadi, seperti data sungguhan
 	if ev.HazardType == hazard.TypeSeismic && i%8 == 0 {
 		ev.Attributes = map[string]any{hazard.TsunamiWarningKey: "Siaga"}
 	}
@@ -1336,5 +1338,35 @@ func TestRepairRotatesStartingBucketSoTruncatedRunsStillMakeProgress(t *testing.
 	}
 	if len(r.Rebuilding()) != 0 {
 		t.Fatalf("rebuilding = %v setelah beberapa putaran", r.Rebuilding())
+	}
+}
+
+// Sumber berjam virtual (Feed Satelit dipercepat 60x) mencatat occurred_at bertahun-tahun di depan. Dashboard harus tetap
+// menghitungnya pada waktu diterima, bukan membuangnya dari semua rentang; sumber biasa tetap memakai occurred_at.
+func TestAnalyticsCountsVirtualClockEventsAtIngestTime(t *testing.T) {
+	r, _ := newCluster(t, "store-0", "store-1", "store-2")
+	normal := event(0)
+	fire := event(2)
+	fire.HazardID = "hz-fire-virtual"
+	fire.HazardType = hazard.TypeWildfire
+	fire.IngestedAt = t0.Add(30 * time.Minute)
+	fire.OccurredAt = t0.Add(2 * 365 * 24 * time.Hour)
+	for _, ev := range []hazard.Event{normal, fire} {
+		if err := r.SaveHazardEvent(ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := r.Analytics(context.Background(), AggregateQuery{From: t0.Add(-time.Hour), To: t0.Add(time.Hour), Bucket: "hour"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Total != 2 {
+		t.Fatalf("total = %d, want 2 (kebakaran berjam virtual harus terhitung pada waktu diterima)", got.Total)
+	}
+	if n := got.Series[truncate(fire.IngestedAt, "hour").Unix()][fire.Category()]; n != 1 {
+		t.Fatalf("kebakaran di bucket waktu diterima = %d, want 1", n)
+	}
+	if AnalyticsTime(normal.OccurredAt, normal.IngestedAt) != normal.OccurredAt {
+		t.Fatal("sumber biasa harus tetap memakai occurred_at")
 	}
 }

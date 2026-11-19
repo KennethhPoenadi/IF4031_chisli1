@@ -302,8 +302,14 @@ func (u *MongoUnit) Aggregate(ctx context.Context, q shardstore.AggregateQuery, 
 		bson.D{{Key: "$ne", Value: bson.A{
 			bson.D{{Key: "$type", Value: "$attributes." + hazard.TsunamiWarningKey}}, "missing"}}},
 	}}}
+	// Waktu analitik: occurred_at, kecuali jam sumber jauh di depan waktu diterima (lihat shardstore.AnalyticsTime).
+	ingested := bson.D{{Key: "$ifNull", Value: bson.A{"$ingested_at", "$occurred_at"}}}
+	analyticsTime := bson.D{{Key: "$cond", Value: bson.A{
+		bson.D{{Key: "$gt", Value: bson.A{"$occurred_at", bson.D{{Key: "$add", Value: bson.A{ingested, shardstore.AnalyticsFutureTolerance.Milliseconds()}}}}}},
+		ingested, "$occurred_at"}}}
 	pipeline := mongo.Pipeline{
-		{{Key: "$match", Value: bson.D{{Key: "occurred_at", Value: bson.D{
+		{{Key: "$addFields", Value: bson.D{{Key: "_t", Value: analyticsTime}}}},
+		{{Key: "$match", Value: bson.D{{Key: "_t", Value: bson.D{
 			{Key: "$gte", Value: q.From.UTC()}, {Key: "$lt", Value: q.To.UTC()}}}}}},
 		{{Key: "$addFields", Value: bson.D{{Key: "_eff", Value: bson.D{{Key: "$ifNull", Value: bson.A{
 			bson.D{{Key: "$arrayElemAt", Value: bson.A{
@@ -320,7 +326,7 @@ func (u *MongoUnit) Aggregate(ctx context.Context, q shardstore.AggregateQuery, 
 		{{Key: "$facet", Value: bson.D{
 			{Key: "series", Value: bson.A{bson.D{{Key: "$group", Value: bson.D{
 				{Key: "_id", Value: bson.D{
-					{Key: "t", Value: bson.D{{Key: "$dateTrunc", Value: bson.D{{Key: "date", Value: "$occurred_at"}, {Key: "unit", Value: bucket}}}}},
+					{Key: "t", Value: bson.D{{Key: "$dateTrunc", Value: bson.D{{Key: "date", Value: "$_t"}, {Key: "unit", Value: bucket}}}}},
 					{Key: "c", Value: "$_cat"}}},
 				{Key: "n", Value: bson.D{{Key: "$sum", Value: 1}}}}}}}},
 			{Key: "severity", Value: bson.A{bson.D{{Key: "$group", Value: bson.D{

@@ -109,3 +109,17 @@ type Unit interface {
 type NodeResolver interface {
 	NodeOf(ctx context.Context, unit string) (string, error)
 }
+
+// AnalyticsFutureTolerance: kejadian yang occurred_at-nya lebih jauh dari ini di depan waktu diterima memakai jam sumber yang tidak
+// sejalan dengan jam BNPB (mis. Feed Satelit memakai waktu virtual yang dipercepat 60x, sehingga occurred_at berada di tahun 2028).
+const AnalyticsFutureTolerance = time.Hour
+
+// AnalyticsTime adalah waktu yang dipakai dashboard analitik untuk rentang dan pengelompokan: occurred_at, kecuali bila occurred_at
+// berada lebih dari AnalyticsFutureTolerance di depan ingested_at; saat itu ingested_at dipakai. Tanpa aturan ini kejadian dari
+// sumber berjam virtual tidak pernah masuk rentang waktu mana pun dan hilang dari seluruh panel.
+func AnalyticsTime(occurred, ingested time.Time) time.Time {
+	if !ingested.IsZero() && occurred.After(ingested.Add(AnalyticsFutureTolerance)) {
+		return ingested
+	}
+	return occurred
+}
