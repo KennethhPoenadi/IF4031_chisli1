@@ -9,47 +9,47 @@
       "GANGGUAN 1: Sensor Pantai dibekukan 60 dtk"
     ],
     [
-      60.3,
+      60.4,
       "GANGGUAN 2: PVMBG outage 60 dtk (bersamaan dengan sensor beku)"
     ],
     [
-      92.6,
+      92.8,
       "sensor dilepas (akhir gangguan 1)"
     ],
     [
-      122.7,
+      122.8,
       "PVMBG pulih (akhir gangguan 2)"
     ],
     [
-      152.7,
+      152.8,
       "GANGGUAN 3: Tester Agent membunuh pod penyimpanan (kill-store)"
     ],
     [
-      152.9,
+      153.3,
       "skenario kill-store selesai (kode 0)"
     ],
     [
-      152.9,
+      153.3,
       "JENDELA PEMULIHAN 240 dtk: tidak ada intervensi"
     ],
     [
-      392.9,
+      393.3,
       "jendela pemulihan selesai"
     ]
   ],
-  "permintaan": 471,
+  "permintaan": 473,
   "gagal": 0,
   "ketersediaan": 1.0,
   "slo_ketersediaan": 0.995,
-  "p95_dtk": 0.16005492210388184,
+  "p95_dtk": 0.1596827507019043,
   "slo_p95_dtk": 5.0,
   "anggaran_terpakai": 0.0,
   "gagal_sesudah_pulih": 0,
   "pod_belum_siap": [],
-  "under_replicated": 27,
+  "under_replicated": 20,
   "coastal": [
-    162546,
-    164693
+    219107,
+    220560
   ],
   "kode_gagal": [],
   "lolos": true
