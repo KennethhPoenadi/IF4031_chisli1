@@ -1,0 +1,124 @@
+k6 p5-priority.js: 1000 VU Media + 50 VU Tim Lapangan, 45s
+time="2026-11-19T03:04:04+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:04+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:04+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:04+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:04+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:06+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:08+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:09+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:10+07:00" level=warning msg="Request Failed" error="request timeout"
+time="2026-11-19T03:04:10+07:00" level=warning msg="Request Failed" error="request timeout"
+time="2026-11-19T03:04:10+07:00" level=warning msg="Request Failed" error="request timeout"
+time="2026-11-19T03:04:10+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:10+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:10+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:11+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:11+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:11+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:11+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:11+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:11+07:00" level=warning msg="Request Failed" error="request timeout"
+time="2026-11-19T03:04:11+07:00" level=warning msg="Request Failed" error="request timeout"
+time="2026-11-19T03:04:11+07:00" level=warning msg="Request Failed" error="request timeout"
+time="2026-11-19T03:04:11+07:00" level=warning msg="Request Failed" error="request timeout"
+time="2026-11-19T03:04:15+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:15+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:16+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:17+07:00" level=warning msg="Request Failed" error="request timeout"
+time="2026-11-19T03:04:17+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:17+07:00" level=warning msg="Request Failed" error="request timeout"
+time="2026-11-19T03:04:18+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:23+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:23+07:00" level=warning msg="Request Failed" error="request timeout"
+time="2026-11-19T03:04:23+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:31+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:31+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:31+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:31+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:31+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:31+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:31+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:31+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:31+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:31+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:31+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:31+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:31+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:31+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:31+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:31+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:31+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:31+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:31+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:31+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:31+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:31+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:31+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:33+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:34+07:00" level=warning msg="Request Failed" error="request timeout"
+time="2026-11-19T03:04:35+07:00" level=warning msg="Request Failed" error="request timeout"
+time="2026-11-19T03:04:35+07:00" level=warning msg="Request Failed" error="request timeout"
+time="2026-11-19T03:04:35+07:00" level=warning msg="Request Failed" error="request timeout"
+time="2026-11-19T03:04:37+07:00" level=warning msg="Request Failed" error="request timeout"
+time="2026-11-19T03:04:37+07:00" level=warning msg="Request Failed" error="request timeout"
+time="2026-11-19T03:04:39+07:00" level=warning msg="Request Failed" error="request timeout"
+time="2026-11-19T03:04:39+07:00" level=warning msg="Request Failed" error="request timeout"
+time="2026-11-19T03:04:39+07:00" level=warning msg="Request Failed" error="request timeout"
+time="2026-11-19T03:04:39+07:00" level=warning msg="Request Failed" error="request timeout"
+time="2026-11-19T03:04:39+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:39+07:00" level=warning msg="Request Failed" error="request timeout"
+time="2026-11-19T03:04:39+07:00" level=warning msg="Request Failed" error="request timeout"
+time="2026-11-19T03:04:41+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:42+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:42+07:00" level=warning msg="Request Failed" error="request timeout"
+time="2026-11-19T03:04:43+07:00" level=warning msg="Request Failed" error="request timeout"
+time="2026-11-19T03:04:43+07:00" level=warning msg="Request Failed" error="request timeout"
+time="2026-11-19T03:04:43+07:00" level=warning msg="Request Failed" error="request timeout"
+time="2026-11-19T03:04:43+07:00" level=warning msg="Request Failed" error="request timeout"
+time="2026-11-19T03:04:43+07:00" level=warning msg="Request Failed" error="request timeout"
+time="2026-11-19T03:04:43+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:43+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:43+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:43+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:44+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:44+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:44+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:44+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:44+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:44+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:45+07:00" level=warning msg="Request Failed" error="Get \"http://api.prod.localtest.me/hazard-events?hazard_type=COASTAL\": request timeout"
+time="2026-11-19T03:04:45+07:00" level=warning msg="Request Failed" error="request timeout"
+
+     ✗ media is served or rejected in a controlled way
+      ↳  99% — ✓ 179941 / ✗ 195
+     ✗ field request stays available
+      ↳  85% — ✓ 1281 / ✗ 219
+
+     checks.........................: 99.77% 181222 out of 181636
+     data_received..................: 236 MB 4.7 MB/s
+     data_sent......................: 96 MB  1.9 MB/s
+   ✓ field_429_rate.................: 0.00%  0 out of 1500
+   ✓ field_latency..................: avg=1.51s    med=1.05s    p(90)=3.67s    p(95)=4.65s   p(99)=5.43s    max=6s     
+   ✗ field_success_rate.............: 85.40% 1281 out of 1500
+     http_req_blocked...............: avg=5.61ms   med=1.88µs   p(90)=4.06µs   p(95)=5.17µs  p(99)=58.91µs  max=1.08s  
+     http_req_connecting............: avg=25.38µs  med=0s       p(90)=0s       p(95)=0s      p(99)=0s       max=45.05ms
+     http_req_duration..............: avg=258.06ms med=95.5ms   p(90)=592.56ms p(95)=1.07s   p(99)=2.67s    max=6.03s  
+       { expected_response:true }...: avg=838.4ms  med=437.29ms p(90)=2.23s    p(95)=3.12s   p(99)=4.76s    max=5.98s  
+     http_req_failed................: 90.69% 164745 out of 181638
+     http_req_receiving.............: avg=7.79ms   med=20.84µs  p(90)=122.13µs p(95)=2.56ms  p(99)=178.11ms max=5.33s  
+     http_req_sending...............: avg=29.59µs  med=6.41µs   p(90)=14.18µs  p(95)=24.66µs p(99)=208.37µs max=49.09ms
+     http_req_tls_handshaking.......: avg=0s       med=0s       p(90)=0s       p(95)=0s      p(99)=0s       max=0s     
+     http_req_waiting...............: avg=250.23ms med=95.19ms  p(90)=582.49ms p(95)=1.01s   p(99)=2.5s     max=6.03s  
+     http_reqs......................: 181638 3653.131217/s
+     iteration_duration.............: avg=263.9ms  med=95.77ms  p(90)=607.09ms p(95)=1.16s   p(99)=2.69s    max=6.03s  
+     iterations.....................: 181636 3653.090992/s
+   ✓ media_controlled_429_rate......: 91.22% 164331 out of 180136
+   ✓ unexpected_response_rate.......: 0.22%  414 out of 181636
+     vus............................: 1      min=1                max=1050
+     vus_max........................: 1050   min=1050             max=1050
+
+time="2026-11-19T03:04:47+07:00" level=error msg="thresholds on metrics 'field_success_rate' have been crossed"
+
+HASIL priority: GAGAL
+bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p5/2node

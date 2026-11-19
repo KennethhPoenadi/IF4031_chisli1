@@ -1,0 +1,48 @@
+{
+  "menit": 5.0,
+  "sampel": [
+    {
+      "t": 65,
+      "ready": null,
+      "committed": -1,
+      "latest": -1,
+      "kebakaran": 58530,
+      "stats": {}
+    },
+    {
+      "t": 132,
+      "ready": null,
+      "committed": -1,
+      "latest": -1,
+      "kebakaran": 58665,
+      "stats": {}
+    },
+    {
+      "t": 197,
+      "ready": null,
+      "committed": -1,
+      "latest": -1,
+      "kebakaran": 58796,
+      "stats": {}
+    },
+    {
+      "t": 256,
+      "ready": null,
+      "committed": -1,
+      "latest": -1,
+      "kebakaran": 58930,
+      "stats": {}
+    },
+    {
+      "t": 317,
+      "ready": null,
+      "committed": -1,
+      "latest": -1,
+      "kebakaran": 59071,
+      "stats": {}
+    }
+  ],
+  "offset_awal": null,
+  "offset_akhir": null,
+  "lolos": false
+}

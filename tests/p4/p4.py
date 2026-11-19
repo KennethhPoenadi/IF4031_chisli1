@@ -35,16 +35,24 @@ def ingestor_pod():
 
 
 def ingestor_health():
-    """Keadaan pemroses lewat proxy API server (tanpa port-forward); None bila pod belum menjawab."""
+    """Keadaan pemroses lewat port-forward ke pod (jalur kubelet, tetap jalan saat pod ada di node worker); None bila belum menjawab."""
+    import urllib.request
     pod = ingestor_pod()
     if not pod:
         return None
-    r = subprocess.run(["kubectl", "get", "--raw", f"/api/v1/namespaces/{NS}/pods/{pod}:8095/proxy/health"],
-                       capture_output=True, text=True, timeout=30)
+    pf = subprocess.Popen(["kubectl", "-n", NS, "port-forward", f"pod/{pod}", "18095:8095"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
-        return json.loads(r.stdout)
-    except ValueError:
+        for _ in range(10):
+            time.sleep(0.5)
+            try:
+                with urllib.request.urlopen("http://127.0.0.1:18095/health", timeout=5) as r:
+                    return json.loads(r.read())
+            except Exception:
+                continue
         return None
+    finally:
+        pf.terminate()
+        pf.wait()
 
 
 def fires(c):
