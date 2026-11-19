@@ -1,0 +1,1 @@
+Rollout aggregator/ingestor (image 0f7a433b, push tes saja) terjadi di tengah uji; ingestor baru pulih ±10 mnt karena store-1 rebuild. SLO Tim Lapangan 100%. Gagal hanya karena ingestor belum Ready sesudah jendela 240 dtk.
