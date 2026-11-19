@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"math/rand"
 	"net/http"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -51,6 +52,39 @@ type Pipeline struct {
 
 	pendingFinal []detection.Detection
 	metricsOnce  sync.Once
+
+	latMu  sync.Mutex
+	latBuf []float64 // sampel terakhir latensi kejadian diterima -> HazardEvent tersimpan (detik), melingkar
+	latPos int
+	latN   int64
+}
+
+const latWindow = 5000
+
+func (p *Pipeline) recordLatency(sec float64) {
+	p.latMu.Lock()
+	defer p.latMu.Unlock()
+	if len(p.latBuf) < latWindow {
+		p.latBuf = append(p.latBuf, sec)
+	} else {
+		p.latBuf[p.latPos] = sec
+		p.latPos = (p.latPos + 1) % latWindow
+	}
+	p.latN++
+}
+
+// LatencySummary meringkas latensi masuk-hingga-tersimpan pada jendela sampel terakhir.
+func (p *Pipeline) LatencySummary() map[string]any {
+	p.latMu.Lock()
+	cp := append([]float64(nil), p.latBuf...)
+	total := p.latN
+	p.latMu.Unlock()
+	if len(cp) == 0 {
+		return map[string]any{"samples": 0, "total": total}
+	}
+	sort.Float64s(cp)
+	q := func(f float64) float64 { return cp[int(f*float64(len(cp)-1))] }
+	return map[string]any{"samples": len(cp), "total": total, "p50_s": q(0.50), "p95_s": q(0.95), "p99_s": q(0.99), "max_s": cp[len(cp)-1]}
 }
 
 var (
@@ -108,6 +142,7 @@ func (p *Pipeline) HealthHandler() http.Handler {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"ready": p.Ready(), "unauthorized": p.unauthorized.Load(),
 			"committed_offset": p.committed.Load(), "latest_offset": p.latest.Load(), "stats": s,
+			"ingest_to_store": p.LatencySummary(),
 		})
 	}
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) { write(w, http.StatusOK) })
@@ -261,6 +296,7 @@ func (p *Pipeline) flush(ctx context.Context, offset int64, received []time.Time
 	now := time.Now()
 	for _, t := range received {
 		ingestLat(ctx, now.Sub(t).Seconds())
+		p.recordLatency(now.Sub(t).Seconds())
 	}
 	firesC(ctx, int64(len(ch.UpsertFires)), "op", "upsert")
 	firesC(ctx, int64(len(ch.DeleteFires)), "op", "delete")
