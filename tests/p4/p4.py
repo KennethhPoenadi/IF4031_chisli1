@@ -71,6 +71,17 @@ def fires(c):
             return out
 
 
+def dk(e):
+    return set((e.get("attributes") or {}).get("detection_keys") or [])
+
+
+def lost(before, after):
+    """Kebakaran sebelumnya yang deteksinya tidak ada di kebakaran mana pun sesudahnya. ID berganti saat kebakaran menyatu, jadi
+    yang dihitung adalah deteksi. Engine juga sah menghapus deteksi (update feed menurunkan confidence jadi low, penghapusan feed)."""
+    covered = set().union(*(dk(e) for e in after.values())) if after else set()
+    return sorted(sid for sid, e in before.items() if sid not in after and dk(e) - covered)
+
+
 def restarts():
     pods = json.loads(kubectl("get", "pods", "-o", "json"))["items"]
     return {p["metadata"]["name"]: sum(s["restartCount"] for s in (p["status"].get("containerStatuses") or [])) for p in pods}
@@ -114,8 +125,15 @@ def cmd_crash(args):
     h0 = ingestor_health() or {}
     if not h0.get("ready"):
         raise SystemExit("pemroses belum Ready; tes tidak bermakna")
+    # Kontrol: jendela yang sama panjang tanpa crash. Penghapusan sah oleh engine terjadi juga tanpa crash; crash tidak boleh menambah.
+    ctl0 = fires(c)
+    tc = time.time()
+    time.sleep(args.kontrol)
     before = fires(c)
+    kontrol_hilang = lost(ctl0, before)
+    print(f"kontrol tanpa crash {time.time() - tc:.0f} dtk: {len(kontrol_hilang)} kebakaran kehilangan deteksi karena pembaruan feed")
     r0 = restarts()
+    h0 = ingestor_health() or h0
     print(f"sebelum: offset {h0['committed_offset']}, kebakaran tersimpan {len(before)}")
     pod = ingestor_pod()
     print(f"membunuh pemroses {pod} saat aliran berjalan")
@@ -137,10 +155,7 @@ def cmd_crash(args):
     ids_before, ids_after = set(before), set(after)
     # ID kebakaran = hash deteksi paling awal, jadi ID berganti saat kebakaran menyatu/bertambah. Kehilangan yang sebenarnya adalah
     # deteksi yang sebelumnya ada dalam suatu kebakaran dan sesudah pulih tidak ada di kebakaran mana pun.
-    def dk(e):
-        return set((e.get("attributes") or {}).get("detection_keys") or [])
-    covered = set().union(*(dk(e) for e in after.values())) if after else set()
-    hilang = sorted(sid for sid, e in before.items() if sid not in ids_after and dk(e) - covered)
+    hilang = lost(before, after)
     id_berganti = len(ids_before - ids_after) - len(hilang)
     baru = len(ids_after - ids_before)
     r1 = restarts()
@@ -156,10 +171,11 @@ def cmd_crash(args):
             dobel += 1
         keys[ks] = sid
     print(f"kebakaran ganda (himpunan deteksi sama): {dobel}")
-    ok = bool(not hilang and dobel == 0 and (h2.get("committed_offset") or -1) >= h0["committed_offset"] and not pods_crash)
+    print(f"pembanding: tanpa crash {len(kontrol_hilang)} dalam {args.kontrol} dtk; dengan crash {len(hilang)} dalam {time.time() - t0:.0f} dtk")
+    ok = bool(len(hilang) <= len(kontrol_hilang) * max(1.0, (time.time() - t0) / args.kontrol) and dobel == 0 and (h2.get("committed_offset") or -1) >= h0["committed_offset"] and not pods_crash)
     return report("crash", {"pod": pod, "detik_pulih": round(time.time() - t0 - args.after), "offset_sebelum": h0["committed_offset"],
                             "offset_sesudah": h2.get("committed_offset"), "kebakaran_sebelum": len(before),
-                            "kebakaran_sesudah": len(after), "hilang": hilang, "baru": baru, "ganda": dobel,
+                            "kebakaran_sesudah": len(after), "hilang": hilang, "hilang_rinci": {k: before[k] for k in hilang}, "kontrol_hilang": kontrol_hilang, "baru": baru, "ganda": dobel,
                             "id_berganti_tanpa_kehilangan": id_berganti, "restart_lain": pods_crash}, ok)
 
 
@@ -185,7 +201,7 @@ def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     a = sub.add_parser("live"); a.add_argument("--menit", type=float, default=5); a.add_argument("--interval", type=int, default=10)
-    b = sub.add_parser("crash"); b.add_argument("--timeout", type=int, default=180); b.add_argument("--after", type=int, default=45)
+    b = sub.add_parser("crash"); b.add_argument("--timeout", type=int, default=180); b.add_argument("--after", type=int, default=45); b.add_argument("--kontrol", type=int, default=100)
     r = sub.add_parser("reference"); r.add_argument("file")
     args = ap.parse_args()
     sys.exit({"live": cmd_live, "crash": cmd_crash, "reference": cmd_reference}[args.cmd](args))

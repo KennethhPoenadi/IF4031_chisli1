@@ -1,0 +1,11 @@
+kontrol tanpa crash 205 dtk: 1 kebakaran kehilangan deteksi karena pembaruan feed
+sebelum: offset 6317770, kebakaran tersimpan 63633
+membunuh pemroses satellite-ingestor-9d9b85db4-brdgg saat aliran berjalan
+pemroses Ready lagi setelah 116 dtk; offset 6317800
+kebakaran dengan deteksi hilang setelah pulih: 0 []; ID berganti karena menyatu: 1; kebakaran baru: 17; offset sekarang 6318582
+restart komponen lain: tidak ada
+kebakaran ganda (himpunan deteksi sama): 0
+pembanding: tanpa crash 1 dalam 100 dtk; dengan crash 0 dalam 211 dtk
+
+HASIL crash: LOLOS
+bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p4/2node

@@ -1,0 +1,11 @@
+kontrol tanpa crash 170 dtk: 0 kebakaran kehilangan deteksi karena pembaruan feed
+sebelum: offset 6224276, kebakaran tersimpan 62169
+membunuh pemroses satellite-ingestor-9d9b85db4-mgw46 saat aliran berjalan
+pemroses Ready lagi setelah 31 dtk; offset 6224276
+kebakaran dengan deteksi hilang setelah pulih: 4 ['fire-061a236f3e5a', 'fire-28e07d78b3aa', 'fire-3c7364637a8b', 'fire-64d680bd0bf5']; ID berganti karena menyatu: 2; kebakaran baru: 734; offset sekarang 6241776
+restart komponen lain: tidak ada
+kebakaran ganda (himpunan deteksi sama): 0
+pembanding: tanpa crash 0 dalam 100 dtk; dengan crash 4 dalam 175 dtk
+
+HASIL crash: GAGAL
+bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p4/2node

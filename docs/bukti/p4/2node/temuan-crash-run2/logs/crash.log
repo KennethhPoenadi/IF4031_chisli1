@@ -1,0 +1,9 @@
+sebelum: offset 6150776, kebakaran tersimpan 61094
+membunuh pemroses satellite-ingestor-9d9b85db4-ddzmc saat aliran berjalan
+pemroses Ready lagi setelah 46 dtk; offset 6155776
+kebakaran dengan deteksi hilang setelah pulih: 3 ['fire-327d0e721512', 'fire-bcecd82f271e', 'fire-d618c48a5707']; ID berganti karena menyatu: 2; kebakaran baru: 298; offset sekarang 6166276
+restart komponen lain: tidak ada
+kebakaran ganda (himpunan deteksi sama): 0
+
+HASIL crash: GAGAL
+bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p4/2node
