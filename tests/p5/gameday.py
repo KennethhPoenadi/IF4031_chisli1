@@ -19,6 +19,7 @@ import json
 import os
 import subprocess
 import sys
+import atexit
 import threading
 import time
 
@@ -40,10 +41,35 @@ def kubectl(*args, check=False, timeout=120):
     return r.stdout
 
 
+_pf = None
+atexit.register(lambda: _pf and _pf.terminate())
+
+
+def pvmbg_forward():
+    """Port-forward milik skrip sendiri ke pvmbg-mock supaya tidak bergantung pada forward luar yang bisa putus di tengah uji."""
+    global _pf
+    if _pf and _pf.poll() is None:
+        return
+    _pf = subprocess.Popen(["kubectl", "-n", NS, "port-forward", "svc/pvmbg-mock", "18183:8082"], stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL)
+    p3.PVMBG = "http://127.0.0.1:18183"
+    time.sleep(2)
+
+
 def pvmbg_outage(enabled):
-    code, res = p1.http_json("POST", p3.PVMBG + "/admin/outage", {"Authorization": "Bearer " + os.environ["PVMBG_TOKEN"]},
-                             {"enabled": enabled})
-    return code
+    last = None
+    for _ in range(5):
+        try:
+            pvmbg_forward()
+            code, res = p1.http_json("POST", p3.PVMBG + "/admin/outage", {"Authorization": "Bearer " + os.environ["PVMBG_TOKEN"]},
+                                     {"enabled": enabled}, timeout=10)
+            return code
+        except Exception as e:  # forward putus: pasang ulang dan coba lagi
+            last = e
+            if _pf:
+                _pf.terminate()
+            time.sleep(2)
+    raise last
 
 
 class FieldProbe(threading.Thread):
@@ -119,26 +145,35 @@ def main():
         T0 = time.time()
         probe.start()
         mark("mulai: beban sumber lain dan pemantauan jalur Tim Lapangan berjalan")
-        time.sleep(30)
-        mark("GANGGUAN 1: Sensor Pantai dibekukan 60 dtk")
-        p2.ctr("pause", sensor_cid)
-        time.sleep(30)
-        mark("GANGGUAN 2: PVMBG outage 60 dtk (bersamaan dengan sensor beku)")
-        pvmbg_outage(True)
-        time.sleep(30)
-        p2.ctr("resume", sensor_cid)
-        mark("sensor dilepas (akhir gangguan 1)")
-        time.sleep(30)
-        pvmbg_outage(False)
-        mark("PVMBG pulih (akhir gangguan 2)")
-        time.sleep(30)
-        mark("GANGGUAN 3: Tester Agent membunuh pod penyimpanan (kill-store)")
-        r = subprocess.run(["kubectl", "exec", "-n", "tester-agent", "daemonset/tester-agent", "--", "/app", "run", "practice", "kill-store"],
-                           capture_output=True, text=True, timeout=600)
-        mark(f"skenario kill-store selesai (kode {r.returncode})")
-        t_last_fault = time.time()
-        mark(f"JENDELA PEMULIHAN {args.recovery} dtk: tidak ada intervensi")
-        time.sleep(args.recovery)
+        try:
+            time.sleep(30)
+            mark("GANGGUAN 1: Sensor Pantai dibekukan 60 dtk")
+            p2.ctr("pause", sensor_cid)
+            time.sleep(30)
+            mark("GANGGUAN 2: PVMBG outage 60 dtk (bersamaan dengan sensor beku)")
+            pvmbg_outage(True)
+            time.sleep(30)
+            p2.ctr("resume", sensor_cid)
+            mark("sensor dilepas (akhir gangguan 1)")
+            time.sleep(30)
+            pvmbg_outage(False)
+            mark("PVMBG pulih (akhir gangguan 2)")
+            time.sleep(30)
+            mark("GANGGUAN 3: Tester Agent membunuh pod penyimpanan (kill-store)")
+            r = subprocess.run(["kubectl", "exec", "-n", "tester-agent", "daemonset/tester-agent", "--", "/app", "run", "practice", "kill-store"],
+                               capture_output=True, text=True, timeout=600)
+            mark(f"skenario kill-store selesai (kode {r.returncode})")
+            t_last_fault = time.time()
+            mark(f"JENDELA PEMULIHAN {args.recovery} dtk: tidak ada intervensi")
+            time.sleep(args.recovery)
+        except BaseException:
+            # hanya bila skrip gagal di tengah: jangan tinggalkan sensor beku atau PVMBG mati
+            for fn in (lambda: p2.ctr("resume", sensor_cid), lambda: pvmbg_outage(False)):
+                try:
+                    fn()
+                except Exception:
+                    pass
+            raise
         mark("jendela pemulihan selesai")
         probe.stop.set()
         probe.join(timeout=15)

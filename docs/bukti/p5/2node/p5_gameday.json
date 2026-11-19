@@ -1,0 +1,56 @@
+{
+  "garis_waktu": [
+    [
+      0.0,
+      "mulai: beban sumber lain dan pemantauan jalur Tim Lapangan berjalan"
+    ],
+    [
+      30.0,
+      "GANGGUAN 1: Sensor Pantai dibekukan 60 dtk"
+    ],
+    [
+      60.3,
+      "GANGGUAN 2: PVMBG outage 60 dtk (bersamaan dengan sensor beku)"
+    ],
+    [
+      92.6,
+      "sensor dilepas (akhir gangguan 1)"
+    ],
+    [
+      122.7,
+      "PVMBG pulih (akhir gangguan 2)"
+    ],
+    [
+      152.7,
+      "GANGGUAN 3: Tester Agent membunuh pod penyimpanan (kill-store)"
+    ],
+    [
+      152.9,
+      "skenario kill-store selesai (kode 0)"
+    ],
+    [
+      152.9,
+      "JENDELA PEMULIHAN 240 dtk: tidak ada intervensi"
+    ],
+    [
+      392.9,
+      "jendela pemulihan selesai"
+    ]
+  ],
+  "permintaan": 471,
+  "gagal": 0,
+  "ketersediaan": 1.0,
+  "slo_ketersediaan": 0.995,
+  "p95_dtk": 0.16005492210388184,
+  "slo_p95_dtk": 5.0,
+  "anggaran_terpakai": 0.0,
+  "gagal_sesudah_pulih": 0,
+  "pod_belum_siap": [],
+  "under_replicated": 27,
+  "coastal": [
+    162546,
+    164693
+  ],
+  "kode_gagal": [],
+  "lolos": true
+}

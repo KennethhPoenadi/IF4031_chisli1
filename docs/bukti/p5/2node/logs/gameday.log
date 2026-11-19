@@ -1,0 +1,20 @@
+pod pembeku freezer-chisli-control di node chisli-control
+[   0.0s] mulai: beban sumber lain dan pemantauan jalur Tim Lapangan berjalan
+[  30.0s] GANGGUAN 1: Sensor Pantai dibekukan 60 dtk
+  pause: proses=1
+[  60.3s] GANGGUAN 2: PVMBG outage 60 dtk (bersamaan dengan sensor beku)
+  resume: proses=0
+[  92.6s] sensor dilepas (akhir gangguan 1)
+[ 122.7s] PVMBG pulih (akhir gangguan 2)
+[ 152.7s] GANGGUAN 3: Tester Agent membunuh pod penyimpanan (kill-store)
+[ 152.9s] skenario kill-store selesai (kode 0)
+[ 152.9s] JENDELA PEMULIHAN 240 dtk: tidak ada intervensi
+[ 392.9s] jendela pemulihan selesai
+
+permintaan Tim Lapangan: 471; gagal: 0; ketersediaan 100.00% (target 99.5%)
+p95 latensi: 0.160 dtk (target 5.0 dtk); anggaran kesalahan terpakai: 0% dari 0.5%
+sesudah pemulihan 30 dtk pertama: 252 permintaan, gagal 0
+pod belum siap sesudah jendela: tidak ada; under_replicated=27 partial=False
+event COASTAL tersimpan 162546 -> 164693 (sensor dipakai lagi: True)
+
+HASIL gameday: LOLOS

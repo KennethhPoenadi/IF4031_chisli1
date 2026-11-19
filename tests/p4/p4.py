@@ -179,6 +179,22 @@ def cmd_crash(args):
                             "id_berganti_tanpa_kehilangan": id_berganti, "restart_lain": pods_crash}, ok)
 
 
+def cmd_stats(args):
+    """Kriteria 2 dan 3: hitungan mesin pengelompokan dari aggregator (deteksi diterima, duplikat, ditarik/diperbarui, terlambat, rusak)."""
+    c = p1.Client()
+    st = c.audit_get("/internal/satellite/stats")
+    s = st.get("stats") or {}
+    print(f"offset tersimpan: {st.get('offset')}; kebakaran aktif: {st.get('active_fires')}; diperbarui: {st.get('updated_at')}")
+    for k in sorted(s):
+        print(f"  {k:<28} {s[k]:>10}")
+    late = s.get("late", 0)
+    print(f"deteksi melewati batas keterlambatan (dilaporkan, tidak dibuang diam-diam): {late}")
+    f = fires(c)
+    print(f"HazardEvent WILDFIRE tersimpan: {len(f)}")
+    ok = bool(st.get("offset", 0) > 0 and s.get("accepted", 0) > 0 and s.get("retracted", 0) > 0 and s.get("duplicate", 0) > 0 and f)
+    return report("stats", {"offset": st.get("offset"), "stats": s, "terlambat": late, "wildfire_tersimpan": len(f)}, ok)
+
+
 def cmd_reference(args):
     ref = json.load(open(args.file))
     ref = ref.get("items", ref) if isinstance(ref, dict) else ref
@@ -202,9 +218,10 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
     a = sub.add_parser("live"); a.add_argument("--menit", type=float, default=5); a.add_argument("--interval", type=int, default=10)
     b = sub.add_parser("crash"); b.add_argument("--timeout", type=int, default=180); b.add_argument("--after", type=int, default=45); b.add_argument("--kontrol", type=int, default=100)
+    sub.add_parser("stats")
     r = sub.add_parser("reference"); r.add_argument("file")
     args = ap.parse_args()
-    sys.exit({"live": cmd_live, "crash": cmd_crash, "reference": cmd_reference}[args.cmd](args))
+    sys.exit({"live": cmd_live, "crash": cmd_crash, "reference": cmd_reference, "stats": cmd_stats}[args.cmd](args))
 
 
 if __name__ == "__main__":
