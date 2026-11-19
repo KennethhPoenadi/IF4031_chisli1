@@ -33,6 +33,13 @@ type response struct {
 	Data  []map[string]any `json:"data"`
 	Count int              `json:"count"`
 	Meta  json.RawMessage  `json:"meta,omitempty"`
+	// Stale diisi bila jawaban adalah hasil sukses terakhir (Aggregator lambat atau gagal); umur dalam detik.
+	Stale *staleInfo `json:"stale,omitempty"`
+}
+
+type staleInfo struct {
+	AgeSeconds float64 `json:"age_seconds"`
+	Reason     string  `json:"reason"`
 }
 
 func (h *Handler) GetHazardEvents(w http.ResponseWriter, r *http.Request) {
@@ -75,7 +82,14 @@ func (h *Handler) GetHazardEvents(w http.ResponseWriter, r *http.Request) {
 	for _, ev := range res.Events {
 		out = append(out, project(ev, fields))
 	}
-	httpx.WriteJSON(w, http.StatusOK, response{Data: out, Count: len(out), Meta: res.Meta})
+	body := response{Data: out, Count: len(out), Meta: res.Meta}
+	if res.StaleFor > 0 {
+		age := res.StaleFor.Seconds()
+		w.Header().Set("X-Data-Stale-Seconds", strconv.FormatFloat(age, 'f', 1, 64))
+		w.Header().Set("Warning", `110 - "Response is Stale"`)
+		body.Stale = &staleInfo{AgeSeconds: age, Reason: "sumber data lambat atau gagal; ini hasil terakhir yang berhasil"}
+	}
+	httpx.WriteJSON(w, http.StatusOK, body)
 }
 
 var (

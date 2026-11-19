@@ -32,6 +32,66 @@ type Client struct {
 	// hedgeAfter > 0: panggilan kelas prioritas yang belum kembali dalam waktu ini disusul panggilan kedua (ke replika lain lewat
 	// Service); jawaban pertama yang sukses dipakai. Lihat WithPriorityHedge.
 	hedgeAfter time.Duration
+
+	// Jawaban sukses terakhir kelas prioritas per kueri, untuk WithPriorityStale.
+	staleAfter time.Duration
+	maxStale   time.Duration
+	lastGood   map[string]lastGood
+}
+
+type lastGood struct {
+	res Result
+	at  time.Time
+}
+
+// WithPriorityStale membatasi waktu tunggu kelas prioritas (Tim Lapangan). Bila Aggregator belum menjawab dalam after, atau menjawab
+// gagal, permintaan prioritas dijawab dengan hasil sukses terakhir untuk kueri yang sama selama umurnya tidak lebih dari max; hasil
+// seperti itu ditandai StaleFor (pemanggil wajib menampilkannya ke klien). Bila tidak ada hasil yang cukup segar, perilakunya sama
+// seperti tanpa opsi ini. after <= 0 mematikannya.
+func (c *Client) WithPriorityStale(after, max time.Duration) *Client {
+	c.staleAfter, c.maxStale = after, max
+	return c
+}
+
+func (c *Client) stale(key string) (Result, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	e, ok := c.lastGood[key]
+	if !ok {
+		return Result{}, false
+	}
+	age := time.Since(e.at)
+	if age > c.maxStale {
+		return Result{}, false
+	}
+	r := e.res
+	r.StaleFor = max(age, time.Millisecond)
+	return r, true
+}
+
+// waitPriority menunggu panggilan kelas prioritas dengan batas staleAfter; lihat WithPriorityStale.
+func (c *Client) waitPriority(ctx context.Context, key string, cl *call) (Result, error) {
+	if c.staleAfter <= 0 {
+		return cl.wait(ctx)
+	}
+	t := time.NewTimer(c.staleAfter)
+	defer t.Stop()
+	select {
+	case <-cl.done:
+	case <-t.C:
+		if r, ok := c.stale(key); ok {
+			return r, nil
+		}
+	case <-ctx.Done():
+		return Result{}, ctx.Err()
+	}
+	res, err := cl.wait(ctx)
+	if err != nil && ctx.Err() == nil {
+		if r, ok := c.stale(key); ok {
+			return r, nil
+		}
+	}
+	return res, err
 }
 
 type cached struct {
@@ -93,6 +153,8 @@ func (c *Client) WithTransport(wrap func(http.RoundTripper) http.RoundTripper) *
 type Result struct {
 	Events []map[string]any
 	Meta   json.RawMessage
+	// StaleFor > 0: hasil ini adalah jawaban sukses terakhir untuk kueri yang sama, berumur sebesar ini (lihat WithPriorityStale).
+	StaleFor time.Duration
 }
 
 type StatusError struct {
@@ -153,6 +215,9 @@ func (c *Client) Events(ctx context.Context, q url.Values, correlationID string)
 	}
 	if cl, ok := c.inflight[key]; ok {
 		c.mu.Unlock()
+		if priority {
+			return c.waitPriority(ctx, key, cl)
+		}
 		return cl.wait(ctx)
 	}
 	cl := &call{done: make(chan struct{})}
@@ -173,9 +238,18 @@ func (c *Client) Events(ctx context.Context, q url.Values, correlationID string)
 			}
 			c.regular[key] = cached{res: cl.res, expires: time.Now().Add(c.regularTTL)}
 		}
+		if priority && c.staleAfter > 0 && cl.err == nil {
+			if c.lastGood == nil || len(c.lastGood) >= regularCacheMax {
+				c.lastGood = make(map[string]lastGood)
+			}
+			c.lastGood[key] = lastGood{res: cl.res, at: time.Now()}
+		}
 		c.mu.Unlock()
 		close(cl.done)
 	}()
+	if priority {
+		return c.waitPriority(ctx, key, cl)
+	}
 	return cl.wait(ctx)
 }
 

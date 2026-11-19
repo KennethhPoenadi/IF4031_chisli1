@@ -420,3 +420,66 @@ func TestPriorityHedgeBypassesASlowFirstCallButRegularDoesNotHedge(t *testing.T)
 		t.Fatalf("kelas reguler memanggil %d kali, want 1", calls.Load())
 	}
 }
+
+func TestPriorityStaleServesLastGoodWhenUpstreamIsSlowButNeverForRegular(t *testing.T) {
+	var slow atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if slow.Load() {
+			select {
+			case <-time.After(2 * time.Second):
+			case <-r.Context().Done():
+			}
+			return
+		}
+		_, _ = w.Write([]byte(`[{"id":"1"}]`))
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "k", 3*time.Second, 4, slog.New(slog.NewTextHandler(io.Discard, nil))).
+		WithPriorityStale(100*time.Millisecond, time.Minute)
+	prio := httpx.WithPriority(context.Background(), true)
+	q := url.Values{"hazard_type": {"COASTAL"}}
+
+	res, err := c.Events(prio, q, "c")
+	if err != nil || res.StaleFor != 0 {
+		t.Fatalf("jawaban segar pertama: err=%v stale=%v", err, res.StaleFor)
+	}
+	slow.Store(true)
+	start := time.Now()
+	res, err = c.Events(prio, q, "c")
+	if err != nil || len(res.Events) != 1 || res.StaleFor == 0 {
+		t.Fatalf("harus dijawab hasil terakhir bertanda stale: err=%v stale=%v", err, res.StaleFor)
+	}
+	if took := time.Since(start); took > time.Second {
+		t.Fatalf("menunggu %v, harus dibatasi staleAfter", took)
+	}
+
+	rc := New(srv.URL, "k", 300*time.Millisecond, 4, slog.New(slog.NewTextHandler(io.Discard, nil))).
+		WithPriorityStale(50*time.Millisecond, time.Minute)
+	if _, err := rc.Events(context.Background(), q, "c"); err == nil {
+		t.Fatal("kelas reguler tidak boleh mendapat jawaban stale")
+	}
+}
+
+func TestPriorityStaleIsNotServedWhenTooOld(t *testing.T) {
+	var slow atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if slow.Load() {
+			<-r.Context().Done()
+			return
+		}
+		_, _ = w.Write([]byte(`[{"id":"1"}]`))
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "k", 300*time.Millisecond, 4, slog.New(slog.NewTextHandler(io.Discard, nil))).
+		WithPriorityStale(50*time.Millisecond, 10*time.Millisecond)
+	prio := httpx.WithPriority(context.Background(), true)
+	q := url.Values{"x": {"1"}}
+	if _, err := c.Events(prio, q, "c"); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(30 * time.Millisecond)
+	slow.Store(true)
+	if _, err := c.Events(prio, q, "c"); err == nil {
+		t.Fatal("hasil lebih tua dari batas tidak boleh dipakai")
+	}
+}
