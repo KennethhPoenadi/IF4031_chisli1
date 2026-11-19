@@ -1,0 +1,18 @@
+{
+  "pod": "satellite-ingestor-585b46c785-9jkkw",
+  "detik_pulih": 53,
+  "offset_sebelum": 6381372,
+  "offset_sesudah": 6381640,
+  "kebakaran_sebelum": 64633,
+  "kebakaran_sesudah": 64641,
+  "hilang": [],
+  "hilang_rinci": {},
+  "kontrol_hilang": [
+    "fire-228da2b89ebe"
+  ],
+  "baru": 10,
+  "ganda": 0,
+  "id_berganti_tanpa_kehilangan": 2,
+  "restart_lain": {},
+  "lolos": true
+}

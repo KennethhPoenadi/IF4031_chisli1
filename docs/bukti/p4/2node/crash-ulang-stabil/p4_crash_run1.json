@@ -1,0 +1,16 @@
+{
+  "pod": "satellite-ingestor-585b46c785-mbk95",
+  "detik_pulih": 62,
+  "offset_sebelum": 6379444,
+  "offset_sesudah": 6379711,
+  "kebakaran_sebelum": 64603,
+  "kebakaran_sesudah": 64608,
+  "hilang": [],
+  "hilang_rinci": {},
+  "kontrol_hilang": [],
+  "baru": 7,
+  "ganda": 0,
+  "id_berganti_tanpa_kehilangan": 2,
+  "restart_lain": {},
+  "lolos": true
+}

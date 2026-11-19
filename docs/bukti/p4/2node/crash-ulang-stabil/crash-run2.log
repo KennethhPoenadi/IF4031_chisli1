@@ -1,0 +1,11 @@
+kontrol tanpa crash 134 dtk: 1 kebakaran kehilangan deteksi karena pembaruan feed
+sebelum: offset 6381372, kebakaran tersimpan 64633
+membunuh pemroses satellite-ingestor-585b46c785-9jkkw saat aliran berjalan
+pemroses Ready lagi setelah 7 dtk; offset 6381382
+kebakaran dengan deteksi hilang setelah pulih: 0 []; ID berganti karena menyatu: 2; kebakaran baru: 10; offset sekarang 6381640
+restart komponen lain: tidak ada
+kebakaran ganda (himpunan deteksi sama): 0
+pembanding: tanpa crash 1 dalam 100 dtk; dengan crash 0 dalam 98 dtk
+
+HASIL crash: LOLOS
+bukti disimpan di /tmp/crash_runs/r2

@@ -1,0 +1,1 @@
+Dua run crash tambahan pada kondisi stabil (ingestor mutakhir, tanpa rollout). Dijalankan lewat terminal biasa tanpa screenshot jendela; screenshot ada pada run utama di ../img/crash.png.
