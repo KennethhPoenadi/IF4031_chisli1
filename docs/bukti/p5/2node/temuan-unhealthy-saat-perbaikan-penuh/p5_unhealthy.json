@@ -1,0 +1,12 @@
+{
+  "detik_gangguan": 60,
+  "permintaan_lain": 180,
+  "gagal_lain": 0,
+  "p95_dtk": 10.009654043999035,
+  "permintaan_ke_sensor_gagal": 9,
+  "ditahan_breaker": 71,
+  "batas_permintaan_ke_sensor": 20,
+  "pulih_sendiri": true,
+  "detik_pulih": 20.086860418319702,
+  "lolos": false
+}

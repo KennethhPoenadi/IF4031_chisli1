@@ -1,0 +1,11 @@
+pod pembeku freezer-chisli-control di node chisli-control
+  pause: proses=1
+sensor sensor-pantai-7b855559d4-trg6b dibekukan (tidak sehat) selama 60 dtk; beban sumber lain tetap berjalan
+  resume: proses=0
+sensor dilepas; menunggu sistem memakainya lagi tanpa intervensi
+permintaan sumber lain selama gangguan: 180, gagal 0; p95 latensi keseluruhan 10.010 dtk
+permintaan nyata ke sensor yang gagal: 9; ditahan circuit breaker: 71; tanpa breaker akan ~60 (1 per dtk)
+sistem memakai sensor lagi: True setelah 20 dtk
+
+HASIL unhealthy: GAGAL
+bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p5/2node
