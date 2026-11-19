@@ -2,47 +2,89 @@
   "menit": 5.0,
   "sampel": [
     {
-      "t": 51,
+      "t": 34,
       "ready": true,
-      "committed": 6030776,
-      "latest": 6299718,
-      "kebakaran": 59243,
-      "stats": {}
+      "committed": 6370643,
+      "latest": 6370624,
+      "kebakaran": 64466,
+      "stats": {},
+      "latensi": {
+        "max_s": 5.815575927,
+        "p50_s": 0.354007113,
+        "p95_s": 1.665500864,
+        "p99_s": 5.815553456,
+        "samples": 3295,
+        "total": 3295
+      }
     },
     {
-      "t": 113,
+      "t": 90,
       "ready": true,
-      "committed": 6038276,
-      "latest": 6300991,
-      "kebakaran": 59372,
-      "stats": {}
+      "committed": 6370866,
+      "latest": 6370849,
+      "kebakaran": 64471,
+      "stats": {},
+      "latensi": {
+        "max_s": 5.815575927,
+        "p50_s": 0.345181362,
+        "p95_s": 1.665489231,
+        "p99_s": 5.815551863,
+        "samples": 3518,
+        "total": 3518
+      }
     },
     {
-      "t": 179,
+      "t": 149,
       "ready": true,
-      "committed": 6046776,
-      "latest": 6301316,
-      "kebakaran": 59504,
-      "stats": {}
+      "committed": 6371087,
+      "latest": 6371087,
+      "kebakaran": 64471,
+      "stats": {},
+      "latensi": {
+        "max_s": 5.815575927,
+        "p50_s": 0.342009205,
+        "p95_s": 1.665482097,
+        "p99_s": 5.81555086,
+        "samples": 3739,
+        "total": 3739
+      }
     },
     {
-      "t": 245,
+      "t": 234,
       "ready": true,
-      "committed": 6055776,
-      "latest": 6301616,
-      "kebakaran": 59636,
-      "stats": {}
+      "committed": 6371133,
+      "latest": 6371128,
+      "kebakaran": 64477,
+      "stats": {},
+      "latensi": {
+        "max_s": 5.815575927,
+        "p50_s": 0.343165065,
+        "p95_s": 1.665482097,
+        "p99_s": 5.81555086,
+        "samples": 3781,
+        "total": 3781
+      }
     },
     {
-      "t": 315,
+      "t": 292,
       "ready": true,
-      "committed": 6063776,
-      "latest": 6301966,
-      "kebakaran": 59754,
-      "stats": {}
+      "committed": 6371569,
+      "latest": 6371553,
+      "kebakaran": 64482,
+      "stats": {},
+      "latensi": {
+        "max_s": 5.815575927,
+        "p50_s": 0.346857435,
+        "p95_s": 1.665501557,
+        "p99_s": 5.815547938,
+        "samples": 4217,
+        "total": 4217
+      }
     }
   ],
-  "offset_awal": 6030776,
-  "offset_akhir": 6063776,
+  "offset_awal": 6370643,
+  "p95_masuk_tersimpan_dtk": 1.665501557,
+  "tertinggal_maks": 0,
+  "offset_akhir": 6371569,
   "lolos": true
 }

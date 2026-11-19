@@ -1,10 +1,12 @@
 memantau aliran feed live selama 5.0 menit (tiap 10 dtk)
-   waktu ready    offset   terbaru tertinggal kebakaran  keadaan mesin
-     51s  True   6030776   6299718     268942     59243  
-    112s  True   6038276   6300991     262715     59372  
-    178s  True   6046776   6301316     254540     59504  
-    244s  True   6055776   6301616     245840     59636  
-    315s  True   6063776   6301966     238190     59754  
+   waktu ready    offset   terbaru tertinggal kebakaran  p95 latensi
+     34s  True   6370643   6370624          0     64466  p95 masuk-tersimpan=1.666s (n=3295)
+     89s  True   6370866   6370849          0     64471  p95 masuk-tersimpan=1.665s (n=3518)
+    148s  True   6371087   6371087          0     64471  p95 masuk-tersimpan=1.665s (n=3739)
+    234s  True   6371133   6371128          0     64477  p95 masuk-tersimpan=1.665s (n=3781)
+    292s  True   6371569   6371553          0     64482  p95 masuk-tersimpan=1.666s (n=4217)
+p95 latensi data masuk -> HazardEvent tersimpan (sampel terakhir 4217): 1.666 dtk; p99 5.816; maks 5.816
+tertinggal terbesar selama pemantauan: 0 kejadian
 
 HASIL live: LOLOS
 bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p4/2node
