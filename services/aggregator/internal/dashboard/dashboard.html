@@ -143,6 +143,16 @@
     <p id="ai-foot" class="ai-foot"></p>
   </section>
 
+  <section class="card" aria-labelledby="h-sat">
+    <div class="ai-head">
+      <h2 id="h-sat">Aliran satelit (lag pemrosesan)</h2>
+      <span id="sat-badge" class="badge" hidden></span>
+      <span id="sat-time" class="muted"></span>
+    </div>
+    <p id="sat-summary" class="ai-summary muted">Memuat kemajuan pemrosesan…</p>
+    <ul id="sat-list" class="ai-anoms" hidden></ul>
+  </section>
+
   <section class="card" aria-labelledby="h-series">
     <div class="total"><span class="n" id="total">–</span><span class="muted">kejadian pada rentang terpilih</span></div>
     <h2 id="h-series">Jumlah kejadian per jenis bahaya terhadap waktu</h2>
@@ -458,8 +468,45 @@
       .catch(function () { renderAnalysis(null); });
   }
 
+  function renderSatellite(s) {
+    var sum = $("sat-summary"), list = $("sat-list"), badge = $("sat-badge");
+    list.textContent = "";
+    list.hidden = true;
+    if (!s || !s.available) {
+      badge.hidden = true;
+      $("sat-time").textContent = "";
+      sum.className = "ai-summary muted";
+      sum.textContent = "Kemajuan pemrosesan belum tersedia" + (s && s.reason ? " (" + s.reason + ")." : ".");
+      return;
+    }
+    var behind = s.lag_events;
+    var stale = s.age_seconds > 120;
+    sum.className = "ai-summary";
+    sum.textContent = "Tertinggal " + nf.format(behind) + " kejadian dari feed (" + nf.format(Math.round(s.event_time_lag_seconds)) +
+      " dtk waktu virtual). p95 latensi data masuk hingga HazardEvent tersimpan: " + (s.ingest_p95_seconds || 0).toFixed(2) + " dtk.";
+    badge.hidden = false;
+    badge.className = "badge" + (stale ? "" : " llm");
+    badge.textContent = stale ? "Pemroses tidak memperbarui" : (behind <= 1000 ? "Mutakhir" : "Mengejar");
+    $("sat-time").textContent = "Diperbarui " + Math.round(s.age_seconds) + " dtk lalu";
+    [
+      "Offset tersimpan " + nf.format(s.offset) + " dari " + nf.format(s.feed_latest_offset) + " di feed",
+      "Kebakaran aktif " + nf.format(s.active_fires) + "; deteksi diterima " + nf.format(s.accepted) + ", ditarik " + nf.format(s.retracted) +
+        ", duplikat ditolak " + nf.format(s.duplicate) + ", melewati batas keterlambatan " + nf.format(s.late)
+    ].forEach(function (t) { list.appendChild(el("li", null, t)); });
+    list.hidden = false;
+  }
+
+  function loadSatellite() {
+    if (!token) return;
+    fetch("/dashboard/api/satellite", { headers: { Authorization: "Bearer " + token }, cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(renderSatellite)
+      .catch(function () { renderSatellite(null); });
+  }
+
   function load() {
     loadAnalysis();
+    loadSatellite();
     if (!token) { setBanner("banner-error", "Masukkan token akses lalu tekan Simpan."); return; }
     fetch("/dashboard/api/summary?range=" + encodeURIComponent($("range").value), {
       headers: { Authorization: "Bearer " + token }, cache: "no-store"

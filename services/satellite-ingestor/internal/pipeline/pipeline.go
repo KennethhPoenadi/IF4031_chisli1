@@ -73,6 +73,13 @@ func (p *Pipeline) recordLatency(sec float64) {
 	p.latN++
 }
 
+func (p *Pipeline) latencyP95() float64 {
+	if v, ok := p.LatencySummary()["p95_s"].(float64); ok {
+		return v
+	}
+	return 0
+}
+
 // LatencySummary meringkas latensi masuk-hingga-tersimpan pada jendela sampel terakhir.
 func (p *Pipeline) LatencySummary() map[string]any {
 	p.latMu.Lock()
@@ -272,6 +279,8 @@ func (p *Pipeline) flush(ctx context.Context, offset int64, received []time.Time
 		DeleteFires:      ch.DeleteFires,
 		ActiveFires:      p.Engine.ActiveFires(),
 		Stats:            p.Engine.Stats(),
+		FeedLatest:       p.latest.Load(),
+		IngestP95:        p.latencyP95(),
 	}
 	if p.LeaseToken != nil {
 		b.LeaseToken = p.LeaseToken()

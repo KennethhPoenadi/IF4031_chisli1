@@ -78,7 +78,8 @@ type Handler struct {
 	now   func() time.Time
 	log   *slog.Logger
 
-	analysis AnalysisProvider
+	analysis  AnalysisProvider
+	satellite SatelliteProvider
 }
 
 func New(src Source, token string) *Handler {
@@ -95,6 +96,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /dashboard/{$}", h.page)
 	mux.HandleFunc("GET /dashboard/api/summary", h.summary)
 	mux.HandleFunc("GET /dashboard/api/analysis", h.analysisHandler)
+	mux.HandleFunc("GET /dashboard/api/satellite", h.satelliteHandler)
 }
 
 func (h *Handler) page(w http.ResponseWriter, r *http.Request) {
@@ -214,6 +216,34 @@ type AnalysisProvider interface {
 func (h *Handler) WithAnalysis(p AnalysisProvider) *Handler {
 	h.analysis = p
 	return h
+}
+
+// SatelliteProvider menyediakan kemajuan pemrosesan aliran satelit (seberapa tertinggal, p95 latensi).
+type SatelliteProvider interface {
+	Progress(ctx context.Context) (map[string]any, error)
+}
+
+func (h *Handler) WithSatellite(p SatelliteProvider) *Handler {
+	h.satellite = p
+	return h
+}
+
+func (h *Handler) satelliteHandler(w http.ResponseWriter, r *http.Request) {
+	if !h.authorized(w, r) {
+		return
+	}
+	if h.satellite == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"available": false, "reason": "pemroses satelit tidak dikonfigurasi"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), analysisGuard)
+	defer cancel()
+	res, err := h.satellite.Progress(ctx)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"available": false, "reason": "penyimpanan checkpoint tidak terjangkau"})
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
 }
 
 const analysisGuard = 3 * time.Second

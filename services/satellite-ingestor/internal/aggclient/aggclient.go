@@ -33,6 +33,9 @@ type Batch struct {
 	DeleteFires      []string          `json:"delete_fires"`
 	ActiveFires      map[string]string `json:"active_fires"`
 	Stats            map[string]int64  `json:"stats"`
+	// Kemajuan pemroses untuk dashboard: offset terbaru di feed, p95 latensi masuk-hingga-tersimpan (detik).
+	FeedLatest int64   `json:"feed_latest_offset,omitempty"`
+	IngestP95  float64 `json:"ingest_p95_s,omitempty"`
 }
 
 type Checkpoint struct {

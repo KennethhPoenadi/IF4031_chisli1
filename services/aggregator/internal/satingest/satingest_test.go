@@ -147,3 +147,25 @@ func TestApplyRejectsNonWildfireEvents(t *testing.T) {
 		t.Fatalf("menghapus event non-kebakaran harus ditolak, err=%v", err)
 	}
 }
+
+func TestProgressReportsLagAndLatencyFromBatch(t *testing.T) {
+	r := newRec()
+	s := New(r, events{r}, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	now := time.Now().UTC()
+	b := Batch{Offset: 100, MaxEventTime: now.Add(-90 * time.Second), VirtualNow: now, FeedLatest: 160, IngestP95: 1.7,
+		Stats:       map[string]int64{"retracted": 4, "accepted": 90},
+		ActiveFires: map[string]string{"hz-fire-a": "x", "hz-fire-b": "y"}}
+	if err := s.Apply(context.Background(), b, "c"); err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.Progress(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p["lag_events"].(int64) != 60 || p["ingest_p95_seconds"].(float64) != 1.7 || p["active_fires"].(int) != 2 {
+		t.Fatalf("progress = %v", p)
+	}
+	if got := p["event_time_lag_seconds"].(float64); got < 89 || got > 91 {
+		t.Fatalf("lag waktu = %v, want 90", got)
+	}
+}

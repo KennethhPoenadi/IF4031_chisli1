@@ -205,7 +205,7 @@ func main() {
 		log.Error("invalid SITUATION_ANALYST_URL", "err", err)
 		os.Exit(1)
 	}
-	dash := dashboard.New(hazardStore, cfg.DashboardToken).WithLogger(log)
+	dash := dashboard.New(hazardStore, cfg.DashboardToken).WithLogger(log).WithSatellite(satellite)
 	if analysisClient != nil {
 		dash.WithAnalysis(analysisClient)
 	}

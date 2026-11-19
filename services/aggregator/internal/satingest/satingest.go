@@ -39,6 +39,8 @@ type Checkpoint struct {
 	ActiveFires  map[string]string `json:"active_fires"`
 	Stats        map[string]int64  `json:"stats"`
 	UpdatedAt    time.Time         `json:"updated_at"`
+	FeedLatest   int64             `json:"feed_latest_offset,omitempty"`
+	IngestP95    float64           `json:"ingest_p95_s,omitempty"`
 }
 
 type Batch struct {
@@ -53,6 +55,8 @@ type Batch struct {
 	DeleteFires      []string          `json:"delete_fires"`
 	ActiveFires      map[string]string `json:"active_fires"`
 	Stats            map[string]int64  `json:"stats"`
+	FeedLatest       int64             `json:"feed_latest_offset,omitempty"`
+	IngestP95        float64           `json:"ingest_p95_s,omitempty"`
 }
 
 type Docs interface {
@@ -189,13 +193,39 @@ func (s *Service) Apply(ctx context.Context, b Batch, correlationID string) erro
 	}); err != nil {
 		return err
 	}
-	cp := Checkpoint{Offset: b.Offset, MaxEventTime: b.MaxEventTime, VirtualNow: b.VirtualNow, ActiveFires: b.ActiveFires, Stats: b.Stats, UpdatedAt: time.Now().UTC()}
+	cp := Checkpoint{Offset: b.Offset, MaxEventTime: b.MaxEventTime, VirtualNow: b.VirtualNow, ActiveFires: b.ActiveFires, Stats: b.Stats, UpdatedAt: time.Now().UTC(), FeedLatest: b.FeedLatest, IngestP95: b.IngestP95}
 	data, _ := json.Marshal(cp)
 	if err := s.docs.Put(ctx, shardstore.Doc{Collection: CollCheckpoint, Key: CheckpointKey, Data: data}); err != nil {
 		return err
 	}
 	batchesApplied(ctx, 1)
 	return nil
+}
+
+// Progress meringkas kemajuan pemrosesan aliran satelit untuk dashboard: seberapa tertinggal sistem dari feed (jumlah kejadian dan
+// waktu virtual), p95 latensi masuk-hingga-tersimpan, dan keadaan mesin pengelompokan.
+func (s *Service) Progress(ctx context.Context) (map[string]any, error) {
+	cp, err := s.Checkpoint(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if cp == nil {
+		return map[string]any{"available": false, "reason": "belum ada checkpoint satelit"}, nil
+	}
+	lag := int64(0)
+	if cp.FeedLatest > cp.Offset {
+		lag = cp.FeedLatest - cp.Offset
+	}
+	timeLag := 0.0
+	if !cp.VirtualNow.IsZero() && !cp.MaxEventTime.IsZero() && cp.VirtualNow.After(cp.MaxEventTime) {
+		timeLag = cp.VirtualNow.Sub(cp.MaxEventTime).Seconds()
+	}
+	return map[string]any{
+		"available": true, "offset": cp.Offset, "feed_latest_offset": cp.FeedLatest, "lag_events": lag,
+		"event_time_lag_seconds": timeLag, "ingest_p95_seconds": cp.IngestP95, "active_fires": len(cp.ActiveFires),
+		"updated_at": cp.UpdatedAt, "age_seconds": time.Since(cp.UpdatedAt).Seconds(),
+		"late": cp.Stats["late"], "retracted": cp.Stats["retracted"], "duplicate": cp.Stats["duplicate"], "accepted": cp.Stats["accepted"],
+	}, nil
 }
 
 func (s *Service) Checkpoint(ctx context.Context) (*Checkpoint, error) {
