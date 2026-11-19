@@ -1,0 +1,22 @@
+{
+  "instance": 5,
+  "node": [
+    "chisli-control",
+    "chisli-worker-1"
+  ],
+  "pod_dibekukan": "aggregator-788dd675b7-gnk9r",
+  "node_pod_dibekukan": "chisli-control",
+  "detik_sampai_dikeluarkan": 14.0,
+  "gagal_sebelum": 1,
+  "permintaan_sebelum": 155,
+  "gagal_antara": 14,
+  "permintaan_antara": 79,
+  "gagal_sesudah_dikeluarkan": 0,
+  "permintaan_sesudah_dikeluarkan": 261,
+  "kembali_ke_endpoint": true,
+  "kode_semua": {
+    "200": 549,
+    "0": 15
+  },
+  "lolos": true
+}

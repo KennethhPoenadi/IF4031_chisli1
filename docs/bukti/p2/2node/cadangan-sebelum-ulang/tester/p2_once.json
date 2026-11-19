@@ -1,0 +1,34 @@
+{
+  "replika": 5,
+  "leader": "aggregator-5fd4f6f76c-4sd77",
+  "laju_per_menit": {
+    "BMKG": 12.0,
+    "PVMBG": 12.0
+  },
+  "laju_satu_instance": 12.0,
+  "kesinambungan": {
+    "BMKG": {
+      "jumlah": 171,
+      "unik": 171,
+      "duplikat": 0,
+      "celah": 0,
+      "contoh_celah": [],
+      "rentang": [
+        673,
+        843
+      ]
+    },
+    "PVMBG": {
+      "jumlah": 172,
+      "unik": 172,
+      "duplikat": 0,
+      "celah": 0,
+      "contoh_celah": [],
+      "rentang": [
+        676,
+        847
+      ]
+    }
+  },
+  "lolos": true
+}

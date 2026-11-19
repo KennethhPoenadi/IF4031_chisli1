@@ -1,0 +1,1 @@
+Run ulang 19 Nov 15.4x: beban tes (8 pekerja ke /dashboard/api/summary?range=1h) timeout karena agregasi dashboard melambat menjadi 1,5 dtk per panggilan setelah perubahan waktu analitik (f8806cc). Perbaikan: 6ec06ed (saringan awal + indeks occurred_at). Bukti lolos sebelumnya dikembalikan sampai run ulang sesudah perbaikan ter-deploy.

@@ -1,0 +1,26 @@
+{
+  "total_vu": 10000,
+  "beban_penuh_detik": 150,
+  "ramp_detik": 30,
+  "pergantian_replika_aggregator": "3 -> 5 (detik 60) -> 2 (detik 111)",
+  "laptop": {
+    "vus": 8000,
+    "permintaan": 577068,
+    "gagal": 4412,
+    "gagal_persen": 0.76
+  },
+  "mac": {
+    "vus": 2000,
+    "permintaan": 88967,
+    "gagal": 750,
+    "gagal_persen": 0.84,
+    "sumber": "screenshot terminal Mac (img/mac.png), angka dicatat dari layar"
+  },
+  "gabungan": {
+    "permintaan": 666035,
+    "gagal": 5162,
+    "gagal_persen": 0.775,
+    "batas_persen": 1.0,
+    "lolos": true
+  }
+}

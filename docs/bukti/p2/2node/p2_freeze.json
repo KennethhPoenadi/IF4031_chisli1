@@ -1,15 +1,15 @@
 {
   "leader_lama": {
-    "holder": "aggregator-6d46f79676-j7n9b",
-    "transitions": 11
+    "holder": "aggregator-ccd896b6-ws796",
+    "transitions": 57
   },
   "leader_saat_beku": {
-    "holder": "aggregator-6d46f79676-2dwd2",
-    "transitions": 12
+    "holder": "aggregator-ccd896b6-d6msg",
+    "transitions": 58
   },
   "leader_sesudah": {
-    "holder": "aggregator-6d46f79676-2dwd2",
-    "transitions": 12
+    "holder": "aggregator-ccd896b6-d6msg",
+    "transitions": 58
   },
   "laju_per_menit_sesudah_bangun": {
     "BMKG": 12.0,
@@ -17,25 +17,25 @@
   },
   "kesinambungan": {
     "BMKG": {
-      "jumlah": 113,
-      "unik": 113,
+      "jumlah": 1975,
+      "unik": 1975,
       "duplikat": 0,
       "celah": 0,
       "contoh_celah": [],
       "rentang": [
-        673,
-        785
+        21,
+        1995
       ]
     },
     "PVMBG": {
-      "jumlah": 114,
-      "unik": 114,
+      "jumlah": 1967,
+      "unik": 1967,
       "duplikat": 0,
       "celah": 0,
       "contoh_celah": [],
       "rentang": [
-        676,
-        789
+        21,
+        1987
       ]
     }
   },

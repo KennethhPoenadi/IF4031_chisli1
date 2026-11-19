@@ -1,0 +1,34 @@
+{
+  "replika": 5,
+  "leader": "aggregator-65c648bcc8-vv686",
+  "laju_per_menit": {
+    "BMKG": 12.0,
+    "PVMBG": 12.0
+  },
+  "laju_satu_instance": 12.0,
+  "kesinambungan": {
+    "BMKG": {
+      "jumlah": 1975,
+      "unik": 1975,
+      "duplikat": 0,
+      "celah": 0,
+      "contoh_celah": [],
+      "rentang": [
+        21,
+        1995
+      ]
+    },
+    "PVMBG": {
+      "jumlah": 1967,
+      "unik": 1967,
+      "duplikat": 0,
+      "celah": 0,
+      "contoh_celah": [],
+      "rentang": [
+        21,
+        1987
+      ]
+    }
+  },
+  "lolos": true
+}

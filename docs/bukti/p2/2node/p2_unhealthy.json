@@ -4,19 +4,19 @@
     "chisli-control",
     "chisli-worker-1"
   ],
-  "pod_dibekukan": "aggregator-788dd675b7-gnk9r",
+  "pod_dibekukan": "aggregator-ccd896b6-d6msg",
   "node_pod_dibekukan": "chisli-control",
-  "detik_sampai_dikeluarkan": 14.0,
+  "detik_sampai_dikeluarkan": 12.6,
   "gagal_sebelum": 1,
-  "permintaan_sebelum": 155,
-  "gagal_antara": 14,
-  "permintaan_antara": 79,
+  "permintaan_sebelum": 16,
+  "gagal_antara": 6,
+  "permintaan_antara": 30,
   "gagal_sesudah_dikeluarkan": 0,
-  "permintaan_sesudah_dikeluarkan": 261,
+  "permintaan_sesudah_dikeluarkan": 40,
   "kembali_ke_endpoint": true,
   "kode_semua": {
-    "200": 549,
-    "0": 15
+    "200": 95,
+    "0": 7
   },
   "lolos": true
 }

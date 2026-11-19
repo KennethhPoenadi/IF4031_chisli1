@@ -1,0 +1,11 @@
+   permintaan 264451 (5289/detik): 2xx=50654  429(ditolak terkontrol)=213797  401=0  5xx=0  lain=0  galat_jaringan=0
+   gagal bukan-429: 0.00% (batas 1.0%)   latensi p50=5ms p95=128ms p99=215ms
+HASIL: LOLOS
+   throughput sukses (2xx): 1266.3 permintaan/detik
+   permintaan 94760 (1895/detik): 2xx=75935  429(ditolak terkontrol)=18825  401=0  5xx=0  lain=0  galat_jaringan=0
+   gagal bukan-429: 0.00% (batas 1.0%)   latensi p50=64ms p95=152ms p99=181ms
+HASIL: LOLOS
+   throughput sukses (2xx): 1898.4 permintaan/detik
+== throughput 1 instance: 1266.3 rps | 3 instance: 1898.4 rps | rasio: 1.50x (batas 2,0x)
+HASIL: GAGAL
+TP_SELESAI

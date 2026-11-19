@@ -1,7 +1,7 @@
-replika aggregator: 5, leader: aggregator-6d46f79676-rc8vz
+replika aggregator: 5, leader: aggregator-ccd896b6-wcwdh
 mengukur 90 detik permintaan ke mock...
-laju permintaan per menit: {'BMKG': 12.0, 'PVMBG': 12.7} (satu instance = 12, 5 instance = 60)
-kesinambungan ID: {'BMKG': (93, 'duplikat 0', 'celah 0'), 'PVMBG': (93, 'duplikat 0', 'celah 0')}
+laju permintaan per menit: {'BMKG': 12.0, 'PVMBG': 12.0} (satu instance = 12, 5 instance = 60)
+kesinambungan ID: {'BMKG': (1975, 'duplikat 0', 'celah 0'), 'PVMBG': (1967, 'duplikat 0', 'celah 0')}
 
 HASIL once: LOLOS
 bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p2/2node

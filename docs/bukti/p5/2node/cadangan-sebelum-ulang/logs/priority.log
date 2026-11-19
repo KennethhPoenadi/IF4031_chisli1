@@ -1,0 +1,36 @@
+k6 p5-priority.js: 1000 VU Media + 50 VU Tim Lapangan, 45s
+
+     ✓ media is served or rejected in a controlled way
+     ✓ field request stays available
+
+     checks.........................: 100.00% 356902 out of 356902
+     data_received..................: 637 MB  14 MB/s
+     data_sent......................: 190 MB  4.2 MB/s
+   ✓ field_429_rate.................: 0.00%   0 out of 7181
+   ✓ field_latency..................: avg=289.12ms med=246.37ms p(90)=526.09ms p(95)=625.04ms p(99)=843.98ms max=1.5s    
+     field_phase_blocked............: avg=2.25ms   med=2.47µs   p(90)=5.42µs   p(95)=6.92µs   p(99)=209.76µs max=494.93ms
+     field_phase_connecting.........: avg=597.65µs med=0s       p(90)=0s       p(95)=0s       p(99)=0s       max=148.78ms
+     field_phase_receiving..........: avg=28.14ms  med=8.33ms   p(90)=79.54ms  p(95)=112.75ms p(99)=197.78ms max=393.1ms 
+     field_phase_waiting............: avg=259.82ms med=216.85ms p(90)=487.66ms p(95)=582.86ms p(99)=797.61ms max=1.47s   
+     field_stale_rate...............: 0.00%   0 out of 7181
+   ✓ field_success_rate.............: 100.00% 7181 out of 7181
+     http_req_blocked...............: avg=572.76µs med=2.11µs   p(90)=4.89µs   p(95)=6.32µs   p(99)=32.25µs  max=520.04ms
+     http_req_connecting............: avg=295.87µs med=0s       p(90)=0s       p(95)=0s       p(99)=0s       max=511.19ms
+     http_req_duration..............: avg=111.63ms med=82.06ms  p(90)=226.56ms p(95)=306.98ms p(99)=528.33ms max=1.78s   
+       { expected_response:true }...: avg=260.71ms med=221.27ms p(90)=481.61ms p(95)=570.92ms p(99)=800.78ms max=1.78s   
+     http_req_failed................: 87.32%  311676 out of 356904
+     http_req_receiving.............: avg=3.98ms   med=17.55µs  p(90)=855.12µs p(95)=27.17ms  p(99)=90.48ms  max=476.45ms
+     http_req_sending...............: avg=810.09µs med=6.63µs   p(90)=21.03µs  p(95)=98.76µs  p(99)=31.78ms  max=295.12ms
+     http_req_tls_handshaking.......: avg=0s       med=0s       p(90)=0s       p(95)=0s       p(99)=0s       max=0s      
+     http_req_waiting...............: avg=106.84ms med=80.32ms  p(90)=212.14ms p(95)=281.94ms p(99)=493.13ms max=1.7s    
+     http_reqs......................: 356904  7845.979083/s
+     iteration_duration.............: avg=131.05ms med=98.42ms  p(90)=261.32ms p(95)=343.03ms p(99)=570.03ms max=2.11s   
+     iterations.....................: 356902  7845.935116/s
+   ✓ media_controlled_429_rate......: 89.12%  311676 out of 349721
+   ✓ unexpected_response_rate.......: 0.00%   0 out of 356902
+     vus............................: 1050    min=1050             max=1050
+     vus_max........................: 1050    min=1050             max=1050
+
+
+HASIL priority: LOLOS
+bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p5/2node

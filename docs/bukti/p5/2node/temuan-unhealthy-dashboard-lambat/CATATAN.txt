@@ -1,0 +1,1 @@
+Run ulang 19 Nov 16.17: tidak valid. (1) Pembekuan sensor tidak terjadi (kubectl exec ke pod pembeku gagal sesaat saat API server kewalahan; diuji ulang manual berhasil). (2) Beban sumber lain memakai /dashboard/api/summary yang melambat (lihat p2 temuan-rolling-dashboard-lambat), perbaikan 6ec06ed. Bukti lolos sebelumnya dikembalikan sampai run ulang sesudah perbaikan.

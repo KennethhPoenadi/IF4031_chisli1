@@ -1,22 +1,26 @@
-== memicu skenario Tester Agent clock-skew (jam digeser pada node yang dipilih agen)
+== memicu skenario Tester Agent: clock-skew
    Latihan "clock-skew": 1 langkah
      - t+5s shift_clock role= nodes=any
-   Permintaan a5dd32a366bb dikirim. Lihat hasil dengan: kubectl logs -n tester-agent -l app=tester-agent
-== mengukur selama jam bergeser: laju permintaan ke mock dan kesinambungan ID (90 dtk)
-replika aggregator: 5, leader: aggregator-5fd4f6f76c-4sd77
+   Permintaan 0ec46b0ff1ed dikirim. Lihat hasil dengan: kubectl logs -n tester-agent -l app=tester-agent
+== mengukur selama skenario berjalan: laju permintaan ke mock dan kesinambungan ID (90 dtk)
+replika aggregator: 5, leader: aggregator-65c648bcc8-rc5gq
 mengukur 90 detik permintaan ke mock...
-laju permintaan per menit: {'BMKG': 12.0, 'PVMBG': 11.3} (satu instance = 12, 5 instance = 60)
-kesinambungan ID: {'BMKG': (149, 'duplikat 0', 'celah 0'), 'PVMBG': (150, 'duplikat 0', 'celah 0')}
+laju permintaan per menit: {'BMKG': 12.0, 'PVMBG': 12.7} (satu instance = 12, 5 instance = 60)
+kesinambungan ID: {'BMKG': (1975, 'duplikat 0', 'celah 0'), 'PVMBG': (1967, 'duplikat 0', 'celah 0')}
 
 HASIL once: LOLOS
-bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p2/2node/tester
+bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p2/2node
 
-== log Tester Agent (rantai MAC, tidak dapat dipalsukan) sejak 2026-11-18T11:27:29Z
-    tester-agent-gs8r9 seq 8 [L] langkah 1 selesai
-    tester-agent-gs8r9 seq 9 [L] skenario selesai
-    tester-agent-gs8r9 seq 10 [L] pemulihan akhir selesai; keadaan bersih
-    tester-agent-gs8r9 seq 11 [L] skenario "clock-skew" (practice) mulai; 1 langkah
-    tester-agent-gs8r9 seq 12 [L] langkah 1 mulai: shift_clock +300s selama 30s nodes=any
-    tester-agent-gs8r9 seq 13 [L] langkah 1 selesai
-    tester-agent-gs8r9 seq 14 [L] skenario selesai
-    tester-agent-gs8r9 seq 15 [L] pemulihan akhir selesai; keadaan bersih
+== keadaan replikasi di Audit API sesudah skenario (menunggu pulih sampai 5 menit)
+   partial=False under_replicated=10 rebuilding=[] tak_terjangkau=[]
+
+== log Tester Agent (rantai MAC, tidak dapat dipalsukan)
+    tester-agent-gs8r9 seq 16 [L] langkah 1 selesai
+    tester-agent-gs8r9 seq 17 [L] skenario selesai
+    tester-agent-gs8r9 seq 18 [L] pemulihan akhir selesai; keadaan bersih
+    tester-agent-gs8r9 seq 19 [L] skenario "clock-skew" (practice) mulai; 1 langkah
+    tester-agent-gs8r9 seq 20 [L] langkah 1 mulai: shift_clock +300s selama 30s nodes=any
+    tester-agent-gs8r9 seq 21 [L] langkah 1 selesai
+    tester-agent-gs8r9 seq 22 [L] skenario selesai
+    tester-agent-gs8r9 seq 23 [L] pemulihan akhir selesai; keadaan bersih
+   pod aplikasi sesudah skenario:

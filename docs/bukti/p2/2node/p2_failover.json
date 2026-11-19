@@ -1,60 +1,60 @@
 {
   "leader_awal": {
-    "holder": "aggregator-6d46f79676-rc8vz",
-    "transitions": 10
+    "holder": "aggregator-ccd896b6-wcwdh",
+    "transitions": 56
   },
   "leader_baru": {
-    "holder": "aggregator-6d46f79676-j7n9b",
-    "transitions": 11
+    "holder": "aggregator-ccd896b6-ws796",
+    "transitions": 57
   },
-  "detik_sampai_leader_baru": 15.985965,
-  "detik_sampai_polling_berlanjut": 18.016952,
+  "detik_sampai_leader_baru": 16.151465,
+  "detik_sampai_polling_berlanjut": 17.784922,
   "batas_detik": 60,
   "kesinambungan_sebelum": {
     "BMKG": {
-      "jumlah": 94,
-      "unik": 94,
+      "jumlah": 1975,
+      "unik": 1975,
       "duplikat": 0,
       "celah": 0,
       "contoh_celah": [],
       "rentang": [
-        673,
-        766
+        21,
+        1995
       ]
     },
     "PVMBG": {
-      "jumlah": 95,
-      "unik": 95,
+      "jumlah": 1967,
+      "unik": 1967,
       "duplikat": 0,
       "celah": 0,
       "contoh_celah": [],
       "rentang": [
-        676,
-        770
+        21,
+        1987
       ]
     }
   },
   "kesinambungan_sesudah": {
     "BMKG": {
-      "jumlah": 100,
-      "unik": 100,
+      "jumlah": 1975,
+      "unik": 1975,
       "duplikat": 0,
       "celah": 0,
       "contoh_celah": [],
       "rentang": [
-        673,
-        772
+        21,
+        1995
       ]
     },
     "PVMBG": {
-      "jumlah": 101,
-      "unik": 101,
+      "jumlah": 1967,
+      "unik": 1967,
       "duplikat": 0,
       "celah": 0,
       "contoh_celah": [],
       "rentang": [
-        676,
-        776
+        21,
+        1987
       ]
     }
   },

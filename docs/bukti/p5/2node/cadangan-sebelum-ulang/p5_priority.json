@@ -1,0 +1,8 @@
+{
+  "k6_exit": 0,
+  "field_success": 1,
+  "field_429": 0,
+  "field_p95_ms": 625.044932,
+  "media_429": 0.8912132814443513,
+  "lolos": true
+}

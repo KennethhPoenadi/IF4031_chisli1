@@ -1,0 +1,23 @@
+{
+  "vus": 600,
+  "durasi_detik": 50,
+  "permintaan": 675886,
+  "rps": 13514,
+  "status_2xx": 18081,
+  "status_429_ditolak_terkontrol": 657760,
+  "status_401": 0,
+  "status_5xx": 45,
+  "status_lain": 0,
+  "galat_jaringan": 0,
+  "gagal_bukan_429_persen": 0.01,
+  "p50_ms": 26.908685288118864,
+  "p95_ms": 90.50966799187808,
+  "p99_ms": 430.5389646099018,
+  "token_diminta": 886,
+  "token_gagal": 2,
+  "memori_heap_mb": 58.400657653808594,
+  "lolos": true,
+  "catatan": [
+    "2 permintaan token gagal"
+  ]
+}

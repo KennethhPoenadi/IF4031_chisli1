@@ -1,20 +1,20 @@
 instance aggregator: 5 di node ['chisli-control', 'chisli-worker-1']
-   aggregator-788dd675b7-8tj65  chisli-control  10.42.0.173
-   aggregator-788dd675b7-gnk9r  chisli-control  10.42.0.172
-   aggregator-788dd675b7-jj2cf  chisli-control  10.42.0.171
-   aggregator-788dd675b7-kd2mn  chisli-worker-1  10.42.1.104
-   aggregator-788dd675b7-tthpq  chisli-worker-1  10.42.1.100
+   aggregator-ccd896b6-d6msg  chisli-control  10.42.0.36
+   aggregator-ccd896b6-w888c  chisli-worker-1  10.42.1.132
+   aggregator-ccd896b6-wcwdh  chisli-control  10.42.0.35
+   aggregator-ccd896b6-ws796  chisli-control  10.42.0.17
+   aggregator-ccd896b6-xmnl7  chisli-worker-1  10.42.1.130
 endpoint siap di titik masuk sebelum uji: 5
-pod yang dibekukan: aggregator-788dd675b7-gnk9r (chisli-control, 10.42.0.172); leader aggregator-788dd675b7-8tj65 tidak disentuh
+pod yang dibekukan: aggregator-ccd896b6-d6msg (chisli-control, 10.42.0.36); leader aggregator-ccd896b6-wcwdh tidak disentuh
 pod pembeku freezer-chisli-control di node chisli-control
   pause: proses=1
-aggregator-788dd675b7-gnk9r dibekukan; memantau Endpoints sampai pod itu dikeluarkan...
-pod dikeluarkan dari endpoint titik masuk setelah 14.0 dtk
+aggregator-ccd896b6-d6msg dibekukan; memantau Endpoints sampai pod itu dikeluarkan...
+pod dikeluarkan dari endpoint titik masuk setelah 12.6 dtk
   resume: proses=1
-pod dilepas; kembali ke endpoint: ya (0.2 dtk)
-permintaan sebelum pembekuan: 155, gagal 1
-permintaan antara pembekuan dan pod dikeluarkan (+2 dtk): 79, gagal 14
-permintaan setelah pod dikeluarkan (25 dtk): 261, gagal 0
+pod dilepas; kembali ke endpoint: ya (4.0 dtk)
+permintaan sebelum pembekuan: 16, gagal 1
+permintaan antara pembekuan dan pod dikeluarkan (+2 dtk): 30, gagal 6
+permintaan setelah pod dikeluarkan (25 dtk): 40, gagal 0
 
 HASIL unhealthy: LOLOS
 bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p2/2node

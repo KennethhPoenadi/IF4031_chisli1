@@ -1,26 +1,26 @@
 == memicu skenario Tester Agent: kill-store
    Latihan "kill-store": 1 langkah
      - t+5s stop_pod role=store nodes=any
-   Permintaan bc683f2e24a5 dikirim. Lihat hasil dengan: kubectl logs -n tester-agent -l app=tester-agent
+   Permintaan 06e0b4023e62 dikirim. Lihat hasil dengan: kubectl logs -n tester-agent -l app=tester-agent
 == mengukur selama skenario berjalan: laju permintaan ke mock dan kesinambungan ID (90 dtk)
-replika aggregator: 5, leader: aggregator-5fd4f6f76c-4sd77
+replika aggregator: 5, leader: aggregator-65c648bcc8-vv686
 mengukur 90 detik permintaan ke mock...
 laju permintaan per menit: {'BMKG': 12.0, 'PVMBG': 12.0} (satu instance = 12, 5 instance = 60)
-kesinambungan ID: {'BMKG': (171, 'duplikat 0', 'celah 0'), 'PVMBG': (172, 'duplikat 0', 'celah 0')}
+kesinambungan ID: {'BMKG': (1975, 'duplikat 0', 'celah 0'), 'PVMBG': (1967, 'duplikat 0', 'celah 0')}
 
 HASIL once: LOLOS
-bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p2/2node/tester
+bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p2/2node
 
 == keadaan replikasi di Audit API sesudah skenario (menunggu pulih sampai 5 menit)
-   partial=False under_replicated=0 rebuilding=[] tak_terjangkau=[]
+   
 
 == log Tester Agent (rantai MAC, tidak dapat dipalsukan)
-    tester-agent-gs8r9 seq 21 [L] skenario selesai
-    tester-agent-gs8r9 seq 22 [L] pemulihan akhir selesai; keadaan bersih
-    tester-agent-gs8r9 seq 23 [L] skenario "kill-store" (practice) mulai; 1 langkah
-    tester-agent-gs8r9 seq 24 [L] langkah 1 mulai: stop_pod role=store nodes=any
-    tester-agent-gs8r9 seq 25 [L] pod store-1 (role=store) pada node chisli-worker-1 dihentikan
-    tester-agent-gs8r9 seq 26 [L] langkah 1 selesai
-    tester-agent-gs8r9 seq 27 [L] skenario selesai
-    tester-agent-gs8r9 seq 28 [L] pemulihan akhir selesai; keadaan bersih
+    tester-agent-gs8r9 seq 29 [L] skenario selesai
+    tester-agent-gs8r9 seq 30 [L] pemulihan akhir selesai; keadaan bersih
+    tester-agent-gs8r9 seq 31 [L] skenario "kill-store" (practice) mulai; 1 langkah
+    tester-agent-gs8r9 seq 32 [L] langkah 1 mulai: stop_pod role=store nodes=any
+    tester-agent-gs8r9 seq 33 [L] pod store-1 (role=store) pada node chisli-worker-1 dihentikan
+    tester-agent-gs8r9 seq 34 [L] langkah 1 selesai
+    tester-agent-gs8r9 seq 35 [L] skenario selesai
+    tester-agent-gs8r9 seq 36 [L] pemulihan akhir selesai; keadaan bersih
    pod aplikasi sesudah skenario:

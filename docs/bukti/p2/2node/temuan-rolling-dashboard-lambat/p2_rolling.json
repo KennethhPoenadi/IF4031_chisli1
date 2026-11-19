@@ -1,0 +1,12 @@
+{
+  "image": "ghcr.io/kennethhpoenadi/if4031_chisli1:aggregator-a187a127",
+  "detik_rollout": 35.8,
+  "permintaan": 88,
+  "kode": {
+    "200": 80,
+    "0": 8
+  },
+  "gagal": 8,
+  "p95_detik": 10.007,
+  "lolos": false
+}

@@ -1,0 +1,6 @@
+beban berjalan; memulai rolling restart aggregator...
+rollout selesai dalam 36 dtk; beban dipertahankan 20 dtk lagi...
+88 permintaan, kode {200: 80, 0: 8}, p95 10.007 dtk
+
+HASIL rolling: GAGAL
+bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p2/2node

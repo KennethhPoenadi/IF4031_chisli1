@@ -1,8 +1,8 @@
-leader awal: aggregator-6d46f79676-rc8vz (transisi 10)
+leader awal: aggregator-ccd896b6-wcwdh (transisi 56)
 leader dimatikan paksa (tanpa shutdown bersih)
-leader baru: aggregator-6d46f79676-j7n9b setelah 16.0 dtk
-permintaan polling berikutnya ke mock: 18.0 dtk setelah kill
-kesinambungan ID sesudah: {'BMKG': (100, 'duplikat 0', 'celah 0'), 'PVMBG': (101, 'duplikat 0', 'celah 0')}
+leader baru: aggregator-ccd896b6-ws796 setelah 16.2 dtk
+permintaan polling berikutnya ke mock: 17.8 dtk setelah kill
+kesinambungan ID sesudah: {'BMKG': (1975, 'duplikat 0', 'celah 0'), 'PVMBG': (1967, 'duplikat 0', 'celah 0')}
 
 HASIL failover: LOLOS
 bukti disimpan di /home/kucingputih/AAT/IF4031_chisli1/docs/bukti/p2/2node

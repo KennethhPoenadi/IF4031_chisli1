@@ -1,0 +1,62 @@
+{
+  "leader_awal": {
+    "holder": "aggregator-6d46f79676-rc8vz",
+    "transitions": 10
+  },
+  "leader_baru": {
+    "holder": "aggregator-6d46f79676-j7n9b",
+    "transitions": 11
+  },
+  "detik_sampai_leader_baru": 15.985965,
+  "detik_sampai_polling_berlanjut": 18.016952,
+  "batas_detik": 60,
+  "kesinambungan_sebelum": {
+    "BMKG": {
+      "jumlah": 94,
+      "unik": 94,
+      "duplikat": 0,
+      "celah": 0,
+      "contoh_celah": [],
+      "rentang": [
+        673,
+        766
+      ]
+    },
+    "PVMBG": {
+      "jumlah": 95,
+      "unik": 95,
+      "duplikat": 0,
+      "celah": 0,
+      "contoh_celah": [],
+      "rentang": [
+        676,
+        770
+      ]
+    }
+  },
+  "kesinambungan_sesudah": {
+    "BMKG": {
+      "jumlah": 100,
+      "unik": 100,
+      "duplikat": 0,
+      "celah": 0,
+      "contoh_celah": [],
+      "rentang": [
+        673,
+        772
+      ]
+    },
+    "PVMBG": {
+      "jumlah": 101,
+      "unik": 101,
+      "duplikat": 0,
+      "celah": 0,
+      "contoh_celah": [],
+      "rentang": [
+        676,
+        776
+      ]
+    }
+  },
+  "lolos": true
+}

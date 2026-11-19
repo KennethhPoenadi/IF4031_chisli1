@@ -1,32 +1,32 @@
 {
   "replika": 5,
-  "leader": "aggregator-6d46f79676-rc8vz",
+  "leader": "aggregator-ccd896b6-wcwdh",
   "laju_per_menit": {
     "BMKG": 12.0,
-    "PVMBG": 12.7
+    "PVMBG": 12.0
   },
   "laju_satu_instance": 12.0,
   "kesinambungan": {
     "BMKG": {
-      "jumlah": 93,
-      "unik": 93,
+      "jumlah": 1975,
+      "unik": 1975,
       "duplikat": 0,
       "celah": 0,
       "contoh_celah": [],
       "rentang": [
-        673,
-        765
+        21,
+        1995
       ]
     },
     "PVMBG": {
-      "jumlah": 93,
-      "unik": 93,
+      "jumlah": 1967,
+      "unik": 1967,
       "duplikat": 0,
       "celah": 0,
       "contoh_celah": [],
       "rentang": [
-        676,
-        768
+        21,
+        1987
       ]
     }
   },
