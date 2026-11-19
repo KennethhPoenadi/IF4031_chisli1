@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Menjalankan rangkaian bukti P1 dan P2 pada cluster 2 node, merekam keluaran asli ke log, lalu merendernya jadi PNG.
+# Menjalankan rangkaian bukti P1-P5 pada cluster 2 node, merekam keluaran asli ke log, lalu merendernya jadi PNG.
 #
 # Prasyarat: KUBECONFIG ke cluster k3s, port-forward svc/aggregator di localhost:8090, ingress di 127.0.0.1:80,
-# ~/.xops/prod.env berisi token. Hasil: docs/bukti/<p1|p2>/2node/{*.json,logs/*.log,img/*.png}
+# ~/.xops/prod.env berisi token. P3 dan P5 game day juga butuh port-forward svc/pvmbg-mock di localhost:8091.
 #
-#   tests/tools/run_evidence.sh p1       # hanya P1
-#   tests/tools/run_evidence.sh p2       # hanya P2
-#   tests/tools/run_evidence.sh          # keduanya
+#   tests/tools/run_evidence.sh p1       # hanya P1 (begitu pula p2, p3, p4, p5)
+#   tests/tools/run_evidence.sh          # semua
+# Hasil: docs/bukti/<problem>/2node/{*.json,logs/*.log,img/*.png}
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 ROOT="$PWD"
@@ -82,7 +82,9 @@ p3() {
 
 p4() {
   run p4 live "P4: aliran feed satelit live diproses beberapa menit" python3 -u tests/p4/p4.py live --menit 5
-  run p4 crash "P4 kriteria 5,8: pemroses dibunuh saat aliran berjalan, pulih tanpa kehilangan dan ganda" python3 -u tests/p4/p4.py crash
+  run p4 crash "P4 kriteria 5: pemroses dibunuh saat aliran berjalan, pulih tanpa kehilangan dan ganda" python3 -u tests/p4/p4.py crash
+  run p4 reconnect "P4 kriteria 8: koneksi ke feed diputus lalu disambung" python3 -u tests/p4/p4.py reconnect
+  run p4 stats "P4 kriteria 2-3: hitungan mesin pengelompokan (terlambat, ditarik, duplikat)" python3 -u tests/p4/p4.py stats
 }
 
 p5() {
@@ -90,6 +92,7 @@ p5() {
   run p5 quarantine "P5 kriteria 2: data melanggar kontrak disisihkan dengan alasan" python3 -u tests/p5/p5.py quarantine
   run p5 unhealthy "P5 kriteria 3,4: sensor tidak sehat, sumber lain tetap cepat, breaker menahan permintaan, pulih sendiri" python3 -u tests/p5/p5.py unhealthy
   run p5 priority "P5 kriteria 5: Tim Lapangan tetap dilayani saat Media ditolak terkontrol" python3 -u tests/p5/p5.py priority
+  run p5 gameday "P5 kriteria 6,8: game day gabungan tanpa intervensi, SLO jalur peringatan" python3 -u tests/p5/gameday.py --recovery 240
 }
 
 case "${1:-all}" in
@@ -99,6 +102,6 @@ case "${1:-all}" in
   p2) p2 ;;
   p3) p3 ;;
   p2-unhealthy) run p2 unhealthy "P2 kriteria 1: instance tidak sehat dikeluarkan dari titik masuk" python3 -u tests/p2/p2.py unhealthy ;;
-  all) p1; p2 ;;
-  *) echo "usage: $0 [p1|p2]" >&2; exit 2 ;;
+  all) p1; p2; p3; p4; p5 ;;
+  *) echo "usage: $0 [p1|p2|p3|p4|p5|p2-unhealthy]" >&2; exit 2 ;;
 esac

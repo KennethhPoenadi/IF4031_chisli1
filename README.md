@@ -1,129 +1,193 @@
-# Platform Agregasi Informasi Kebencanaan
+# Sistem Informasi Kebencanaan BNPB (IF4031 Milestone 2)
 
-Platform koordinasi kebencanaan yang mengumpulkan data gempa dari BMKG dan data gunung api dari PVMBG (keduanya berupa mock), menyatukannya ke satu format `HazardEvent`, menyimpannya di MongoDB, lalu menyebarkannya lewat RabbitMQ ke consumer dan lewat API ke client. Akses ke API dibatasi token dengan hak akses berbeda untuk tiap jenis client.
+Platform agregasi informasi kebencanaan yang berjalan di cluster Kubernetes (k3s) dua node. Sistem mengambil data gempa
+(BMKG), gunung api (PVMBG), titik panas satelit (Feed Satelit asisten), dan sensor pantai (image Sensor Pantai asisten),
+memetakannya ke satu format `HazardEvent`, menyimpannya tersebar dengan replikasi di tiga unit MongoDB, lalu menyebarkannya
+lewat RabbitMQ ke consumer dan lewat API ke client dengan hak akses berbeda per jenis client.
 
-Repositori ini berisi kode aplikasi, Dockerfile, pengujian, dan pipeline build. Konfigurasi infrastruktur dan deployment ada di repositori `infra`, dan dokumentasi lengkap ada di repositori `docs`.
+| Repositori | Isi |
+|---|---|
+| ini (`IF4031_chisli1`) | Kode semua service (`services/`), Docker Compose untuk pengembangan lokal, pengujian P1-P5 (`tests/`), bukti (`docs/bukti/`), dokumentasi (`docs/`) |
+| `IF4031_chisli1_infra` | Chart Helm, values per environment, Argo CD, policy Kyverno, skrip cluster dan platform, observabilitas. Lihat README di sana |
+
+Dokumen pendukung: [docs/topologi-arsitektur.md](docs/topologi-arsitektur.md) (topologi dan penempatan pod),
+[docs/bukti/](docs/bukti/) (bukti per problem), [docs/bukti/observabilitas/](docs/bukti/observabilitas/).
 
 ## Arsitektur
 
 ```mermaid
 flowchart LR
     Client -->|token| Auth[auth-service]
-    Client -->|HTTP + token| API[client-facing-api]
-    API -->|validasi| Auth
-    API -->|HTTP| Agg[aggregator]
-    Agg -->|poll| BMKG[bmkg-mock]
-    Agg -->|poll| PVMBG[pvmbg-mock]
-    Agg --> Mongo[(MongoDB)]
+    Client -->|HTTP + token| Traefik[Traefik ingress] --> API[client-facing-api]
+    API --> Agg[aggregator x3-5]
+    Agg -->|poll, satu leader| BMKG[bmkg-mock]
+    Agg -->|poll, satu leader| PVMBG[pvmbg-mock]
+    Agg -->|poll, circuit breaker| Sensor[sensor-pantai]
+    Feed[Feed Satelit asisten] -->|SSE| Ingestor[satellite-ingestor] -->|batch| Agg
+    Agg --> S0[(store-0)] & S1[(store-1)] & S2[(store-2)]
     Agg -->|publish| Rabbit[(RabbitMQ)]
-    Rabbit --> Notifier[notifier]
-    Rabbit --> Dashboard[dashboard-updater]
+    Rabbit --> Notifier[notifier] & Dashboard[dashboard-updater] & Analyst[situation-analyst]
 ```
 
-Aggregator melakukan polling ke BMKG dan PVMBG, memetakan data sumber ke `HazardEvent`, menyimpannya sebagai Canonical Store di MongoDB, dan menerbitkan event ke RabbitMQ. `notifier` dan `dashboard-updater` mengonsumsi event lewat queue masing-masing. Client mengambil data dari `client-facing-api` dengan token dari `auth-service`. Bila PVMBG tidak tersedia, data vulkanik tetap dijawab dari Mongo dan ditandai `stale`.
+| Komponen | Peran |
+|---|---|
+| `aggregator` | 3-5 instance. Satu leader (Lease dengan fencing token) yang mengambil BMKG dan PVMBG; penyimpanan tersebar (consistent hashing, replikasi faktor 2 di 3 unit); DLQ pesan yang gagal; Audit API; dashboard analitik `/dashboard` |
+| `client-facing-api` | API client (`/hazard-events`, `POST /field-reports`), kelas prioritas untuk Tim Lapangan, penolakan 429 terkontrol untuk Media |
+| `auth-service` | Token client (Media, Tim Lapangan, Internal Ops) dengan hak akses berbeda |
+| `satellite-ingestor` | Membaca aliran SSE Feed Satelit, membentuk kebakaran sesuai Definisi Kebakaran, checkpoint di aggregator |
+| `notifier`, `dashboard-updater`, `situation-analyst` | Consumer RabbitMQ: peringatan Tim Lapangan, keadaan dashboard, ringkasan situasi (komponen AI, bonus) |
+| `store-0..2` | MongoDB, satu unit per pod, data di disk node (`local-path`) |
+| `bmkg-mock`, `pvmbg-mock` | Mock sumber data dengan endpoint admin (`/admin/outage`, `/admin/schema-version`) |
+| `sensor-pantai` | Image asisten, tidak dimodifikasi |
 
-## Service dan port
+## Deklarasi topologi
 
-Port di bawah berlaku untuk Docker Compose.
+| Node | Jenis | Host fisik | CPU / RAM node | Arsitektur |
+|---|---|---|---|---|
+| `chisli-control` (control plane + worker) | VM WSL2 (Ubuntu 26.04) | Laptop Windows, Intel Core i7-12650H | 8 vCPU / 9,7 GiB | amd64 |
+| `chisli-worker-1` (worker) | VM Colima (Ubuntu 24.04) | MacBook | 3 vCPU / 4,8 GiB | arm64 |
 
-| Service | Port di host | Keterangan |
-|---|---|---|
-| client-facing-api | 8080 | endpoint untuk client, `GET /hazard-events` |
-| bmkg-mock | 8081 | header `X-BMKG-Key` |
-| pvmbg-mock | 8082 | header `Authorization: Bearer` |
-| aggregator | 127.0.0.1:8090 | polling, mapping, Canonical Store, hanya dipakai antar service |
-| auth-service | 8091 | penerbit token |
-| rabbitmq | 127.0.0.1:5672 dan 15672 | 15672 untuk UI manajemen |
-| notifier, dashboard-updater | tidak dibuka ke host | consumer, health di 8093 dan 8092 di dalam jaringan Docker |
-| situation-analyst | tidak dibuka ke host | analisis situasi (bonus AI), health dan `/analysis/latest` di 8094 di dalam jaringan Docker |
-| mongo | tidak dibuka ke host | hanya bisa dijangkau aggregator |
+Kedua node terhubung lewat Tailscale (100.66.57.46 dan 100.109.151.22). Spesifikasi CPU/RAM di atas adalah sumber daya yang
+terlihat oleh node (batas WSL2 dan VM Colima). Rincian penempatan pod, resource per layanan, dan keterbatasan topologi ada di
+[docs/topologi-arsitektur.md](docs/topologi-arsitektur.md).
 
-Port BMKG, PVMBG, dan client-facing-api bisa diganti lewat `BMKG_PORT`, `PVMBG_PORT`, dan `CLIENT_API_PORT`.
+## Deploy ke cluster
 
-## Menjalankan
+Deploy dikelola dari repositori infra (GitOps dengan Argo CD). Ringkasnya, dengan cluster k3s dua node yang sudah `Ready`
+(panduan pembuatan cluster: `docs/k3s-cluster.md` di repo infra):
 
-Butuh Docker dengan Compose v2. Untuk menjalankan test dibutuhkan Go, dan untuk contoh di bawah dibutuhkan `curl` dan `jq`.
+1. **Satu perintah deploy:** jalankan workflow CI repo infra di self-hosted runner, `gh workflow run ci.yml --ref main`
+   (push ke `main` juga memicunya). Workflow menjalankan validasi, pemasangan platform (Traefik, metrics-server, Kyverno,
+   KEDA, Argo CD), policy, Secret, dan `ApplicationSet`; Argo CD lalu men-deploy semua service ke namespace
+   `sistem-informasi-kebencanaan-bnpb`.
+2. **Tester Agent** (sekali): `./scripts/install-tester-agent.sh` di repo infra (manifest dan digest image di-pin).
+3. **Observabilitas** (sekali, di luar CI): `./scripts/observability.sh` di repo infra.
 
-```
-cp .env.example .env
-openssl rand -base64 32
-```
+Langkah manual yang setara dengan workflow, urutan perintahnya, dan isi file Secret ada di README repo infra. Setiap push ke
+`main` repo ini membangun image baru dan menulis tag ke repo infra; Argo CD menerapkannya otomatis.
 
-Isi `.env`: tempel hasil `openssl` ke `AUTH_SIGNING_SEED`, lalu ganti setiap `ganti-dengan-nilai-rahasia` dengan nilai Anda sendiri. Setelah itu:
+Akses (Traefik pada `127.0.0.1:80` di node control):
 
-```
-docker compose up -d --build
-docker compose ps
-```
+| Alamat | Isi |
+|---|---|
+| `http://api.prod.localtest.me` | API client (`/hazard-events`, `/field-reports`) |
+| `http://auth.prod.localtest.me` | Token (`POST /token`) |
+| `http://ops.prod.localtest.me/dashboard` | Dashboard analitik (P1), termasuk kartu lag pemrosesan satelit (P4) |
+| `http://grafana.localtest.me` | Grafana: metrik, trace, log (pengguna `admin`, kata sandi di Secret `observability/grafana-admin`) |
 
-Semua service sehat setelah beberapa detik. Mematikan:
-
-```
-docker compose down
-```
-
-Tambahkan `-v` untuk ikut menghapus data Mongo dan RabbitMQ.
+Dari peramban Windows (node control berupa WSL2), hostPort Traefik tidak diteruskan ke Windows; jalankan
+`kubectl -n traefik port-forward svc/traefik 8088:80` lalu buka alamat di atas dengan port `:8088`.
 
 ## Konfigurasi
 
-Semua konfigurasi dibaca dari environment variable. Salin `.env.example` jadi `.env` (tidak ikut ter-commit), lalu ubah nilainya. "Wajib" berarti service menolak start kalau kosong.
+Kredensial disimpan sebagai Secret `app-secrets` (daftar kunci: `scripts/secret-keys.txt` di repo infra), konfigurasi sebagai
+ConfigMap dari `envs/prod/<service>.yaml` di repo infra. Variabel yang khusus M2:
+
+| Variabel | Nilai prod | Fungsi |
+|---|---|---|
+| `STORE_UNIT_NAMES`, `STORE_REPLICATION_FACTOR` | `store-0,store-1,store-2`, `2` | Unit penyimpanan dan faktor replikasi (P1) |
+| `STORE_UNIT_TIMEOUT_MS` | 5000 | Batas tunggu per unit; unit yang melewatinya ditandai tidak terjangkau |
+| `AGGREGATOR_LEADER_ELECTION_ENABLED`, `AGGREGATOR_LEADER_LEASE_DURATION_SECONDS`, `AGGREGATOR_LEADER_RETRY_PERIOD_SECONDS` | `true`, 15, 5 | Satu pengambil data per sumber, lease dengan fencing (P2) |
+| `PVMBG_FIELD_ALIASES`, `PVMBG_FIELD_COERCE` | `level_status:alert_level`, `eruption_count_24h:int` | Aturan penyesuaian skema PVMBG setelah perubahan tidak kompatibel (P3) |
+| `DLQ_RETRY_INTERVAL_SECONDS` | 5 | Jeda coba ulang pesan berstatus `retrying` (P3) |
+| `FIELD_REPORTS_ENABLED`, `FIELD_REPORT_PUBLISH_TIMEOUT_MS` | `true`, 2000 | Jalur `POST /field-reports` (P3) |
+| `SATELLITE_LATENESS_MINUTES` | 360 | Batas keterlambatan deteksi satelit (P4) |
+| `SATELLITE_HEARTBEAT_TIMEOUT_SECONDS` | 30 | Batas sunyi aliran sebelum menyambung ulang (P4) |
+| `SATELLITE_BATCH_MAX`, `SATELLITE_BATCH_WAIT_MS` | 500, 250 | Ukuran dan jeda batch ke aggregator (P4) |
+| `AGGREGATOR_PANTAI_CIRCUIT_FAILURES`, `AGGREGATOR_PANTAI_CIRCUIT_OPEN_SECONDS` | 3, 10 | Circuit breaker Sensor Pantai (P5) |
+| `AGGREGATOR_PANTAI_TIMEOUT_MS`, `AGGREGATOR_PANTAI_POLL_INTERVAL_MS` | 1500, 1000 | Batas tunggu dan jeda polling sensor (P5) |
+| `CLIENT_API_MAX_INFLIGHT`, `CLIENT_API_PRIORITY_RESERVED` | 25, 10 | Permintaan serentak per pod dan slot khusus Tim Lapangan (P5) |
+| `CLIENT_API_PRIORITY_HEDGE_MS` | 700 | Panggilan kedua untuk permintaan prioritas yang lambat (P5) |
+| `CLIENT_API_PRIORITY_STALE_AFTER_MS`, `CLIENT_API_PRIORITY_MAX_STALE_MS` | 2000, 30000 | Batas tunggu Tim Lapangan; jawaban terakhir bertanda stale bila sumber lambat (P5) |
+
+Variabel M1 (port, kredensial, timeout BMKG/PVMBG, consumer) tercantum di bagian [Pengembangan lokal](#pengembangan-lokal).
+
+## Menjalankan skenario pengujian
+
+Prasyarat di mesin penguji: `kubectl` dengan kubeconfig cluster, `python3`, `k6` (untuk P2 dan P5), dan file env berisi
+token (`~/.xops/prod.env`, bentuknya sama dengan `.env.example`). Muat lingkungannya:
+
+```
+set -a; . ~/.xops/prod.env; set +a
+export KUBECONFIG=~/.kube/k3s-config AGG_URL=http://localhost:8090 AGG_INTERNAL_KEY="$AGGREGATOR_API_KEY"
+kubectl -n sistem-informasi-kebencanaan-bnpb port-forward svc/aggregator 8090:8090 &
+kubectl -n sistem-informasi-kebencanaan-bnpb port-forward svc/pvmbg-mock 8091:8082 &   # untuk P3
+```
+
+Semua bukti sekaligus, dengan log dan tangkapan layar ke `docs/bukti/<problem>/2node/`:
+
+```
+tests/tools/run_evidence.sh p1      # atau p2, p3, p4, p5; tanpa argumen menjalankan semuanya
+```
+
+Per skenario:
+
+| Problem | Perintah | Kriteria |
+|---|---|---|
+| P1 | `python3 tests/p1/p1.py load --synthetic 20000` lalu `report` | 1-2: sebaran data dan beban per node |
+| P1 | `python3 tests/p1/p1.py surge --region "Kepulauan Mentawai" --count 3000` | 2: lonjakan satu wilayah |
+| P1 | `python3 tests/p1/p1.py paginate` | 3: baca lintas unit dengan pagination |
+| P1 | `python3 tests/p1/unit_loss.py --victim store-0 --second store-1` | 4-6: unit hilang dan dipulihkan, tahan kehilangan berikutnya |
+| P1 | `python3 tests/p1/node_wipe.py` | 4-5: skenario `wipe-node` Tester Agent |
+| P1 | `python3 tests/p1/dashboard_check.py` | 7: angka dashboard sama dengan Audit API |
+| P2 | `python3 tests/p2/p2.py once`, `unhealthy`, `failover`, `freeze`, `rolling` | 1, 2, 3, 5, 8 |
+| P2 | `tests/p2/skew.sh` | 4: jam node bergeser (skenario `clock-skew`) |
+| P2 | `tests/tools/ten_k.sh`, `tests/tools/throughput_3x.sh` | 6-7: 10.000 VU dengan 3 -> 5 -> 2 instance, throughput 3 vs 1 instance |
+| P3 | `python3 tests/p3/p3.py access`, `schema`, `corrupt`, `recover`, `retry`, `reports` | 1-6 |
+| P4 | `python3 tests/p4/p4.py live --menit 5` | 4, 7: aliran live, p95 dan lag |
+| P4 | `python3 tests/p4/p4.py stats` | 2-3: terlambat, ditarik, duplikat |
+| P4 | `python3 tests/p4/p4.py crash`, `reconnect` | 5, 8: pemroses mati; koneksi feed diputus |
+| P4 | `python3 tests/p4/p4.py reference <file>` | 6: dibandingkan dengan hasil referensi asisten (dataset dibagikan setelah tenggat) |
+| P5 | `python3 tests/p5/p5.py critical`, `quarantine` | 1-2 (butuh profil ujian Sensor Pantai) |
+| P5 | `python3 tests/p5/p5.py unhealthy`, `priority` | 3-4, 5 |
+| P5 | `python3 tests/p5/gameday.py --recovery 240` | 6, 8: game day gabungan dan SLO jalur Tim Lapangan |
+
+Tester Agent: daftar skenario `kubectl exec -n tester-agent daemonset/tester-agent -- /app list`, menjalankan skenario latihan
+`kubectl exec -n tester-agent daemonset/tester-agent -- /app run practice <nama>`, log aksinya `kubectl logs -n tester-agent daemonset/tester-agent`.
+Skenario ujian dijalankan dengan kunci dari asisten setelah tenggat.
+
+Setiap folder bukti berisi hasil yang lolos; run yang gagal disimpan di subfolder `temuan-*` beserta catatannya, dan
+catatan per kriteria ada di `CATATAN*.md`.
+
+## Observabilitas
+
+Prometheus, Grafana, Tempo, Loki, dan Alloy di namespace `observability`. Setiap service mengekspos `/metrics` (port 9102),
+mengirim trace OTLP, dan menulis log JSON dengan `correlation_id` dan `trace_id`. Dashboard: **BNPB / Service (RED)**,
+**BNPB / Alur data dan jalur peringatan** (termasuk SLO peringatan <= 5 detik), **BNPB / Cluster dan node**. Contoh tangkapan,
+termasuk satu trace lintas layanan dan log ber-correlation ID, ada di [docs/bukti/observabilitas/](docs/bukti/observabilitas/).
+
+## Pengembangan lokal
+
+Docker Compose menjalankan subset M1 (BMKG, PVMBG, aggregator dengan satu MongoDB, RabbitMQ, consumer, auth, client API)
+untuk pengembangan dan unit test, bukan untuk demo M2.
+
+```
+cp .env.example .env          # isi AUTH_SIGNING_SEED dengan: openssl rand -base64 32, lalu ganti nilai rahasia lain
+docker compose up -d --build
+docker compose ps
+docker compose down           # tambahkan -v untuk menghapus data
+```
 
 | Variabel | Default | Fungsi |
 |---|---|---|
-| `BMKG_PORT` | 8081 | port bmkg-mock |
-| `BMKG_API_KEY` | wajib | kunci header `X-BMKG-Key` |
-| `BMKG_DELAY_MS` | 100 | delay tetap BMKG, boleh 50 sampai 150 |
-| `BMKG_SEED_COUNT` | 20 | jumlah data awal, minimal 20 |
-| `BMKG_GENERATION_INTERVAL_SECONDS` | 10 | jarak kemunculan event baru |
-| `BMKG_RANDOM_SEED` | tetap | seed acak, data simulasi bisa diulang |
-| `PVMBG_PORT` | 8082 | port pvmbg-mock |
-| `PVMBG_TOKEN` | wajib | token Bearer PVMBG |
-| `PVMBG_DELAY_MIN_MS`, `PVMBG_DELAY_MAX_MS` | 500, 3000 | rentang delay acak, 500 ≤ min ≤ max ≤ 3000 |
-| `PVMBG_SEED_COUNT` | 20 | jumlah data awal, minimal 20 |
-| `PVMBG_GENERATION_INTERVAL_SECONDS` | 10 | jarak kemunculan laporan baru |
-| `PVMBG_RANDOM_SEED` | tetap | seed acak |
-| `AUTH_PORT` | 8091 | port auth-service |
-| `AUTH_SIGNING_SEED` | wajib | seed kunci penandatangan token, base64 dari 32 byte |
-| `AUTH_INTERNAL_KEY` | wajib | kunci `/revocations`, dipakai auth-service dan client-facing-api |
-| `AUTH_ACCESS_TTL_SECONDS` | 60 | umur access token |
-| `AUTH_REFRESH_TTL_SECONDS` | 600 | umur refresh token |
-| `AUTH_TOKEN_ISSUER` | bnpb-auth | nilai klaim `iss` token |
-| `AUTH_CLIENT_MEDIA_ID`, `AUTH_CLIENT_MEDIA_SECRET` | wajib | identitas client Media |
-| `AUTH_CLIENT_FIELD_ID`, `AUTH_CLIENT_FIELD_SECRET` | wajib | identitas client Tim Lapangan |
-| `AUTH_CLIENT_OPS_ID`, `AUTH_CLIENT_OPS_SECRET` | wajib | identitas client Internal Ops |
-| `CLIENT_API_PORT` | 8080 | port client-facing-api |
-| `AGGREGATOR_API_KEY` | wajib | kunci `X-Internal-Key` ke aggregator |
-| `CLIENT_API_AGGREGATOR_TIMEOUT_MS` | 1500 | timeout panggilan ke aggregator |
-| `CLIENT_API_MAX_INFLIGHT` | 200 | batas request bersamaan, selebihnya 429 |
-| `CLIENT_API_REVOCATION_POLL_MS` | 250 | jeda sinkron daftar token yang dicabut |
-| `AUTH_PUBLIC_KEY` | kosong | opsional, menyematkan kunci publik agar tidak memanggil `/public-key` |
-| `AGGREGATOR_PORT` | 8090 | port aggregator |
-| `AGGREGATOR_POLL_INTERVAL_SECONDS` | 5 | interval polling ke BMKG dan PVMBG |
-| `AGGREGATOR_BMKG_TIMEOUT_MS` | 2000 | timeout ke BMKG |
-| `AGGREGATOR_PVMBG_TIMEOUT_MS` | 4000 | timeout ke PVMBG |
-| `AGGREGATOR_PVMBG_STALE_AFTER_SECONDS` | 30 | batas data vulkanik ditandai stale |
-| `MONGO_ROOT_USERNAME`, `MONGO_ROOT_PASSWORD` | wajib | kredensial MongoDB |
-| `MONGO_DB_NAME` | bnpb_canonical | nama database |
-| `MONGO_HAZARD_COLLECTION` | hazard_events | nama koleksi |
-| `RABBITMQ_USER`, `RABBITMQ_PASSWORD` | wajib | kredensial RabbitMQ |
-| `RABBITMQ_EXCHANGE` | hazard_events | nama exchange, sama untuk semua service |
-| `RABBITMQ_EXCHANGE_TYPE` | topic | tipe exchange |
-| `RABBITMQ_URL` | dirakit compose | string koneksi AMQP, hanya perlu diisi bila service dijalankan di luar Docker |
-| `NOTIFIER_QUEUE` | notifier-queue | nama queue notifier |
-| `NOTIFIER_BINDING_KEYS` | hazard.# | routing key yang diikat notifier, dipisah koma |
-| `NOTIFIER_MIN_SEVERITY` | WASPADA | batas severity untuk alert |
-| `NOTIFIER_PROCESS_DELAY_MS` | 0 | simulasi consumer lambat |
-| `NOTIFIER_PREFETCH` | 10 | pesan belum di-ack yang boleh dipegang notifier |
-| `NOTIFIER_HEALTH_PORT` | 8093 | port health notifier |
-| `DASHBOARD_UPDATER_QUEUE` | dashboard-updater-queue | nama queue dashboard-updater |
-| `DASHBOARD_UPDATER_PREFETCH` | 10 | pesan belum di-ack yang boleh dipegang dashboard-updater |
-| `DASHBOARD_UPDATER_HEALTH_PORT` | 8092 | port health dan `/state` dashboard-updater |
-| `BINDING_KEY` | hazard.# | routing key yang diikat dashboard-updater |
-| `BMKG_BASE_URL`, `PVMBG_BASE_URL`, `MONGO_URI`, `AGGREGATOR_URL`, `AUTH_SERVICE_URL` | dirakit compose | alamat antar service, hanya perlu diisi bila service dijalankan di luar Docker |
+| `BMKG_PORT`, `PVMBG_PORT`, `CLIENT_API_PORT`, `AUTH_PORT`, `AGGREGATOR_PORT` | 8081, 8082, 8080, 8091, 8090 | Port service |
+| `BMKG_API_KEY`, `PVMBG_TOKEN` | wajib | Kredensial sumber |
+| `BMKG_DELAY_MS`, `PVMBG_DELAY_MIN_MS`, `PVMBG_DELAY_MAX_MS` | 100, 500, 3000 | Delay simulasi sumber |
+| `BMKG_SEED_COUNT`, `PVMBG_SEED_COUNT` | 20 | Jumlah data awal |
+| `BMKG_GENERATION_INTERVAL_SECONDS`, `PVMBG_GENERATION_INTERVAL_SECONDS` | 10 | Jarak kemunculan data baru |
+| `AUTH_SIGNING_SEED`, `AUTH_INTERNAL_KEY` | wajib | Kunci penandatangan token dan kunci `/revocations` |
+| `AUTH_ACCESS_TTL_SECONDS`, `AUTH_REFRESH_TTL_SECONDS` | 60, 600 | Umur token |
+| `AUTH_CLIENT_{MEDIA,FIELD,OPS}_{ID,SECRET}` | wajib | Identitas client Media, Tim Lapangan, Internal Ops |
+| `AGGREGATOR_API_KEY` | wajib | Kunci `X-Internal-Key` ke aggregator |
+| `AGGREGATOR_POLL_INTERVAL_SECONDS` | 5 | Interval polling BMKG dan PVMBG |
+| `AGGREGATOR_BMKG_TIMEOUT_MS`, `AGGREGATOR_PVMBG_TIMEOUT_MS` | 2000, 4000 | Timeout ke sumber |
+| `AGGREGATOR_PVMBG_STALE_AFTER_SECONDS` | 30 | Batas data vulkanik ditandai stale |
+| `MONGO_ROOT_USERNAME`, `MONGO_ROOT_PASSWORD`, `RABBITMQ_USER`, `RABBITMQ_PASSWORD` | wajib | Kredensial MongoDB dan RabbitMQ |
+| `NOTIFIER_MIN_SEVERITY` | WASPADA | Batas severity untuk peringatan |
+| `AUDIT_TOKEN`, `DASHBOARD_TOKEN` | wajib | Token Audit API dan dashboard analitik |
+| `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY` | kosong | Opsional untuk situation-analyst; kosong berarti ringkasan templat |
 
-## Contoh penggunaan
-
-Muat `.env` ke shell, lalu ambil token. Token berlaku 60 detik, ulangi perintah ini kalau sudah kedaluwarsa.
+Contoh memakai API lokal:
 
 ```
 set -a; source .env; set +a
@@ -131,131 +195,28 @@ TOKEN=$(curl -s -X POST localhost:8091/token -d grant_type=client_credentials -d
 curl -s -H "Authorization: Bearer $TOKEN" "localhost:8080/hazard-events?limit=5" | jq
 ```
 
-### Perubahan skema tanpa restart
-
-Sumber data boleh menambah field baru. Nyalakan field `confidence_level` di PVMBG, tunggu satu siklus polling, lalu lihat atribut event vulkanik:
-
-```
-curl -s -X POST localhost:8082/admin/schema-version -H "Authorization: Bearer $PVMBG_TOKEN" -H "Content-Type: application/json" -d '{"enabled":true}'
-curl -s -H "Authorization: Bearer $TOKEN" "localhost:8080/hazard-events?hazard_type=VOLCANIC&limit=5" | jq '.data[] | {hazard_id, attributes}'
-```
-
-Event baru punya `confidence_level` di `attributes`, event lama tidak, dan keduanya terbaca. Field yang tidak dikenal selalu diteruskan ke `attributes`. Perubahan yang hanya menambah field didukung, sedangkan hapus, ganti nama, atau ganti tipe field yang sudah dikenal tidak didukung dan event itu dilewati.
-
-### Sumber data mati
-
-Delay PVMBG bisa dinaikkan dengan `PVMBG_DELAY_MIN_MS` dan `PVMBG_DELAY_MAX_MS` (maksimum 3000), lalu `docker compose up -d pvmbg-mock`. Outage juga bisa dinyalakan manual. Selama outage data seismik tetap normal, dan data vulkanik dijawab dari Mongo dengan `meta.sources.pvmbg.stale_since`:
-
-```
-curl -s -X POST localhost:8082/admin/outage -H "Authorization: Bearer $PVMBG_TOKEN" -H "Content-Type: application/json" -d '{"enabled":true}'
-curl -s -H "Authorization: Bearer $TOKEN" "localhost:8080/hazard-events?hazard_type=VOLCANIC&limit=1" | jq .meta
-curl -s -X POST localhost:8082/admin/outage -H "Authorization: Bearer $PVMBG_TOKEN" -H "Content-Type: application/json" -d '{"enabled":false}'
-```
-
-### Kredensial dan hak akses
-
-Kredensial silang antar sumber harus ditolak, keduanya menghasilkan 403:
-
-```
-curl -i -H "X-BMKG-Key: $PVMBG_TOKEN" localhost:8081/seismic-events
-curl -i -H "Authorization: Bearer $BMKG_API_KEY" localhost:8082/volcanic-reports
-```
-
-Client Media hanya menerima field ringkasan, dan permintaan eksplisit ke field mentah dijawab 403:
-
-```
-MEDIA=$(curl -s -X POST localhost:8091/token -d grant_type=client_credentials -d client_id=$AUTH_CLIENT_MEDIA_ID -d client_secret=$AUTH_CLIENT_MEDIA_SECRET | jq -r .access_token)
-curl -s -H "Authorization: Bearer $MEDIA" "localhost:8080/hazard-events?limit=1" | jq
-curl -i -H "Authorization: Bearer $MEDIA" "localhost:8080/hazard-events?fields=latitude"
-```
-
-Refresh token, memakai client Tim Lapangan:
-
-```
-LOGIN=$(curl -s -X POST localhost:8091/token -d grant_type=client_credentials -d client_id=$AUTH_CLIENT_FIELD_ID -d client_secret=$AUTH_CLIENT_FIELD_SECRET)
-OLD=$(echo $LOGIN | jq -r .access_token)
-RT=$(echo $LOGIN | jq -r .refresh_token)
-curl -s -X POST localhost:8091/token -d grant_type=refresh_token -d refresh_token=$RT | jq
-```
-
-Tunggu sekitar 2 detik lalu pakai `$OLD` ke `/hazard-events`, hasilnya 401 `token_revoked`. Kalau menunggu lebih dari 60 detik sebelum refresh, hasilnya 401 `token_expired`, dan refresh token tetap berlaku sampai 600 detik. Memakai refresh token yang sama dua kali mencabut seluruh sesi.
-
-### Service independen
-
-Build ulang satu service tanpa menyentuh yang lain, sambil memeriksa bahwa client API tetap menjawab:
-
-```
-docker compose up -d --build --no-deps aggregator
-curl -s localhost:8080/health
-```
-
-Mongo hanya terjangkau dari aggregator, perintah ini harus gagal:
-
-```
-docker compose exec client-facing-api wget -T 2 -qO- http://mongo:27017
-```
-
-### Pub-sub
-
-Matikan satu consumer, biarkan beberapa event terbit, lalu nyalakan lagi. Event yang terlewat dikirim ulang karena queue-nya durable:
-
-```
-docker compose stop notifier
-docker compose start notifier
-docker compose logs notifier
-docker compose exec dashboard-updater wget -qO- localhost:8092/state
-```
-
-Menambah consumer baru tanpa mengubah aggregator cukup dengan queue baru:
-
-```
-docker compose run -d --no-deps --name consumer3 -e DASHBOARD_UPDATER_QUEUE=consumer3-queue -e DASHBOARD_UPDATER_HEALTH_PORT=8094 dashboard-updater
-docker logs consumer3
-docker rm -f consumer3
-```
-
-Pengiriman bersifat at-least-once, jadi consumer membuang duplikat berdasarkan `hazard_id` dan severity.
-
-### Log
-
-Semua service menulis log JSON ke stdout dengan `correlation_id`. Satu alur dilacak dengan:
-
-```
-docker compose logs | grep <correlation_id>
-```
-
-Log tidak disimpan permanen. Simpan dulu dengan `docker compose logs --no-color > log.txt` sebelum container dihapus.
-
 ## Analisis situasi (komponen AI, bonus)
 
-`situation-analyst` membaca kejadian dari antreannya sendiri (`situation-analyst-queue`) dan menghasilkan ringkasan serta deteksi lonjakan tidak wajar, yang tampil sebagai panel "Analisis situasi" di dashboard. Komponen ini **hanya menampilkan informasi**: tidak mengubah tingkat keparahan, tidak menulis ke store, dan tidak berada di jalur peringatan.
+`situation-analyst` membaca kejadian dari antreannya sendiri dan menghasilkan ringkasan serta deteksi lonjakan tidak wajar
+(statistik ekor Poisson terhadap rata-rata bergerak), yang tampil sebagai panel "Analisis situasi" di dashboard. Komponen ini
+hanya menampilkan informasi dan tidak berada di jalur peringatan. LLM (API kompatibel OpenAI, opsional) hanya menulis ulang
+ringkasan templat; bila LLM mati, lambat, atau jawabannya tidak valid, templat yang dipakai. Antreannya dibatasi sehingga tidak
+membebani broker. Bukti isolasi ada di test `services/situation-analyst/internal/engine` dan `internal/llm`.
 
-- Deteksi lonjakan memakai statistik biasa (ekor Poisson terhadap rata-rata bergerak), tanpa LLM. Ringkasan templat selalu dihitung lebih dulu.
-- LLM (API kompatibel OpenAI, opsional) hanya menulis ulang ringkasan itu. Prompt hanya berisi agregat (jumlah per kategori, keparahan, 5 area teratas) dengan nama area yang disanitasi, bukan isi mentah event. Jawaban dibuang bila memuat URL, markup, atau angka yang tidak ada di data, lalu dipakai templat.
-- Bila LLM mati, lambat, kena batas anggaran per jam, atau jawabannya tidak valid, dashboard tetap menampilkan ringkasan templat. Bila situation-analyst sendiri mati, panel menampilkan "belum tersedia" dan dashboard lain tidak terpengaruh. Antreannya dibatasi (`x-max-length`, `drop-head`) sehingga tidak bisa menumpuk dan membebani broker.
-- Kunci LLM (`LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`) hanya diisi lewat `.env` lokal atau Secret `llm-credentials` di cluster (terpisah dari `app-secrets`), tidak pernah di Git, log, maupun prompt. Kosongkan untuk memakai templat saja.
-
-Bukti isolasi ada di test `internal/engine` (event diproses cepat walau LLM menggantung) dan `internal/llm` (breaker, anggaran, tanpa redirect, kunci tidak bocor ke galat).
-
-## Test
+## Test unit
 
 ```
-for s in services/*/
-do
-  (cd $s && go test ./...)
-done
+for s in services/*/; do (cd $s && go test ./...); done
 ```
 
-## Build dan deployment
+## Build
 
-Setiap push ke `main` menjalankan workflow GitHub Actions `.github/workflows/ci.yml` (pull request menjalankan lint, unit test, SAST, dan dependency scanning saja): lint (`go vet`, golangci-lint), unit test dengan `-race` dan coverage, SAST (Semgrep), build image multi-arch (amd64 dan arm64) dengan `ko`, `govulncheck`, scan image dengan Trivy, lalu memicu workflow rilis di repositori `infra` lewat `repository_dispatch`. Image didorong ke GitHub Container Registry (`ghcr.io/<owner>/<nama-image>`) dengan dua tag per service: `<service>-<sha8>` dan `<service>-latest`. Deployment ke Kubernetes dikelola dari repositori `infra`. Penjelasannya ada di repositori `docs`.
+Setiap push ke `main` menjalankan `.github/workflows/ci.yml`: lint, unit test, SAST (Semgrep), build image multi-arch
+(amd64 dan arm64) dengan `ko`, `govulncheck`, scan image (Trivy), lalu memicu rilis di repo infra lewat `repository_dispatch`.
+Image didorong ke `ghcr.io/<owner>/<APP_IMAGE_NAME>` dengan tag `<service>-<sha8>`.
 
-Konfigurasi di Settings → Secrets and variables → Actions:
-
-| Nama | Jenis | Fungsi |
+| Nama (Settings -> Secrets and variables -> Actions) | Jenis | Fungsi |
 | --- | --- | --- |
-| `INFRA_DISPATCH_TOKEN` | Secret | Fine-grained PAT dengan izin Contents (read/write) pada repositori `infra`, untuk memicu rilis dev |
-| `INFRA_REPOSITORY` | Variable | Repositori infra dalam format `owner/repo` |
-| `APP_IMAGE_NAME` | Variable | Nama image di `ghcr.io/<owner>/`. Opsional, default-nya nama repositori ini. Harus sama dengan `APP_IMAGE_NAME` di repositori `infra` |
-
-Push dan scan image memakai `GITHUB_TOKEN` bawaan (izin `packages: write` hanya di job build, `packages: read` di job Trivy), jadi tidak ada kredensial registry yang perlu disimpan. Setelah build pertama, package muncul di tab Packages. Biarkan private dan beri akses baca ke cluster lewat token terpisah (lihat README `infra`).
+| `INFRA_DISPATCH_TOKEN` | Secret | PAT fine-grained (Contents read/write pada repo infra) untuk memicu rilis |
+| `INFRA_REPOSITORY` | Variable | Repo infra dalam format `owner/repo` |
+| `APP_IMAGE_NAME` | Variable | Nama image di `ghcr.io/<owner>/`, harus sama dengan di repo infra |
