@@ -103,7 +103,7 @@ Penempatan diambil pada 19 November 2026. Scheduler dapat memindahkan pod, jadi 
 | rabbitmq | 1 (StatefulSet) | 100m / 500m | 512Mi / 1Gi | control |
 | notifier | 1-5 (KEDA) | 100m / 500m | 128Mi / 256Mi | control |
 | dashboard-updater | 1-5 (KEDA) | 100m / 500m | 128Mi / 256Mi | control |
-| satellite-ingestor | 1 | 100m / 500m | 128Mi / 256Mi | control |
+| satellite-ingestor | 1 | 100m / 500m | 512Mi / 1Gi (kelas pemroses stream) | control |
 | sensor-pantai | 1 | 100m / 500m | 128Mi / 256Mi | control |
 | situation-analyst | 1 | 100m / 500m | 128Mi / 256Mi | worker |
 | bmkg-mock, pvmbg-mock | 1 | 100m / 500m | 64Mi / 128Mi | worker |
