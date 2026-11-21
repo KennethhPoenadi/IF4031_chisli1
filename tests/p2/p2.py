@@ -260,6 +260,7 @@ class Load:
         self.host, self.token, self.workers = host, token, workers
         self.stop, self.lock, self.codes, self.lat = threading.Event(), threading.Lock(), {}, []
         self.events = []  # (waktu kirim, kode); permintaan yang sudah terkirim ke pod beku sebelum dikeluarkan boleh gagal, yang dikirim sesudahnya tidak
+        self.errors = []  # (waktu kirim, jenis galat) untuk permintaan tanpa respons HTTP (kode 0)
 
     def _run(self):
         conn = None
@@ -273,8 +274,10 @@ class Load:
                 resp = conn.getresponse()
                 resp.read()
                 code = resp.status
-            except Exception:
+            except Exception as e:
                 code, conn = 0, None
+                with self.lock:
+                    self.errors.append((time.time() - (time.monotonic() - t), type(e).__name__))
             with self.lock:
                 self.codes[code] = self.codes.get(code, 0) + 1
                 self.lat.append(time.monotonic() - t)
@@ -360,6 +363,9 @@ def cmd_version(args):
                    "-o", "jsonpath={range .items[*]}{.metadata.name} {.spec.containers[0].image}{\"\\n\"}{end}")
     print(f"{total} permintaan selama uji, kode {ld.codes}, p95 {p95:.3f} dtk")
     print(f"selama rollout versi baru: {len(during)} permintaan, gagal {sum(1 for c in during if c != 200)}")
+    fails = [(t, f"HTTP {c}") for t, c in ld.events if c not in (0, 200)] + list(ld.errors)
+    for t, kind in sorted(fails):
+        print(f"   gagal {time.strftime('%H:%M:%S', time.localtime(t))}  {kind}")
     print("pod aggregator sesudah uji:")
     print(pods)
     ok = new != old and bad == 0 and total > 0
@@ -367,7 +373,8 @@ def cmd_version(args):
                               "permintaan": total, "kode": ld.codes, "gagal": bad,
                               "permintaan_selama_rollout": len(during),
                               "gagal_selama_rollout": sum(1 for c in during if c != 200),
-                              "p95_detik": round(p95, 3) if p95 else None, "pod_sesudah": pods.split("\n")}, ok)
+                              "p95_detik": round(p95, 3) if p95 else None, "pod_sesudah": pods.split("\n"),
+                              "rincian_gagal": [[time.strftime("%H:%M:%S", time.localtime(t)), k] for t, k in sorted(fails)]}, ok)
 
 
 def ready_endpoints():
