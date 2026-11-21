@@ -102,6 +102,8 @@ case "${1:-all}" in
   p2) p2 ;;
   p3) p3 ;;
   p2-unhealthy) run p2 unhealthy "P2 kriteria 1: instance tidak sehat dikeluarkan dari titik masuk" python3 -u tests/p2/p2.py unhealthy ;;
+  # Butuh push commit aplikasi saat tes berjalan: CI membangun versi baru, Argo CD me-rollout-nya di tengah beban.
+  p2-version) run p2 version "P2 kriteria 8: ganti versi aggregator lewat CI dan Argo CD saat beban berjalan" python3 -u tests/p2/p2.py version ;;
   all) p1; p2; p3; p4; p5 ;;
-  *) echo "usage: $0 [p1|p2|p3|p4|p5|p2-unhealthy]" >&2; exit 2 ;;
+  *) echo "usage: $0 [p1|p2|p3|p4|p5|p2-unhealthy|p2-version]" >&2; exit 2 ;;
 esac

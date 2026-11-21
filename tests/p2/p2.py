@@ -316,6 +316,60 @@ def cmd_rolling(args):
                               "gagal": bad, "p95_detik": round(p95, 3) if p95 else None}, bad == 0 and total > 0)
 
 
+def cmd_version(args):
+    """Kriteria 8: versi Aggregator diganti selama load test, lewat jalur deploy sungguhan (push aplikasi -> CI membangun image
+    dengan tag baru -> CI menulis tag ke repo infra -> Argo CD melakukan RollingUpdate). Tes tidak mengganti image sendiri; ia
+    menjalankan beban, menunggu image Deployment berubah, lalu menunggu rollout selesai. Lolos bila tidak ada permintaan gagal."""
+    token = os.environ.get("DASHBOARD_TOKEN", "")
+    if not token:
+        raise SystemExit("DASHBOARD_TOKEN wajib")
+    image = lambda: kubectl("get", "deploy", "aggregator", "-o", "jsonpath={.spec.template.spec.containers[0].image}")
+    old = image()
+    print(f"versi aggregator saat mulai: {old}")
+    new, took = old, None
+    with Load("ops.prod.localtest.me", token, args.workers) as ld:
+        time.sleep(10)
+        print("beban berjalan; menunggu versi baru dari CI dan Argo CD (push commit aplikasi sekarang)...")
+        t_wait = time.monotonic()
+        last_refresh = 0.0
+        while new == old and time.monotonic() - t_wait < args.wait:
+            if time.monotonic() - last_refresh > 30:
+                # Argo CD memeriksa repo tiap ~3 menit; refresh hanya mempercepat deteksi commit tag, bukan mengubah isi deploy.
+                sh("kubectl", "-n", "argocd", "annotate", "application", "aggregator-prod",
+                   "argocd.argoproj.io/refresh=normal", "--overwrite", check=False)
+                last_refresh = time.monotonic()
+            time.sleep(5)
+            new = image()
+        if new == old:
+            print(f"versi tidak berubah dalam {args.wait} dtk")
+        else:
+            t_change = time.time()
+            print(f"versi baru terdeteksi setelah {time.monotonic() - t_wait:.0f} dtk menunggu: {new}")
+            t0 = time.monotonic()
+            kubectl("rollout", "status", "deploy/aggregator", "--timeout=900s")
+            took = time.monotonic() - t0
+            t_done = time.time()
+            print(f"rollout versi baru selesai dalam {took:.0f} dtk; beban dipertahankan 20 dtk lagi...")
+            time.sleep(20)
+    total = sum(ld.codes.values())
+    bad = sum(n for code, n in ld.codes.items() if code != 200)
+    lat = sorted(ld.lat)
+    p95 = lat[int(0.95 * (len(lat) - 1))] if lat else None
+    during = [code for t, code in ld.events if took is not None and t_change <= t <= t_done]
+    pods = kubectl("get", "pods", "-l", "app.kubernetes.io/name=aggregator",
+                   "-o", "jsonpath={range .items[*]}{.metadata.name} {.spec.containers[0].image}{\"\\n\"}{end}")
+    print(f"{total} permintaan selama uji, kode {ld.codes}, p95 {p95:.3f} dtk")
+    print(f"selama rollout versi baru: {len(during)} permintaan, gagal {sum(1 for c in during if c != 200)}")
+    print("pod aggregator sesudah uji:")
+    print(pods)
+    ok = new != old and bad == 0 and total > 0
+    return report("version", {"image_lama": old, "image_baru": new, "detik_rollout": round(took, 1) if took else None,
+                              "permintaan": total, "kode": ld.codes, "gagal": bad,
+                              "permintaan_selama_rollout": len(during),
+                              "gagal_selama_rollout": sum(1 for c in during if c != 200),
+                              "p95_detik": round(p95, 3) if p95 else None, "pod_sesudah": pods.split("\n")}, ok)
+
+
 def ready_endpoints():
     """IP pod aggregator yang siap menerima lalu lintas menurut Endpoints Service (yang dipakai titik masuk)."""
     raw = kubectl("get", "endpoints", "aggregator", "-o", "jsonpath={.subsets[*].addresses[*].ip}", check=False)
@@ -397,9 +451,11 @@ def main():
     f = sub.add_parser("failover"); f.add_argument("--timeout", type=int, default=120); f.add_argument("--settle", type=int, default=30)
     z = sub.add_parser("freeze"); z.add_argument("--freeze-seconds", type=int, default=40)
     r = sub.add_parser("rolling"); r.add_argument("--workers", type=int, default=8)
+    v = sub.add_parser("version"); v.add_argument("--workers", type=int, default=8)
+    v.add_argument("--wait", type=int, default=1500, help="batas menunggu versi baru (detik)")
     u = sub.add_parser("unhealthy"); u.add_argument("--workers", type=int, default=8); u.add_argument("--timeout", type=int, default=90); u.add_argument("--after", type=int, default=25)
     args = ap.parse_args()
-    sys.exit({"once": cmd_once, "failover": cmd_failover, "freeze": cmd_freeze, "rolling": cmd_rolling, "unhealthy": cmd_unhealthy}[args.cmd](args))
+    sys.exit({"once": cmd_once, "failover": cmd_failover, "freeze": cmd_freeze, "rolling": cmd_rolling, "version": cmd_version, "unhealthy": cmd_unhealthy}[args.cmd](args))
 
 
 if __name__ == "__main__":
