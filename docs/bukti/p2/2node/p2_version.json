@@ -1,0 +1,22 @@
+{
+  "image_lama": "ghcr.io/kennethhpoenadi/if4031_chisli1:aggregator-07001a0e",
+  "image_baru": "ghcr.io/kennethhpoenadi/if4031_chisli1:aggregator-a1368991",
+  "detik_rollout": 58.5,
+  "permintaan": 3909,
+  "kode": {
+    "200": 3909
+  },
+  "gagal": 0,
+  "permintaan_selama_rollout": 339,
+  "gagal_selama_rollout": 0,
+  "p95_detik": 1.262,
+  "pod_sesudah": [
+    "aggregator-6858b9755f-46zxb ghcr.io/kennethhpoenadi/if4031_chisli1:aggregator-a1368991",
+    "aggregator-6858b9755f-mlmcn ghcr.io/kennethhpoenadi/if4031_chisli1:aggregator-a1368991",
+    "aggregator-6858b9755f-p5ch6 ghcr.io/kennethhpoenadi/if4031_chisli1:aggregator-a1368991",
+    "aggregator-6858b9755f-xlt42 ghcr.io/kennethhpoenadi/if4031_chisli1:aggregator-a1368991",
+    "aggregator-6858b9755f-zqvks ghcr.io/kennethhpoenadi/if4031_chisli1:aggregator-a1368991"
+  ],
+  "rincian_gagal": [],
+  "lolos": true
+}
