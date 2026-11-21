@@ -81,7 +81,17 @@ Dari peramban Windows (node control berupa WSL2), hostPort Traefik tidak diterus
 ## Konfigurasi
 
 Kredensial disimpan sebagai Secret `app-secrets` (daftar kunci: `scripts/secret-keys.txt` di repo infra), konfigurasi sebagai
-ConfigMap dari `envs/prod/<service>.yaml` di repo infra. Variabel yang khusus M2:
+ConfigMap dari `envs/prod/<service>.yaml` di repo infra. Secret yang baru di M2:
+
+| Secret | Dipakai oleh | Fungsi |
+|---|---|---|
+| `AUDIT_TOKEN` | aggregator | Token Audit API (dari asisten) |
+| `DASHBOARD_TOKEN` | aggregator | Token dashboard analitik `/dashboard` |
+| `SATELLITE_TOKEN` | satellite-ingestor | Token kelompok Feed Satelit (dari asisten). Wajib: tanpa token ini satellite-ingestor gagal start. Hanya satu koneksi per token yang dilayani feed, jadi jangan jalankan dua ingestor dengan token yang sama |
+| `PANTAI_AUTH_TOKEN` | aggregator | Token ke Sensor Pantai |
+| `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY` | situation-analyst | Opsional (Secret `llm-credentials`); kosong berarti ringkasan templat |
+
+Variabel yang khusus M2:
 
 | Variabel | Nilai prod | Fungsi |
 |---|---|---|
@@ -91,7 +101,9 @@ ConfigMap dari `envs/prod/<service>.yaml` di repo infra. Variabel yang khusus M2
 | `PVMBG_FIELD_ALIASES`, `PVMBG_FIELD_COERCE` | `level_status:alert_level`, `eruption_count_24h:int` | Aturan penyesuaian skema PVMBG setelah perubahan tidak kompatibel (P3) |
 | `DLQ_RETRY_INTERVAL_SECONDS` | 5 | Jeda coba ulang pesan berstatus `retrying` (P3) |
 | `FIELD_REPORTS_ENABLED`, `FIELD_REPORT_PUBLISH_TIMEOUT_MS` | `true`, 2000 | Jalur `POST /field-reports` (P3) |
-| `SATELLITE_LATENESS_MINUTES` | 360 | Batas keterlambatan deteksi satelit (P4) |
+| `SATELLITE_BASE_URL` | `https://satellite.naufarrel.dev` | Alamat Feed Satelit (P4) |
+| `SATELLITE_LATENESS_MINUTES` | 360 | Batas keterlambatan deteksi satelit menurut waktu satelit (P4). Rekaman feed 45 menit (`go run ./cmd/record` di `services/satellite-ingestor`, 4,3 juta deteksi): deteksi paling tertinggal 308 menit dari deteksi terbaru, 0 deteksi terlambat dengan 360 |
+| `PROVINCE_TABLE_PATH` | kosong | CSV `nama,lat,lon` untuk `area_name` kebakaran; kosong berarti tabel titik pusat provinsi BNPB bawaan di image (P4) |
 | `SATELLITE_HEARTBEAT_TIMEOUT_SECONDS` | 30 | Batas sunyi aliran sebelum menyambung ulang (P4) |
 | `SATELLITE_BATCH_MAX`, `SATELLITE_BATCH_WAIT_MS` | 500, 250 | Ukuran dan jeda batch ke aggregator (P4) |
 | `AGGREGATOR_PANTAI_CIRCUIT_FAILURES`, `AGGREGATOR_PANTAI_CIRCUIT_OPEN_SECONDS` | 3, 10 | Circuit breaker Sensor Pantai (P5) |
@@ -158,12 +170,15 @@ termasuk satu trace lintas layanan dan log ber-correlation ID, ada di [docs/bukt
 
 ## Pengembangan lokal
 
-Docker Compose menjalankan subset M1 (BMKG, PVMBG, aggregator dengan satu MongoDB, RabbitMQ, consumer, auth, client API)
-untuk pengembangan dan unit test, bukan untuk demo M2.
+Docker Compose menjalankan subset sistem (BMKG, PVMBG, aggregator dengan satu MongoDB, RabbitMQ, notifier,
+dashboard-updater, situation-analyst, auth, client API) untuk pengembangan dan unit test, bukan untuk demo M2. Penyimpanan
+tersebar, leader election, dan Sensor Pantai hanya berjalan di cluster. `satellite-ingestor` berada di profile `satellite`
+karena butuh `SATELLITE_TOKEN`.
 
 ```
 cp .env.example .env          # isi AUTH_SIGNING_SEED dengan: openssl rand -base64 32, lalu ganti nilai rahasia lain
 docker compose up -d --build
+docker compose --profile satellite up -d --build   # opsional: ikut menjalankan satellite-ingestor
 docker compose ps
 docker compose down           # tambahkan -v untuk menghapus data
 ```
@@ -186,6 +201,9 @@ docker compose down           # tambahkan -v untuk menghapus data
 | `NOTIFIER_MIN_SEVERITY` | WASPADA | Batas severity untuk peringatan |
 | `AUDIT_TOKEN`, `DASHBOARD_TOKEN` | wajib | Token Audit API dan dashboard analitik |
 | `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY` | kosong | Opsional untuk situation-analyst; kosong berarti ringkasan templat |
+| `SITUATION_ANALYST_PORT`, `SATELLITE_INGESTOR_PORT` | 8094, 8095 | Port situation-analyst dan satellite-ingestor |
+| `SATELLITE_TOKEN` | wajib untuk profile `satellite` | Token kelompok Feed Satelit; `.env` tidak di-commit |
+| `SATELLITE_BASE_URL`, `SATELLITE_LATENESS_MINUTES`, `PROVINCE_TABLE_PATH` | lihat [Konfigurasi](#konfigurasi) | Feed Satelit, batas keterlambatan, tabel provinsi |
 
 Contoh memakai API lokal:
 
